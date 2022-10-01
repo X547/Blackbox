@@ -349,7 +349,8 @@ MODULE HostFiles64;
 					IF WinApi.MoveFileW(fname, new) # 0 THEN res := ok
 					ELSE res := WinApi.GetLastError()
 					END
-				UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) & (res # sharingErr) OR (n = 0);
+				UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) & (res # sharingErr)
+						& (res # accessDeniedErr) OR (n = 0);
 				IF res = ok THEN
 					f.state := hidden; f.name := new$
 				END

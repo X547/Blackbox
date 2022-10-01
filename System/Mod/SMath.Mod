@@ -76,10 +76,10 @@ MODULE SMath;
 	PROCEDURE [code] F2XM1 0D9H, 0F0H;	(* 2^st[0] - 1, |st[0]| <= 1 *)
 
 
-	PROCEDURE IsNan (x: SHORTREAL): BOOLEAN;
+	PROCEDURE IsNaN (x: SHORTREAL): BOOLEAN;
 	BEGIN
 		FLD(x); FXAM; FSTPst0; WAIT; RETURN FSWs() * {8, 10} = {8}
-	END IsNan;
+	END IsNaN;
 
 
 	(** SHORTREAL precision **)
@@ -213,7 +213,8 @@ MODULE SMath;
 
 	PROCEDURE Sinh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* abs(x) * 1/ln(2) *)
 		FLD(ABS(x)); FLDL2E; FMUL;
 		IF ST0() < 0.5 THEN
@@ -230,7 +231,7 @@ MODULE SMath;
 	
 	PROCEDURE Cosh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
 		(* 2^(abs(x) * 1/ln(2)) *)
 		FLD(ABS(x));
 		IF ST0() # INF THEN 
@@ -244,7 +245,8 @@ MODULE SMath;
 	
 	PROCEDURE Tanh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* abs(x) * 1/ln(2) * 2 *)
 		FLD(ABS(x)); FLDL2E; FMUL; FADDst0;
 		IF ST0() < 0.5 THEN
@@ -262,7 +264,8 @@ MODULE SMath;
 	
 	PROCEDURE ArcSinh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* x*x *)
 		FLDLN2; FLD(ABS(x)); FLDst0; FMULst0;
 		IF ST0() < 0.067 THEN
@@ -279,7 +282,7 @@ MODULE SMath;
 	PROCEDURE ArcCosh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
 		(* 20, x >= 1.0 *)
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
 		(* ln(2) * ld(x + sqrt(x*x - 1)) *)
 		FLDLN2; FLD(x); FLDst0; FMULst0; FLD1; FSUB; FSQRT; FADD; FYL2X; WAIT; RETURN TOP()
 	END ArcCosh;
@@ -287,7 +290,8 @@ MODULE SMath;
 	PROCEDURE ArcTanh* (x: SHORTREAL): SHORTREAL;
 	BEGIN
 		(* 20, -1.0 <= x <= 1.0 *)
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* |x| *)
 		FLDLN2; FLD(ABS(x)); 
 		IF ST0() < 0.12 THEN
@@ -357,18 +361,28 @@ MODULE SMath;
 	BEGIN
 		FLD(x); FXAM; WAIT;
 		CASE FSW() DIV 256 MOD 8 OF
-		| 0, 2: FSTPst0; RETURN 0.0
+		| 0, 2: FSTPst0; RETURN x	(* +/- zero *)
 		| 1, 4, 5: FSTPst0; RETURN 1.0
 		| 3, 6, 7: FSTPst0; RETURN -1.0
 		END
 	END Sign;
+
+	PROCEDURE SignBit* (x: SHORTREAL): BOOLEAN;	(*  IEEE 754-2008, section 5.7.2  *)
+	BEGIN
+		RETURN 31 IN SYSTEM.VAL(SET, x)
+	END SignBit;
+
+	PROCEDURE CopySign* (x, y: SHORTREAL): SHORTREAL;	(*  IEEE 754-2008, section 5.5.1  *)
+	BEGIN
+		IF 31 IN SYSTEM.VAL(SET, y) THEN RETURN -ABS(x) ELSE RETURN ABS(x) END
+	END CopySign;
 
 	PROCEDURE Mantissa* (x: SHORTREAL): SHORTREAL;
 	BEGIN
 		FLD(x); FXAM; WAIT;
 		CASE FSW() DIV 256 MOD 8 OF
 		| 4, 6: FXTRACT; FSTPst1; RETURN TOP()
-		| 0, 2: FSTPst0; RETURN 0.0	(* zero *)
+		| 0, 2: FSTPst0; RETURN x	(* +/- zero *)
 		| 5: FSTPst0; RETURN 1.0	(* inf *)
 		| 7: FSTPst0; RETURN -1.0	(* -inf *)
 		| 1: FSTPst0; RETURN 1.5	(* nan *)
@@ -390,8 +404,8 @@ MODULE SMath;
 	PROCEDURE Real* (m: SHORTREAL; e: INTEGER): SHORTREAL;
 		VAR s: SET;
 	BEGIN
-		IF (m = 0) THEN RETURN 0.0 END;
-		ASSERT(~IsNan(m) & (1 <= ABS(m)) & (ABS(m) < 2), 20);
+		IF (m = 0) THEN RETURN m (* +/- zero *) END;
+		ASSERT(~IsNaN(m) & (1 <= ABS(m)) & (ABS(m) < 2), 20);
 		IF e = MAX(INTEGER) THEN
 			SYSTEM.GET(SYSTEM.ADR(m) + 4, s);
 			SYSTEM.PUT(SYSTEM.ADR(m) + 4, s + {20..30});

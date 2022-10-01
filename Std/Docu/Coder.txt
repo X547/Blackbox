@@ -62,7 +62,7 @@ Encodes one file determined through the standard file opening dialog and opens a
 PROCEDURE EncodeFileList
 Guard: TextCmds.SelectionGuard
 Encodes several files and opens a new window with the generated code.
-A list of valid file names must be selected. File names must be specified with their complete path name relative to the BlackBox directory. Use the slash character ("/") to separate the individual parts of the path name. (Example: Std/Code/Coder .)
+A list of valid file names must be selected. File names must be specified with their complete path name relative to the BlackBox directory. Use the slash ("/") or backslash ("\") character to separate the individual parts of the path name. (Example: Std/Code/Coder .)
 The path name is stored along with the encoding to allow for easy decoding of entire file packages. However, sometimes a file is kept in a different place than where it should be installed later. In such a case, a destination path name can be specified. The path name to be used during decoding can be given after an "arrow" ("=>").
 Example: NewStd/Code/NewCoder => Std/Code/Coder will lead to encoding of the file NewCoder in the directory NewStd/Code, but for decoding the name Std/Code/Coder will be used.
 

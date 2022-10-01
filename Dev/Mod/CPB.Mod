@@ -879,7 +879,7 @@ MODULE DevCPB;
 					END;
 					z := NewOp(op, typ, z)
 				ELSIF z.class = Ntype THEN
-					IF z.obj.typ.untagged THEN err(111) END;
+					IF z.obj.typ.untagged OR (typ.comp = Basic) & (f # Pointer) THEN err(111) END;
 					z := NewOp(op, typ, z)
 				ELSIF (z.class < Nconst) OR (z.class = Nconst) & (f IN {String8, String16}) THEN
 					z := NewOp(op, typ, z)
@@ -1746,8 +1746,13 @@ MODULE DevCPB;
 			ELSIF f IN intSet THEN
 				IF f = Int64 THEN Convert(x, DevCPT.int32typ) END;
 				IF (x.class = Nconst) & (x.conval.intval <= 0) THEN err(63) END;
-				node := p.right; WHILE node.link # NIL DO node := node.link END;
-				node.link := x; p.typ := p.typ.BaseTyp
+				node := p.right;
+				IF node # NIL THEN (* append x to param list *)
+					WHILE node.link # NIL DO node := node.link END;
+					node.link := x
+				ELSE p.right := x (* error recovery *)
+				END;
+				p.typ := p.typ.BaseTyp
 			ELSE err(111)
 			END
 		ELSIF (fctno = movefn) & (n = 2) THEN (*SYSTEM.MOVE*)

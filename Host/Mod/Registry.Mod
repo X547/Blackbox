@@ -192,6 +192,22 @@ MODULE HostRegistry;
 		RETURN 0 (* invalid pattern; avoid TRAP in startup sequence *)
 	END GetMajorVersion;
 	
+	PROCEDURE SetDbgAppName;
+		VAR i: INTEGER; p: WinApi.PtrWSTR; dbg: BOOLEAN; name, opt: HostFiles.FullName;
+	BEGIN
+		p := WinApi.GetCommandLineW(); i := 0; dbg := FALSE;
+		REPEAT
+			HostFiles.GetName(p, i, name, opt);
+			IF (opt = "/LOAD") & (p[i] >= " ") THEN
+				HostFiles.GetName(p, i, name, opt);
+				IF name = "DevRTDebug" THEN (* BlackBox is used as run-time debugger *)
+					Dialog.MapString("#Dev:RTDebugApp", Dialog.appName);
+					dbg := TRUE
+				END
+			END
+		UNTIL dbg OR (p[i] < " ")
+	END SetDbgAppName;
+	
 	PROCEDURE SetIniFile;
 		VAR loc: Files.Locator; i: INTEGER; p: WinApi.PtrWSTR; name, opt: HostFiles.FullName;
 	BEGIN
@@ -208,6 +224,28 @@ MODULE HostRegistry;
 			END
 		UNTIL (iniFile # NIL) OR (p[i] < " ")
 	END SetIniFile;
+
+	PROCEDURE SetDbgRegistry(appName, dbgName: ARRAY OF CHAR);
+		VAR val: ARRAY 256 OF CHAR; res: INTEGER;
+		
+		PROCEDURE InheritRegEntry(IN key: ARRAY OF CHAR);
+		BEGIN
+			Dialog.appName := appName$; ReadString(key, val, res); Dialog.appName := dbgName$;
+			IF res = 0 THEN  WriteString(key, val) END
+		END InheritRegEntry;
+		
+	BEGIN
+		ReadString("MainWindow", val, res);
+		IF res # 0 THEN (* no registry keys for debugger *)
+			InheritRegEntry("MainWindow");
+			InheritRegEntry("language");
+			InheritRegEntry("DefFontName");
+			InheritRegEntry("DefFontSize");
+			InheritRegEntry("DlgFontName");
+			InheritRegEntry("DlgFontSize");
+			InheritRegEntry("DlgFontStyle");
+		END
+	END SetDbgRegistry;
 
 	PROCEDURE Init;
 		VAR name, bname: Dialog.String; res, i, v: INTEGER;
@@ -229,7 +267,9 @@ MODULE HostRegistry;
 		Dialog.appName := name$;
 		Dialog.MapString("#System:appVersion", Dialog.appVersion);
 		Dialog.version := GetMajorVersion(Dialog.appVersion);
+		SetDbgAppName;
 		SetIniFile;
+		IF Dialog.appName # name THEN SetDbgRegistry(name, Dialog.appName) END;
 		Dialog.Call("Startup.Setup", "", res);
 		ReadMeasure
 	END Init;

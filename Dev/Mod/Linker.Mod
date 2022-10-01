@@ -631,7 +631,7 @@ MODULE DevLinker;
 			Write2(2) (* gui subsystem *)
 		END;
 		Write2(0); (* dll flags *)
-		Write4(200000H); (* stack reserve size *)
+		Write4(200000H); (* stack reserve size *)	(* WARNING: see note on Stack Size when changing this value *)
 		Write4(10000H); (* stack commit size *)
 		IF isDll THEN
 			Write4(00100000H); (* heap reserve size *)

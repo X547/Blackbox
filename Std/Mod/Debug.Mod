@@ -343,7 +343,7 @@ MODULE StdDebug;
 					INC(i); INC(a, size)
 				END;
 				out.WriteString("   ");
-				CloseFold(fc, TRUE, "#Dev:Elements")
+				CloseFold(fc, StdFolds.collapsed, "#Dev:Elements")
 			END
 		END
 	END ShowArray;
@@ -518,10 +518,10 @@ MODULE StdDebug;
 						out.WriteString("] ");
 						i := Kernel.SourcePos(mod, 0);
 						IF name # "$$" THEN
-							Kernel.GetRefVar(ref, m, f, d, x, nn); Kernel.Utf8ToString(nn, name, res);
+							Kernel.GetRefVar(ref, m, f, d, x, nn); Strings.Utf8ToString(nn, name, res);
 							WHILE m # 0X DO
 								IF name[0] # "@" THEN ShowVar(b + x, 0, f, m, d, NIL, NIL, name, sel) END;
-								Kernel.GetRefVar(ref, m, f, d, x, nn); Kernel.Utf8ToString(nn, name, res)
+								Kernel.GetRefVar(ref, m, f, d, x, nn); Strings.Utf8ToString(nn, name, res)
 							END
 						END;
 						out.WriteLn
@@ -555,24 +555,23 @@ MODULE StdDebug;
 	END Do;
 
 	PROCEDURE GetTrapMsg(OUT msg: ARRAY OF CHAR);
-		VAR ref, end, a: INTEGER; mod: Kernel.Module; modName, name: Kernel.Name; res: INTEGER; nn: Kernel.Utf8Name; 
-			head, tail, errstr: ARRAY 32 OF CHAR;
-			key: ARRAY 128 OF CHAR;
+		VAR ref, end, a, res: INTEGER; mod: Kernel.Module; nn: Kernel.Utf8Name;
+			name, head, tail: Kernel.Name; errstr: ARRAY 12 OF CHAR;
+			key: ARRAY Kernel.nameLen * 3 + LEN(errstr) OF CHAR;
 	BEGIN
-		a := Kernel.pc; mod := Kernel.modList;
+		a := Kernel.pc; mod := Kernel.modList; msg := "";
 		WHILE (mod # NIL) & ((a < mod.code) OR (a >= mod.code + mod.csize)) DO mod := mod.next END;
 		IF mod # NIL THEN
 			DEC(a, mod.code); ref := mod.refs;
 			REPEAT Kernel.GetRefProc(ref, end, nn) UNTIL (end = 0) OR (a < end);
-			Kernel.Utf8ToString(nn, name, res);
+			Strings.Utf8ToString(nn, name, res);
 			IF a < end THEN
-				Kernel.GetModName(mod, modName); Kernel.SplitName(modName, head, tail);
+				Kernel.GetModName(mod, head); Kernel.SplitName(head, head, tail);
 				IF head = "" THEN head := "System" END;
 				Strings.IntToString(Kernel.err, errstr);
 				key := tail + "." + name + "." + errstr;
 				Dialog.MapString("#" + head + ":" + key, msg);
-				(* IF key # msg THEN out.WriteString(" " + msg) END; *)
-				IF key = msg THEN msg := "" END;
+				IF msg = key THEN msg := "" END
 			END
 		END
 	END GetTrapMsg;

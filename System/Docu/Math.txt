@@ -39,11 +39,15 @@ DEFINITION Math;
 	PROCEDURE Mantissa (x: REAL): REAL;
 	PROCEDURE Exponent (x: REAL): INTEGER;
 	PROCEDURE Real (m: REAL; e: INTEGER): REAL;
-		
+	PROCEDURE SignBit (x: REAL): BOOLEAN;
+	PROCEDURE CopySign (x, y: REAL): REAL;
+
 END Math.
 
 
 Module Math is a basic library for numerical computations. It offers the most frequently used functions and constants. For some additional functions, a transformation in terms of functions available in module Math is given below.
+Note: the normal arithmetic operations of the language Component Pascal and the other operations implemented in this module never produce a not-a-number value (NaN, IEEE 754-2008) but generate an undefined real result trap instead.
+
 
 
 Constants
@@ -309,10 +313,10 @@ Miscellaneous functions
 You could in principle implement the functions Sign, Floor, Ceiling, Trunc, Frac, Mod1, and Round yourself, using the ENTIER standard function. They are provided here for convenience, and in versions which return REAL typed results, so that no conversions between reals and integers become necessary if they are used in REAL expressions.
 
 PROCEDURE Sign (x: REAL): REAL
-Returns the sign of x, that is 1.0 if x > 0.0, -1.0 if x < 0.0 and 0.0 if x = 0.0.
+Returns the signum function of x, that is 1 if x > 0, -1 if x < 0 and 0 with the sign of x if x = 0. It also returns +1 or -1 for NaNs according to their sign bit.
 
 Post
-result IN {-1.0, 0.0, 1.0}
+result IN {-1, 0, 1}
 
 PROCEDURE Floor (x: REAL): REAL
 Returns the greatest integer less than or equal to x. This function is identical to ENTIER, except that it returns a REAL type value and it does not generate an integer overflow.
@@ -373,17 +377,17 @@ x = INF
 	result = 1.0
 x = -INF
 	result = -1.0
-x = not-a-number
+x = NaN
 	ABS(result) > 1.0
 
 PROCEDURE Exponent (x: REAL): INTEGER
-Returns the exponent of x such that x = Mantissa(x) * 2Exponent(x). If x represents ±INF or if x is not-a-number, then MAX(INTEGER) is returned.
+Returns the exponent of x such that x = Mantissa(x) * 2Exponent(x). If x represents ±INF or if x is NaN, then MAX(INTEGER) is returned.
 
 PROCEDURE Real (m: REAL; e: INTEGER): REAL
-Returns m * 2e. If the argument e is MAX(INTEGER), then INF or not-a-number is returned where ±INF is returned if m = ± 1.0 and not-a-number otherwise. Thus for any real x the equation
+Returns m * 2e. If the argument e is MAX(INTEGER), then INF or NaN is returned where ±INF is returned if m = ± 1.0 and NaN otherwise. Thus for any real x the equation
 	x = Real(Mantissa(x), Exponent(x))
 holds.
-Note: the normal arithmetic operations of the language Component Pascal, and the other operations implemented in this module, never produce the IEEE not-a-number value.
+Note: this is the only function that can produce NaN and only if explicitly requested.
 Note: Real(0, 0) = 0.
 
 Pre
@@ -392,3 +396,12 @@ Pre
 Post
 m = 0.0
     result = 0.0
+
+PROCEDURE SignBit (x: REAL): BOOLEAN
+Returns TRUE if and only if x has negative sign. This applies to zeros and NaNs as well.
+
+PROCEDURE CopySign (x, y: REAL): REAL
+Returns x with the sign bit of y. This can be used, for example, for converting the sign bit of a number z into +1 or -1 with CopySign(1, z).
+
+Post
+SignBit(result) = SignBit(y)  &  ABS(result) = ABS(x)

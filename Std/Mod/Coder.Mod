@@ -6,12 +6,7 @@ MODULE StdCoder;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	changes	= "
-	- 20160321, center #110, use mapped strings for labels in all forms
-	- 20161010, center #133, bug fix in Encoding/Decoding Unicode filenames and paths
-	- 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
-	- 20170225, center #148, StdCoder to support file names with spaces
-	"
+	changes	= ""
 	issues	= ""
 
 **)
@@ -27,6 +22,7 @@ MODULE StdCoder;
 		OldVersion = 0; ThisVersion = 1;
 		Tag = "StdCoder.Decode";	(* first letter of Tag must not to appear within Tag again *)
 		Separator = "/";
+		Separator2 = "\";
 		View = 1; File = 2; List = 3;
 
 	TYPE
@@ -314,9 +310,9 @@ MODULE StdCoder;
 		i := 0; ch := path[0]; loc := Files.dir.This(""); name := "";
 		WHILE (ch # 0X) & (loc.res = 0) DO
 			j := 0;
-			WHILE (ch # 0X) & (ch # Separator) DO name[j] := ch; INC(j); INC(i); ch := path[i] END;
+			WHILE (ch # 0X) & (ch # Separator) & (ch # Separator2) DO name[j] := ch; INC(j); INC(i); ch := path[i] END;
 			name[j] := 0X;
-			IF ch = Separator THEN loc := loc.This(name); INC(i); ch := path[i] END;
+			IF (ch = Separator) OR (ch = Separator2) THEN loc := loc.This(name); INC(i); ch := path[i] END;
 		END;
 		IF loc.res # 0 THEN loc := NIL END;
 		path[i] := 0X

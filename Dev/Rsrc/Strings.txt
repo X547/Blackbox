@@ -50,6 +50,8 @@
 &Start Profiler	Start Profiler
 &Stop Profiler	Stop Profiler
 &Timed Execute	Timed Execute
+&Debug Command	Debug Command
+&Debug Module	Debug Module
 
 &Tools	Tools
 &Document Size...	Document Size...
@@ -253,6 +255,7 @@ Elements	elements
 RemoteState	Remote State
 RemoteVariables	Remote Variables
 RemoteModules	Remote Modules
+RemoteSource	Remote Source
 
 ShowPrecedingObject	show preceding object
 ShowGlobalVariables	show global variables
@@ -310,6 +313,7 @@ NoModule	module ^0 not found
 NoModuleName	no module name selected
 NoSourcePosInfoIn	no source position info in ^0
 NoSelectionOrCaret	no selection or caret
+NoModuleSource	not a module source text
 NoText	no text
 
 AlreadyExists	Cannot create subsystem, because directory already exists
@@ -364,3 +368,40 @@ IsRedefined	^0 is redefined
 IsNewInSymFile	^0 is new in symbol file
 NotImplementedIn	^0 not implemented in ^1
 NotImplemented	^0 not implemented
+
+RTDebugApp	BlackBox Debugger
+RTDebugTool	Debug
+RTDebugDocu	Debug Docu
+AttachDebuggerFailed	Attaching a debugger failed.
+Debugging	debugging process ID ^0
+Detached	debugger detached
+InvalidCmdSyntax	invalid command syntax
+UnknownEvent	unknown debugging event
+DataBreakpoint	data breakpoint ^0: ^1
+Locals	locals
+StopFailed	stop failed, please retry
+
+RemoteState:	Remote State: ^0
+StepOver	Step &Over
+StepInto	Step &Into
+Continue	&Continue
+ContinueTo	Continue &To
+HandleTrap	&Handle Trap
+Stop	&Stop
+LoadedModulesBtn	Loaded &Modules
+GlobalVariables	Global &Variables
+Terminate	Terminate
+Breakpoint1	Breakpoint &1
+Breakpoint2	Breakpoint &2
+Breakpoint3	Breakpoint &3
+RemoteStateBtn	&Remote State
+RemoteSourceBtn	Remote So&urce
+SingleSourceWindow	Single source window
+ExpandAllStackFrames	Expand all stack frames
+
+running	running
+stopped	stopped
+breakpoint	breakpoint
+data breakpoint	data breakpoint
+trapped	trapped
+terminated	terminated

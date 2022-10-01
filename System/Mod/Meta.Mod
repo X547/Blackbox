@@ -699,7 +699,7 @@ MODULE Meta;
 	PROCEDURE PutParam (IN par: Item; sig: Kernel.Signature; p: INTEGER;
 										VAR data: ARRAY OF INTEGER; VAR n: INTEGER;
 										OUT ok: BOOLEAN);	(* check & assign a parameter *)
-		VAR mode, fTyp, aTyp, padr, i: INTEGER; fDesc, aDesc: Kernel.Type;
+		VAR mode, fTyp, aTyp, padr, i, top: INTEGER; fDesc, aDesc: Kernel.Type;
 			l: LONGINT; s: SHORTINT; b: BYTE;
 	BEGIN
 		ok := FALSE;
@@ -722,12 +722,14 @@ MODULE Meta;
 			data[n] := SYSTEM.VAL(INTEGER, aDesc); INC(n)
 		ELSIF fTyp = arrTyp THEN
 			data[n] := padr; INC(n);
-			IF fDesc.size # 0 THEN data[n] := SizeOf(par); INC(n) END;
+			IF fDesc.size # 0 THEN data[n] := SizeOf(par); INC(n)
+			ELSE top := n + fDesc.id DIV 16 MOD 16 (* pass N-dim open array as  length_N-1 .. length_0 *)
+			END;
 			WHILE (TypOf(fDesc) = arrTyp) & (TypOf(aDesc) = arrTyp) DO
 				IF aDesc.size # 0 THEN i := aDesc.size	(* actual static size *)
 				ELSE i := par.ptr.len[aDesc.id DIV 16 MOD 16 - 1]	(* actual dynamic size *)
 				END;
-				IF fDesc.size = 0 THEN data[n] := i; INC(n)
+				IF fDesc.size = 0 THEN DEC(top); data[top] := i; INC(n)
 				ELSIF fDesc.size # i THEN RETURN
 				END;
 				fDesc := fDesc.base[0]; aDesc := aDesc.base[0]

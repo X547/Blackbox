@@ -345,7 +345,7 @@ MODULE DevDebug;
 	
 	PROCEDURE ShowArray (a, ind: INTEGER; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; VAR sel: Kernel.Name);
 		VAR f: SHORTCHAR; i, n, m, size, len: INTEGER; name: Kernel.Name; eltyp, t: Kernel.Type;
-			vi: INTEGER; vs: BYTE; str: Dialog.String; high: BOOLEAN;
+			vi: SHORTINT; vs: BYTE; str: Dialog.String; high: BOOLEAN;
 			fc: FoldContext;
 	BEGIN
 		WriteName(desc, ptr); out.WriteTab;
@@ -1230,24 +1230,23 @@ MODULE DevDebug;
 	END Do;
 	
 	PROCEDURE GetTrapMsg(OUT msg: ARRAY OF CHAR);
-		VAR ref, end, a: INTEGER; mod: Kernel.Module; modName, name: Kernel.Name; res: INTEGER; nn: Kernel.Utf8Name; 
-			head, tail, errstr: ARRAY 32 OF CHAR;
-			key: ARRAY 128 OF CHAR;
+		VAR ref, end, a, res: INTEGER; mod: Kernel.Module; nn: Kernel.Utf8Name;
+			name, head, tail: Kernel.Name; errstr: ARRAY 12 OF CHAR;
+			key: ARRAY Kernel.nameLen * 3 + LEN(errstr) OF CHAR;
 	BEGIN
-		a := Kernel.pc; mod := Kernel.modList;
+		a := Kernel.pc; mod := Kernel.modList; msg := "";
 		WHILE (mod # NIL) & ((a < mod.code) OR (a >= mod.code + mod.csize)) DO mod := mod.next END;
 		IF mod # NIL THEN
 			DEC(a, mod.code); ref := mod.refs;
 			REPEAT Kernel.GetRefProc(ref, end, nn) UNTIL (end = 0) OR (a < end);
 			Strings.Utf8ToString(nn, name, res);
 			IF a < end THEN
-				Kernel.GetModName(mod, modName); Kernel.SplitName (modName, head, tail);
+				Kernel.GetModName(mod, head); Kernel.SplitName (head, head, tail);
 				IF head = "" THEN head := "System" END;
 				Strings.IntToString(Kernel.err, errstr);
 				key := tail + "." + name + "." + errstr;
 				Dialog.MapString("#" + head + ":" + key, msg);
-				(* IF key # msg THEN out.WriteString(" " + msg) END; *)
-				IF key = msg THEN msg := "" END;
+				IF msg = key THEN msg := "" END
 			END
 		END
 	END GetTrapMsg;

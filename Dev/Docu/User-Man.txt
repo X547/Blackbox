@@ -114,6 +114,8 @@ See also modules DevDebug and Config.
 
 5 Debugging
 
+Post-mortem Debugging
+
 When a run-time error occurs, e.g., a division by zero or some assertion trap, a trap window is opened. Such a window contains a text which shows the stack contents at the time when the trap occurred. An extract of such a trap text is shown below:
 
 	
@@ -224,6 +226,14 @@ Instead of waiting for some error to occur, and then trying to find one's way ba
 This defensive programming strategy has proven itself again and again during the development of BlackBox, and is strongly recommended for serious development work.
 
 See also module DevDebug.
+
+Run-time Debugging
+
+Since BlackBox version 1.7.2 there is also a run-time debugger included for exceptional situations where the post-mortem analysis is not sufficient. In addition to the features provided by the post-mortem debugger, the run-time debugger provides for stopping execution, single-step execution, and setting of code and data breakpoints. The run-time debugger can be activated with the commands Dev->Debug Command and Dev->Debug Module after selecting a command or module name in a text document. For operating the debugger please see the help text of the Debug tool opened in the attached debugger. Note that the run-time debugger is another BlackBox instance that is started automatically when requested. Source code must be saved in order to be visible consistently in the debugger.
+	If a debugger is attached, a trap in the running BlackBox instance will switch to the debugger instead of opening a trap window immediately. The debugger can be used to inspect the program state similar to using BlackBox's post-mortem debugging facility. Continuing with trap handling (command Handle Trap) in the Debug tool continues the debugged process and opens the trap window.
+	Warning: Copying text or other contents from the debugged application to another application via the Windows clipboard is not possible when the debugged application has been stopped by the debugger. Moreover, copying to the debugger leads to a deadlock.
+
+See also module DevDebugCmds.
 
 
 6 Deployment

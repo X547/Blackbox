@@ -76,10 +76,10 @@ MODULE Math;
 	PROCEDURE [code] F2XM1 0D9H, 0F0H;	(* 2^st[0] - 1, |st[0]| <= 1 *)
 
 
-	PROCEDURE IsNan (x: REAL): BOOLEAN;
+	PROCEDURE IsNaN (x: REAL): BOOLEAN;
 	BEGIN
 		FLD(x); FXAM; FSTPst0; WAIT; RETURN FSWs() * {8, 10} = {8}
-	END IsNan;
+	END IsNaN;
 
 
 	(** REAL precision **)
@@ -213,7 +213,8 @@ MODULE Math;
 
 	PROCEDURE Sinh* (x: REAL): REAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* abs(x) * 1/ln(2) *)
 		FLD(ABS(x)); FLDL2E; FMUL;
 		IF ST0() < 0.5 THEN
@@ -230,7 +231,7 @@ MODULE Math;
 
 	PROCEDURE Cosh* (x: REAL): REAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
 		(* 2^(abs(x) * 1/ln(2)) *)
 		FLD(ABS(x));
 		IF ST0() # INF THEN 
@@ -244,7 +245,8 @@ MODULE Math;
 
 	PROCEDURE Tanh* (x: REAL): REAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* abs(x) * 1/ln(2) * 2 *)
 		FLD(ABS(x)); FLDL2E; FMUL; FADDst0;
 		IF ST0() < 0.5 THEN
@@ -263,7 +265,8 @@ MODULE Math;
 
 	PROCEDURE ArcSinh* (x: REAL): REAL;
 	BEGIN
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* x*x *)
 		FLDLN2; FLD(ABS(x)); FLDst0; FMULst0;
 		IF ST0() < 0.067 THEN
@@ -280,7 +283,7 @@ MODULE Math;
 	PROCEDURE ArcCosh* (x: REAL): REAL;
 	BEGIN
 		(* 20, x >= 1.0 *)
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
 		(* ln(2) * ld(x + sqrt(x*x - 1)) *)
 		FLDLN2; FLD(x); FLDst0; FMULst0; FLD1; FSUB; FSQRT; FADD; FYL2X; WAIT; RETURN TOP()
 	END ArcCosh;
@@ -288,7 +291,8 @@ MODULE Math;
 	PROCEDURE ArcTanh* (x: REAL): REAL;
 	BEGIN
 		(* 20, -1.0 <= x <= 1.0 *)
-		(* IF IsNan(x) THEN RETURN x END; *)
+		(* IF IsNaN(x) THEN RETURN x END; *)
+		IF x = 0 THEN RETURN x (* +/- zero *) END;
 		(* |x| *)
 		FLDLN2; FLD(ABS(x)); 
 		IF ST0() < 0.12 THEN
@@ -358,18 +362,32 @@ MODULE Math;
 	BEGIN
 		FLD(x); FXAM; WAIT;
 		CASE FSW() DIV 256 MOD 8 OF
-		| 0, 2: FSTPst0; RETURN 0.0
+		| 0, 2: FSTPst0; RETURN x	(* +/- zero *)
 		| 1, 4, 5: FSTPst0; RETURN 1.0
 		| 3, 6, 7: FSTPst0; RETURN -1.0
 		END
 	END Sign;
+
+	PROCEDURE SignBit* (x: REAL): BOOLEAN;	(*  IEEE 754-2008, section 5.7.2  *)
+		VAR s: SET;
+	BEGIN
+		SYSTEM.GET(SYSTEM.ADR(x) + 4, s);
+		RETURN 31 IN s
+	END SignBit;
+
+	PROCEDURE CopySign* (x, y: REAL): REAL;	(*  IEEE 754-2008, section 5.5.1  *)
+		VAR s: SET;
+	BEGIN
+		SYSTEM.GET(SYSTEM.ADR(y) + 4, s);
+		IF 31 IN s THEN RETURN -ABS(x) ELSE RETURN ABS(x) END
+	END CopySign;
 
 	PROCEDURE Mantissa* (x: REAL): REAL;
 	BEGIN
 		FLD(x); FXAM; WAIT;
 		CASE FSW() DIV 256 MOD 8 OF
 		| 4, 6: FXTRACT; FSTPst1; RETURN TOP()
-		| 0, 2: FSTPst0; RETURN 0.0	(* zero *)
+		| 0, 2: FSTPst0; RETURN x	(* +/- zero *)
 		| 5: FSTPst0; RETURN 1.0	(* inf *)
 		| 7: FSTPst0; RETURN -1.0	(* -inf *)
 		| 1: FSTPst0; RETURN 1.5	(* nan *)
@@ -391,8 +409,8 @@ MODULE Math;
 	PROCEDURE Real* (m: REAL; e: INTEGER): REAL;
 		VAR s: SET;
 	BEGIN
-		IF (m = 0) THEN RETURN 0.0 END;
-		ASSERT(~IsNan(m) & (1 <= ABS(m)) & (ABS(m) < 2), 20);
+		IF (m = 0) THEN RETURN m (* +/- zero *) END;
+		ASSERT(~IsNaN(m) & (1 <= ABS(m)) & (ABS(m) < 2), 20);
 		IF e = MAX(INTEGER) THEN
 			SYSTEM.GET(SYSTEM.ADR(m) + 4, s);
 			SYSTEM.PUT(SYSTEM.ADR(m) + 4, s + {20..30});
@@ -408,28 +426,61 @@ BEGIN
 END Math.
 
 
-The following code shows how to implement a large part of this module
-on top of a small set of basic functions (Ln, Exp, Sin, Cos, ArcTan, Sqrt, Sign, Pi)
-and Component Pascal language features, i.e. without any code procedures.
+The following code shows how to implement a large part of this module on top of a small set of basic functions (Ln, Exp, Sin, Cos, ArcTan, Sqrt, and CopySign) and Component Pascal language features, i.e. without any code procedures.
 This may for example help to port the module to another platform.
-Note that some of these suggestions may exhibit significantly different behaviour to the functions above for various combinations of input values from {-INF, -0., +INF}.
+In earlier versions of BlackBox, up to and including version 1.7.1, these suggestions were generally simpler than the suggestions below. However those versions did not all give the correct (IEEE 754 mandated) values for inputs from the set {-INF, -0., +INF}.
+These suggestions are believed to be correct for such inputs. They have not been designed to operate correctly if the input is a NaN, although most of them could be extended by adding a first line:
+"IF IsNaN (x) THEN RETURN x END;"
+These are only suggestions; there may be faster or more accurate alternatives.
+
+	CONST
+		pi  =  3.141592653589793115997963468544185161590576171875;	(*  π to 64-bits  *)
+		piBy2  =  1.5707963267948965579989817342720925807952880859375;
+		piBy4  =  0.78539816339744827899949086713604629039764404296875;
+		ln2  =  0.69314718055994528622676398299518041312694549560546875;
+		ln10  =  2.30258509299404590109361379290930926799774169921875;
+		lneps  =  -36.0436533891171535515240975655615329742431640625;	(*  eps = 2^-52  *)
+
+	PROCEDURE Pi* (): REAL;
+	BEGIN
+		RETURN pi
+	END Pi;
+
+	PROCEDURE Sign* (x: REAL): REAL;
+	BEGIN
+		IF x > 0. THEN RETURN 1.
+		ELSIF x < 0. THEN RETURN -1.
+		ELSE RETURN x
+		END
+	END Sign;
+	
+	PROCEDURE SignBit* (x: REAL): BOOLEAN;
+	BEGIN
+		RETURN CopySign(1., x) > 0.
+	END SignBit;
 
 	PROCEDURE Log* (x: REAL): REAL;
 	BEGIN
-		RETURN Ln(x)/ln10
+		RETURN Ln(x) / ln10
 	END Log;
-	
+
 	PROCEDURE Power* (x, y: REAL): REAL;
 	BEGIN
+		ASSERT(x >= 0, 20);
+		ASSERT((x # 0.0)  OR  (y # 0.0), 21);
+		ASSERT((x # INF)  OR  (y # 0.0), 22);
+		ASSERT((x # 1.0)  OR  (ABS(y) # INF), 23);
 		RETURN Exp(y * Ln(x))
 	END Power;
-	
-	PROCEDURE IntPower* (x: REAL; n: LONGINT): REAL;
+
+	PROCEDURE IntPower* (x: REAL; n: INTEGER): REAL;
 		VAR y: REAL;
-	BEGIN y := 1.0E+0;
-		IF n < 0 THEN x := 1.0E+0/x; n := -n END;
+	BEGIN
+		IF n = MIN(INTEGER) THEN RETURN IntPower(x, n + 1) / x END;
+		y := 1.;
+		IF n < 0 THEN x := 1. / x; n := -n END;
 		WHILE n > 0 DO
-			IF ODD(n) THEN y := y*x; DEC(n)
+			IF ODD(n) THEN y := y * x; DEC(n)
 			ELSE x := x * x; n := n DIV 2
 			END
 		END;
@@ -438,105 +489,104 @@ Note that some of these suggestions may exhibit significantly different behaviou
 
 	PROCEDURE Tan* (x: REAL): REAL;
 	BEGIN
-		RETURN Sin(x)/Cos(x)
+		RETURN Sin(x) / Cos(x)
 	END Tan;
-	
+
 	PROCEDURE ArcSin* (x: REAL): REAL;
 	BEGIN
-		RETURN  2.0E+0 * ArcTan(x/(1.0E+0 + Sqrt(1.0E+0 - x*x)))
+		ASSERT(ABS(x) <= 1., 20);
+		RETURN ArcTan(x / Sqrt(1. - x * x))
 	END ArcSin;
-	
+
 	PROCEDURE ArcCos* (x: REAL): REAL;
-	BEGIN (* pi/2 - arcsin(x) *)
-		RETURN Pi()/2.0E+0 - 2.0E+0 * ArcTan(x/(1.0E+0 + Sqrt(1.0E+0 - x*x)))
-(*
-		IF x = -1 THEN RETURN Pi()
-		ELSE RETURN 2 * ArcTan(Sqrt((1 - x) / (1 + x)))
-		END
-*)	END ArcCos;
+	BEGIN
+		ASSERT(ABS(x) <= 1., 20);
+		RETURN ArcTan(Sqrt(1. - x * x) / x)
+	END ArcCos;
 
 	PROCEDURE ArcTan2* (y, x: REAL): REAL;
 	BEGIN
-		IF x = 0.0 THEN
-			RETURN Sign(y) * Pi() / 2.0
-		ELSIF y = 0.0 THEN
-			RETURN (1.0 - Sign(x)) * Pi() / 2.0
+		IF x = 0. THEN
+			IF ~SignBit(x) THEN RETURN Sign(y) * piBy2
+			ELSIF y = 0. THEN RETURN CopySign(pi, y)
+			ELSE RETURN CopySign(piBy2, y)  END
+		(* ELSIF y = 0. THEN														(*  Optional "speedup"  *)
+			RETURN (1. - Sign(x)) * CopySign(piBy2, y) *)
+		ELSIF (ABS(x) = INF) & (ABS(y) = INF) THEN
+			RETURN  (2. - Sign(x)) * CopySign(piBy4, y)
 		ELSE
-			RETURN ArcTan(y/x) + (1.0 - Sign(x)) * Sign(y) * Pi() / 2.0
+			RETURN ArcTan(y / x) + (1. - Sign(x)) * CopySign(piBy2, y)
 		END 
 	END ArcTan2;
 
 	PROCEDURE Sinh* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) < -lneps THEN RETURN (Exp(x)-Exp(-x))/2.0E+0
-		ELSE RETURN Sign(x)*Exp(ABS(x))/2.0E+0
+		IF x = 0. THEN RETURN x
+		ELSIF ABS(x) < -lneps THEN RETURN (Exp(x) - Exp(-x)) / 2.
+		ELSE RETURN Sign(x) * Exp(ABS(x)) / 2.
 		END
 	END Sinh;
-	
+
 	PROCEDURE Cosh* (x: REAL): REAL;
+		VAR expx: REAL;
 	BEGIN
-		IF ABS(x) < -lneps THEN RETURN (Exp(x)+Exp(-x))/2.0E+0
-		ELSE RETURN Exp(ABS(x))/2.0E+0
+		IF ABS(x) < -lneps THEN RETURN (Exp(x) + Exp(-x)) / 2.
+		ELSE RETURN Exp(ABS(x)) / 2.
 		END
 	END Cosh;
-	
+
 	PROCEDURE Tanh* (x: REAL): REAL;
 		VAR e1, e2: REAL;
 	BEGIN 
-		IF ABS(x) < -lneps THEN
-			e1 := Exp(x); e2 := 1.0E+0/e1;
-			RETURN (e1-e2)/(e1+e2)
+		IF x = 0. THEN RETURN x
+		ELSIF ABS(x) < -lneps THEN
+			e1 := Exp(x); e2 := 1. / e1;
+			RETURN (e1 - e2) / (e1 + e2)
 		ELSE
 			RETURN Sign(x)
 		END
 	END Tanh;
-	
+
 	PROCEDURE ArcSinh* (x: REAL): REAL;
 	BEGIN
-		IF x >= 0.0E+0 THEN RETURN Ln(x + Sqrt(x*x + 1.0E+0))
-		ELSE RETURN  - Ln(-x + Sqrt(x*x + 1.0E+0))
-		END
+		RETURN Sign (x) * Ln(ABS(x) + Sqrt(x * x + 1.))
 	END ArcSinh;
-	
+
 	PROCEDURE ArcCosh* (x: REAL): REAL;
 	BEGIN
-		RETURN Ln(x + Sqrt(x*x - 1.0E+0))
+		RETURN Ln(x + Sqrt(x * x - 1.))
 	END ArcCosh;
-	
+
 	PROCEDURE ArcTanh* (x: REAL): REAL;
 	BEGIN
-		RETURN Ln((1.0E+0 + x)/(1.0E+0 - x))/2.0E+0
-		(* Variants:
-			(Ln(1+x)-Ln(1-x))/2.0E+0
-			-Ln((1-x)/Sqrt(1-x*x))
-			arcsinh(x/sqrt(1-x*x))
-		*)
+		ASSERT(ABS(x) <= 1., 20);
+		IF x = 0. THEN RETURN x ELSE RETURN Ln((1. + x) / (1. - x)) / 2. END
 	END ArcTanh;
-	
+
 	PROCEDURE Floor* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) >= 1.0E16 THEN RETURN x
+		IF ABS(x) >= xInt THEN RETURN x
 		ELSE RETURN ENTIER(x)
 		END
 	END Floor;
-	
+
 	PROCEDURE Ceiling* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) >= 1.0E16 THEN RETURN x
+		IF ABS(x) >= xInt THEN RETURN x
 		ELSE RETURN -ENTIER(-x)
 		END
 	END Ceiling;
-	
+
 	PROCEDURE Round* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) >= 1.0E16 THEN RETURN x
+		IF ABS(x) >= xInt THEN RETURN x
 		ELSE RETURN ENTIER(x + 0.5)
 		END
 	END Round;
 
 	PROCEDURE Trunc* (x: REAL): REAL;
 	BEGIN 
-		IF ABS(x) >= 1.0E16 THEN RETURN x
+		IF ABS(x) >= xInt THEN RETURN x
 		ELSIF x >= 0 THEN RETURN ENTIER(x)
 		ELSE RETURN -ENTIER(-x)
 		END
@@ -544,15 +594,15 @@ Note that some of these suggestions may exhibit significantly different behaviou
 
 	PROCEDURE Frac* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) >= 1.0E16 THEN RETURN 0.0
+		IF ABS(x) >= xInt THEN RETURN 0.
 		ELSIF x >= 0 THEN RETURN x - ENTIER(x)
 		ELSE RETURN x + ENTIER(-x)
 		END
 	END Frac;
-	
+
 	PROCEDURE Mod1* (x: REAL): REAL;
 	BEGIN
-		IF ABS(x) >= 1.0E16 THEN RETURN 0
+		IF ABS(x) >= xInt THEN RETURN 0.
 		ELSE RETURN x - ENTIER(x)
 		END
 	END Mod1;

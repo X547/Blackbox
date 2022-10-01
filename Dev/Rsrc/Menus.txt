@@ -59,6 +59,9 @@ MENU "#Dev:&Dev"
 	"#Dev:&Start Profiler"	""	"DevProfiler.Start"	"DevProfiler.StartGuard"
 	"#Dev:&Stop Profiler"	""	"DevProfiler.Stop; DevProfiler.ShowProfile"	"DevProfiler.StopGuard"
 	"#Dev:&Timed Execute"	""	"DevProfiler.Execute"	"TextCmds.SelectionGuard"
+	SEPARATOR
+	"#Dev:&Debug Command"	""	"DevDebugCmds.DebugCommand"	"TextCmds.SelectionGuard"
+	"#Dev:&Debug Module"	""	"DevDebugCmds.DebugModule"	"TextCmds.SelectionGuard"
 END
 
 MENU "#Dev:&Tools"

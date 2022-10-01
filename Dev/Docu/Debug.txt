@@ -21,7 +21,8 @@ END DevDebug.
 
 
 When a run-time error occurs, e.g., a division by zero, a "trap text" is opened which displays the procedure call chain. It is possible to use this text to navigate through data structures. Several other commands are useful when analyzing the state of the system.
-Note that debugging is done completely within BlackBox; there is no separate debugger environment. Debugging occurs "post mortem" with respect to commands, i.e., a command produces a run-time error, is aborted, and then debugged. However, the run-time error usually does not affect the loaded modules and the data structures which are anchored there, nor the open documents. In other words, debugging occurs "run-time" with respect to the application as a whole.
+Note that this kind of debugging is done completely within BlackBox; there is no separate debugger environment. Debugging occurs "post mortem" with respect to commands, i.e., a command produces a run-time error, is aborted, and then debugged. However, the run-time error usually does not affect the loaded modules and the data structures which are anchored there, nor the open documents.
+	For situations where a post-mortem analysis is not sufficient, the module DevDebugCmds provides an interface for attaching a run-time debugger to the running BlackBox process. A run-time debugger allows for example to single-step through code or to set breakpoints.
 
 A possible menu:
 

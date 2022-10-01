@@ -1,0 +1,47 @@
+DevDebugCmds
+
+DEFINITION DevDebugCmds;
+
+	PROCEDURE RegisterDebugger (IN cmdLine: ARRAY OF CHAR);
+	PROCEDURE AttachDebugger;
+	PROCEDURE DbgCmd (IN modName, procName: ARRAY OF CHAR);
+	PROCEDURE DbgMod (IN modName: ARRAY OF CHAR);
+	PROCEDURE DebugCommand;
+	PROCEDURE DebugModule;
+
+END DevDebugCmds.
+
+
+This module provides an interface for attaching a run-time debugger to the running BlackBox instance. Debugging with a run-time debugger involves two processes, (1) the process being debugged, i.e. the running BlackBox instance, and (2) the debugger process. The debugger process is another BlackBox instance that is automatically started when AttachDebugger is called and no debugger is currently attached. The debugger will look up remote source files in the same directories as the running BlackBox instance, i.e. it first looks into its /USE directory, if any, and then into its startup directory.
+
+See also Dev User Manual.
+
+
+PROCEDURE RegisterDebugger (IN cmdLine: ARRAY OF CHAR)
+Registers the specified cmdLine to be used for starting a run-time debugger. The cmdLine is stored in the Windows registry of the current user. If cmdLine is empty, which is the default, the command line for starting the debugger consists of the executable of the running BlackBox instance only.
+For example:
+"DevDebugCmds.RegisterDebugger('C:\Program Files (x86)\BlackBox_1.7.2\BlackBox.exe /USE mypath')"
+"DevDebugCmds.RegisterDebugger('')"
+
+PROCEDURE AttachDebugger
+Programming interface for explicitly attaching a run-time debugger to the currently running BlackBox instance. The debugger is started by executing the command line registered by RegisterDebugger after appending the option /LOAD DevRTDebug. If a debugger cannot be attached, an error message is shown and execution is halted silently. If there is already a debugger attached, no new debugger process is started. AttachDebugger is called implicitly by DebugModule and DebugCommand.
+
+PROCEDURE DbgCmd (IN modName, procName: ARRAY OF CHAR)
+Programming interface for DebugCommand.
+
+PROCEDURE DbgMod (IN modName: ARRAY OF CHAR)
+Programming interface for DebugModule.
+
+PROCEDURE DebugCommand
+Attaches a debugger, sets a temporary breakpoint at the beginning of the selected command, and executes it. The debugger will stop execution at the first statement.
+Note: When debugging with this command, the stack trace shown in the debugger stops at the debugged command, i.e. it does not display the framework's call stack required for executing the command.
+
+Pre
+text selection exists
+
+PROCEDURE DebugModule
+Attaches a debugger, loads the selected module unless it has been loaded before, and shows the module's source text in the debugger. Breakpoints can be set in the debugger. For execution, switch back to the debugged process and execute something that uses the module until a breakpoint is hit or Stop is executed in the debugger.
+Note: When debugging with this command, the stack trace shown in the debugger includes all the framework code required for execution.
+
+Pre
+text selection exists

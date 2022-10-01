@@ -1077,6 +1077,7 @@ MODULE DevCPP;
 
 		PROCEDURE GetCode;
 			VAR ext: DevCPT.ConstExt; n, c, i: INTEGER; s: POINTER TO ARRAY OF SHORTCHAR;
+				cx: DevCPT.Node;
 			
 			PROCEDURE EnsureLen(len: INTEGER);
 				VAR j: INTEGER; s2: POINTER TO ARRAY OF SHORTCHAR;
@@ -1087,19 +1088,19 @@ MODULE DevCPP;
 			END EnsureLen;
 		BEGIN
 			n := 0; NEW(s, 64);
-			LOOP
-				IF sym = number THEN c := DevCPS.intval; EnsureLen(n + 1);
-					IF (c < 0) OR (c > 255) OR (DevCPS.numtyp IN {real, real32, real64}) THEN
-						err(63); c := 1; n := 0
-					END ;
-					DevCPS.Get(sym); s[n] := SHORT(CHR(c)); INC(n)
-				ELSIF sym = string THEN c := DevCPS.intval - 1 (*exclude 0X*); EnsureLen(n + c);
-					FOR i := 0 TO c - 1 DO s[n + i] := DevCPS.str[i] END;
-					DevCPS.Get(sym); INC(n, c)
+			WHILE (sym # semicolon) & (sym # eof) DO
+				ConstExpression(cx);
+				IF cx.typ.form IN {Int8, Int16, Int32, Char8, Char16} THEN c :=cx.conval.intval; EnsureLen(n + 1);
+					IF (0 <= c) & (c <= 255) THEN s[n] := SHORT(CHR(c)); INC(n)
+					ELSE err(63)
+					END
+				ELSIF cx.typ.form = String8 THEN c := cx.conval.intval2 - 1 (*exclude 0X*); EnsureLen(n + c);
+					FOR i := 0 TO c - 1 DO s[n + i] := cx.conval.ext[i] END;
+					INC(n, c)
+				ELSE (* Int64, Real32, Real64, String16, Bool, etc. *) err(63)
 				END ;
-				IF sym = comma THEN DevCPS.Get(sym)
-				ELSIF sym = number THEN err(comma)
-				ELSE EXIT
+				IF sym = comma THEN DevCPS.Get(sym); IF sym = semicolon THEN err(13) END
+				ELSIF sym # semicolon THEN err(comma)
 				END
 			END;
 			IF n # 0 THEN NEW(ext, n); i := 0;

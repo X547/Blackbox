@@ -277,6 +277,19 @@ MODULE HostTextConv;
 			paraPos := wr.Pos()
 		END Paragraph;
 		
+		PROCEDURE Trim(VAR str: ARRAY OF CHAR);
+			VAR i, j: INTEGER; ch: CHAR;
+		BEGIN
+			i := 0; ch := str[0];
+			WHILE (ch # 0X) & (ch <= " ") DO INC(i); ch := str[i] END;
+			IF i > 0 THEN j := 0;
+				WHILE ch # 0X DO str[j] := ch; INC(i); INC(j); ch := str[i] END
+			ELSE j := LEN(str$)
+			END;
+			WHILE (j > 0) & (str[j - 1] <= " ") DO DEC(j) END;
+			str[j] := 0X
+		END Trim;
+		
 	BEGIN
 		NEW(fonts); fonts.id := noFontId; fonts.codePage := 1252; fonts.f := Fonts.dir.Default().typeface;
 		defFont := noFontId; fnum := noFontId; skipCnt := 0; uniCnt := 1;
@@ -449,8 +462,10 @@ MODULE HostTextConv;
 						dest := fieldinstr; idx2 := 0; fieldStr[idx2] := 0X;
 					ELSIF comm = "fldrslt" THEN	(*  field result  *)
 						dest := text;
+						Trim(fieldStr);
 						fieldStr[9] := 0X;
 						IF fieldStr = "HYPERLINK" THEN
+							(* link target is assumed to be enclosed in quotes *)
 							FOR idx2 := 11 TO LEN(fieldStr) - 1 DO fieldStr[idx2-11] := fieldStr[idx2] END; 
 							fieldStr[LEN(fieldStr$)-1] := 0X;
 							fieldStr := linkcmd + "('" + fieldStr + "')";
@@ -1330,5 +1345,100 @@ MODULE HostTextConv;
 		END;
 		s := TextViews.dir.New(t)
 	END ImportHex;
+
+	(*
+		imports a UTF-8 encoded file:
+		1. if the optional byte order mark (BOM) is found at the beginning of the file, it is skipped
+		2. three forms of line separators are supported: CR, LF, and CR LF
+		3. characters larger than 16 bit are reported as '?'
+		4. in case of finding an illegal  encoding it falls back to importing a windows text
+	*)
+	PROCEDURE ImportUtf8* (f: Files.File; OUT s: Stores.Store);
+		VAR r: Files.Reader; t: TextModels.Model; wr: TextModels.Writer; ch, nch: CHAR; formatError: BOOLEAN;
+
+		PROCEDURE ReadUtf8Char (VAR rd: Files.Reader; VAR ch: CHAR);
+			VAR c1, c2, c3: BYTE;
+
+			PROCEDURE FormatError;
+			BEGIN rd.SetPos(rd.Base().Length()); rd.eof := TRUE; ch := 0X; formatError := TRUE
+			END FormatError;
+
+		BEGIN
+			rd.ReadByte(c1);
+			IF c1 >= 0 THEN (* 0xxx xxxx *)
+				ch := CHR(c1)
+			ELSIF BITS(c1) * {7, 6, 5} = {7, 6} THEN (* 110x xxxx, 10xx xxxx *)
+				rd.ReadByte(c2);
+				IF BITS(c2) * {7, 6} = {7} THEN
+					ch := CHR(64 * (c1 MOD 32) + (c2 MOD 64))
+				ELSE FormatError
+				END
+			ELSIF BITS(c1) * {7, 6, 5, 4} = {7, 6, 5} THEN (* 1110 xxxx, 10xx xxxx, 10xx xxxx *)
+				rd.ReadByte(c2); rd.ReadByte(c3);
+				IF (BITS(c2) * {7, 6} = {7}) &  (BITS(c3) * {7, 6} = {7}) THEN
+					ch := CHR(4096 * (c1 MOD 16) + 64 * (c2 MOD 64) + (c3 MOD 64))
+				ELSE FormatError
+				END
+			ELSIF BITS(c1) * {7, 6, 5, 4, 3} = {7, 6, 5, 4} THEN (* 1111 0xxx, 10xx xxxx, 10xx xxxx, 10xx xxxx *)
+				rd.ReadByte(c2); rd.ReadByte(c3); rd.ReadByte(c3); ch := '?'
+			ELSE FormatError
+			END
+		END ReadUtf8Char;
+
+	BEGIN
+		ASSERT(f # NIL, 20);
+		r := f.NewReader(NIL);
+		t := TextModels.dir.New(); wr := t.NewWriter(NIL); formatError := FALSE;
+		ReadUtf8Char(r, ch);
+		IF ch = 0FEFFX THEN ReadUtf8Char(r, ch) END; (* skip BOM *)
+		WHILE ~r.eof DO
+			ReadUtf8Char(r, nch);
+			IF (ch = CR) & (nch = LF) THEN ReadUtf8Char(r, nch)
+			ELSIF ch = LF THEN ch := CR
+			END;
+			wr.WriteChar(ch);
+			ch := nch
+		END;
+		IF ~formatError THEN s := TextViews.dir.New(t)
+		ELSE ImportText(f, s) (* fallback to Windows text importer *)
+		END
+	END ImportUtf8;
+
+	(* exports a UTF-8 encoded file without inserting a byte order mark (BOM) and with LF as line separator *)
+	PROCEDURE ExportUtf8* (s: Stores.Store; f: Files.File);
+		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR;
+
+		PROCEDURE WriteUtf8Char (VAR wr: Stores.Writer; ch: CHAR);
+		BEGIN
+			IF ch <= 7FX THEN
+				wr.WriteByte(SHORT(SHORT(ORD(ch))))
+			ELSIF ch <= 7FFX THEN
+				wr.WriteByte(SHORT(SHORT( -64 + ORD(ch) DIV 64)));
+				wr.WriteByte(SHORT(SHORT( -128 + ORD(ch) MOD 64)))
+			ELSE
+				wr.WriteByte(SHORT(SHORT( -32 + ORD(ch) DIV 4096)));
+				wr.WriteByte(SHORT(SHORT( -128 + ORD(ch) DIV 64 MOD 64)));
+				wr.WriteByte(SHORT(SHORT( -128 + ORD(ch) MOD 64)))
+			END
+		END WriteUtf8Char;
+
+	BEGIN
+		ASSERT(s # NIL, 20); ASSERT(f # NIL, 21);
+		s := TextView(s);
+		IF s # NIL THEN
+			w.ConnectTo(f); w.SetPos(0);
+			t := s(TextViews.View).ThisModel();
+			IF t # NIL THEN
+				r := t.NewReader(NIL);
+				r.ReadChar(ch);
+				WHILE ~r.eot DO
+					IF (ch # TextModels.viewcode) & (ch # TextModels.para) THEN
+						IF ch = CR THEN WriteUtf8Char(w, LF) ELSE WriteUtf8Char(w, ch) END
+					END;
+					r.ReadChar(ch)
+				END
+			END
+		END
+	END ExportUtf8;
 
 END HostTextConv.

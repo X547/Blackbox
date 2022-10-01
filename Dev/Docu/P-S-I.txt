@@ -157,12 +157,12 @@ Type information about objects imported from a DLL must be present in a symbol f
 
 Name aliasing
 
-The Component Pascal name of an object imported from a DLL can be different from the corresponding name in the export table of the DLL. To achieve this the DLL name is appended to the Component Pascal name as a system flag. In addition, the system flag may specify a different DLL than the one declared in the module header. This allows to use a single interface module for a whole set of related DLLs. It is also possible to have multiple interface modules referring to the same DLL.  Interface procedures cannot have a body, nor an "END identifier" part, they are only signatures.
+The Component Pascal name of an object imported from a DLL can be different from the corresponding name in the export table of the DLL. To achieve this the DLL name is appended to the Component Pascal name as a system flag. In addition, the system flag may specify a different DLL than the one declared in the module header. This allows to use a single interface module for a whole set of related DLLs. It is also possible to have multiple interface modules referring to the same DLL. Interface procedures cannot have a body, nor an "END identifier" part, they are only signatures.
 
 The extend syntax for interface modules is given below:
 
 Module 	=	MODULE ident ["[" SysString "]"] ";"
-		[ImportList] DeclSeq  [BEGIN StatementSeq] END ident ".".
+		[ImportList] DeclSeq [BEGIN StatementSeq] END ident ".".
 ProcDecl	=	PROCEDURE ["[" SysFlag "]"] [Receiver]
 		IdentDef ["[" [SysString ","] SysString "]"] [FormalPars] ";"
 		DeclSeq [[BEGIN StatementSeq] END ident].
@@ -295,7 +295,7 @@ END Directone.
 
 Some important points:
 • COM GUIDs are 128 bit entities, not integers.
-• DO NOT use ANYPTR or other BlackBox pointers for COM interface pointers. (BlackBox pointers are garbage collected, COM pointers are referenece counted.)
+• DO NOT use ANYPTR or other BlackBox pointers for COM interface pointers. (BlackBox pointers are garbage collected, COM pointers are reference counted.)
 • Use pointers to [untagged] records or integers instead.
 
 Be careful to declare all methods in the method table in the correct order with the correct parameter list.
@@ -470,6 +470,9 @@ StdMenuTool StdClocks StdStamps StdCoder StdScrollers
 OleStorage OleServer OleClient StdETHConv Init ObxPatterns Config
 1 applogo.Ico 2 doclogo.Ico 3 SFLogo.ico 4 CFLogo.ico 5 DtyLogo.ico
 1 Move.cur 2 Copy.cur 3 Link.cur 4 Pick.cur 5 Stop.cur 6 Hand.cur 7 Table.cur ~
+Stack Size
+The reserved stack size of a linked executable is 2MB of which 64KB are committed immediately. The uncommitted stack space grows on demand up to 2MB where a stack overflow trap would be reported. These settings are hard-coded in the module DevLinker and are also used for the BlackBox.exe file in the standard BlackBox distribution. They are a good choice for most applications and it is best not to change them.
+	For rare cases, however, it might be necessary to configure a larger stack size. This can be accomplished by adapting the source code of DevLinker. The value marked as stack reserve size in DevLinker.WriteHeader defines the reserved stack size when linking a new exe file but there is a subtle dependency on the heap size reserved in Kernel.AllocHeapMem (see constant M). The total size of the reserved heap plus the committed stack must not exceed some limit or otherwise Windows API functions may run out of memory. A good test for a working setup is to commit all the stack (i.e. set the value marked as stack commit size to the same value as stack reserve size), link a new exe file, start it, open a file dialog box with the menu item File->Open..., and see if it shows any anomalies. Examples are black squares instead of icons, missing tree view, or a TRAP 100 in HostDialog.GetIntSpec with res = 2 indicating an out-of-memory error. The File->Open test should be repeated at least ten times. Experiments showed that for a stack reserve/commit size of 32MB the heap must be reduced to 150MB.
 
 
 8 Startup of BlackBox
@@ -501,10 +504,10 @@ If loading of DevDebug is not successful, it is attempted to load module StdDebu
 This enables BlackBox to open and save standard BlackBox documents.
 
 • It tries to call StdMenuTool.UpdateAllMenus.
-This command reads and interprets the System/Rsrc/Menus text, and builds up the  menus accordingly. Note that the standard implementation of StdMenuTool uses the text subsystem.
+This command reads and interprets the System/Rsrc/Menus text, and builds up the menus accordingly. Note that the standard implementation of StdMenuTool uses the text subsystem.
 
 • It tries to call Config.Setup.
-This is the usual way to configure BlackBox. The standard implementation of Config.Setup  installs the standard file and OLE converters and opens the log text.
+This is the usual way to configure BlackBox. The standard implementation of Config.Setup installs the standard file and OLE converters and opens the log text.
 
 • It calls the main event loop (HostMenus.Run).
 After the event loop is left (because the user wants to quit the application), the kernel is called to clean up, before the application is left entirely.
@@ -607,4 +610,4 @@ In this case the first call is rounded to 64 bits, the second is left at 80.
 
 The SET expression e IN s does not check if e is within {0..31}. The resulting behavior depends on s being in a register or in memory. In case of a register e MOD 32 IN s is returned. In case of memory, s is treated as an ARRAY of SET and e MOD 32 IN s[e DIV 32] is returned, so out-of-range values for e attempt to read memory outside the actual memory allocated for s. This leads to an "illegal memory read" exception if the resulting address is not mapped. If the resulting address is mapped, it leads to a result which is very random.
 
-INCL(s, e) and EXCL(s, e) use e MOD 32 in order not to violate memory integerity.
+INCL(s, e) and EXCL(s, e) use e MOD 32 in order not to violate memory integrity.

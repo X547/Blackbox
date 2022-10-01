@@ -56,6 +56,7 @@ Right:	Right:
 Top:	Top:
 Bottom:	Bottom:
 
+HostTextConv.ImportUtf8	UTF-8 Text
 HostTextConv.ImportText	Text
 HostTextConv.ImportTabText	Text (space pairs as tabs)
 HostTextConv.ImportRichText	Rich Text
@@ -64,6 +65,7 @@ HostTextConv.ImportHex	Data File (hex)
 HostTextConv.ImportDosText	Text (Dos encoding)
 HostBitmaps.ImportBitmap	Bitmap
 
+HostTextConv.ExportUtf8	UTF-8 Text
 HostTextConv.ExportText	Plain Text
 HostTextConv.ExportTabText	Plain Text (tabs as space pairs)
 HostTextConv.ExportRichText	Rich Text

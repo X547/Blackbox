@@ -200,7 +200,7 @@ MODULE Documents;
 		decorate := d.decorate;
 		d.pw := op.pw; d.ph := op.ph; d.pl := op.pl; d.pt := op.pt; d.pr := op.pr; d.pb := op.pb;
 		d.decorate := op.decorate;
-		op.pw := pw; op.ph := d.ph; op.pl := pl; op.pt := pt; op.pr := pr; op.pb := pb;
+		op.pw := pw; op.ph := ph; op.pl := pl; op.pt := pt; op.pr := pr; op.pb := pb;
 		op.decorate := decorate;
 		IF d.context # NIL THEN
 			upd.doc := d;

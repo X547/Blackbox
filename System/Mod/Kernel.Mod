@@ -646,7 +646,7 @@ MODULE Kernel;
 
 	PROCEDURE AllocHeapMem (size: INTEGER; VAR c: Cluster);
 		(* allocate at least size bytes, typically at least 256 kbytes are allocated *)
-		CONST M = 1536 * 100000H;	(* 1.5 GByte *)
+		CONST M = 1536 * 100000H;	(* 1.5 GByte, see note on Stack Size *)
 		CONST N = 65536;	(* cluster size for dll *)
 		VAR adr, s: INTEGER;
 	BEGIN
@@ -1195,9 +1195,8 @@ MODULE Kernel;
 		var scalar		address
 		record			address tag
 		array			address size
-		open array	address length .. length
+		open array	address length_N-1 .. length_0
 	*)
-
 	PROCEDURE Call* (adr: INTEGER; sig: Signature; IN par: ARRAY OF INTEGER; n: INTEGER): LONGINT;
 		VAR p, kind, sp, size: INTEGER; typ: Type; r: REAL;
 	BEGIN
@@ -1206,9 +1205,12 @@ MODULE Kernel;
 			DEC(p);
 			typ := sig.par[p].struct;
 			kind := sig.par[p].id MOD 16;
-			IF (S.VAL(INTEGER, typ) DIV 256 = 0) OR (typ.id MOD 4 IN {0, 3}) THEN	(* scalar *)
+			IF (S.VAL(INTEGER, typ) DIV 256 = 0) OR (typ.id MOD 4 IN {0, 3}) THEN	(* scalar, ANYREC *)
 				IF (kind = 10) & ((S.VAL(INTEGER, typ) = 8) OR (S.VAL(INTEGER, typ) = 10)) THEN	(* 64 bit *)
 					DEC(n); PUSH(par[n])	(* push hi word *)
+				ELSIF S.VAL(INTEGER, typ) = 11 THEN   (* ANYREC *)
+					ASSERT(kind # 10); (* not a value par, also checked by compiler *)
+					DEC(n); PUSH(par[n])   (* push tag *)
 				END;
 				DEC(n); PUSH(par[n])	(* push value/address *)
 			ELSIF typ.id MOD 4 = 1 THEN	(* record *)

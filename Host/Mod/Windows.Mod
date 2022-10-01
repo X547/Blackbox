@@ -96,6 +96,7 @@ MODULE HostWindows;
 		whiteBrush, nullPen: WinApi.HANDLE;
 		docIcon, dirtyIcon: WinApi.HANDLE;
 		instance: WinApi.HANDLE;	(* application instance *)
+		mpid: INTEGER;	(* main window process id *)
 		cbViewer: Window;	(* pseudo window for clipboard drawing *)
 		cbValid: BOOLEAN;	(* clipboard contents is valid *)
 		mainActive: BOOLEAN;	(* main is active window *)
@@ -954,7 +955,7 @@ MODULE HostWindows;
 
 	PROCEDURE (d: Directory) GetThisWindow* (p: Ports.Port; px, py: INTEGER;
 																		OUT x, y: INTEGER; OUT w: Windows.Window);
-		VAR res: INTEGER; wnd: WinApi.HANDLE; pt: WinApi.POINT; s: ARRAY 32 OF CHAR;
+		VAR res, wpid: INTEGER; wnd: WinApi.HANDLE; pt: WinApi.POINT; s: ARRAY 32 OF CHAR;
 	BEGIN
 		pt.x := px; pt.y := py;
 		IF p # NIL THEN
@@ -962,7 +963,8 @@ MODULE HostWindows;
 			res := WinApi.ClientToScreen(wnd, pt)
 		END;
 		wnd := WinApi.WindowFromPoint(pt);
-		IF wnd # 0 THEN
+		res := WinApi.GetWindowThreadProcessId(wnd, wpid);
+		IF (wnd # 0) & (wpid = mpid) THEN
 			res := WinApi.GetClassNameW(wnd, s, LEN(s));
 			IF (s = "Oberon Doc") OR (s = "Oberon Aux") OR (s = "Oberon Dlg") THEN
 				res := WinApi.ScreenToClient(wnd, pt);
@@ -1988,6 +1990,8 @@ MODULE HostWindows;
 		dc := WinApi.GetDC(main);
 		unit := Ports.inch DIV WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY);
 		res := WinApi.ReleaseDC(main, dc);
+		
+		res := WinApi.GetWindowThreadProcessId(main, mpid);
 
 		Dialog.MapString(allocKey, allocStr);
 		Dialog.MapString(totalKey, totalStr);

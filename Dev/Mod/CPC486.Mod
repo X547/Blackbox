@@ -1031,7 +1031,7 @@ MODULE DevCPC486;
 		IF (size >= 0)
 			& ((size # x.typ.size) & ((size > 4) OR (x.typ.size > 4))
 				OR (f IN {Comp, Real64}) & (x.mode IN {Reg, Stk})
-				OR (f = Int64) & (x.mode = Stk)) THEN DevCPM.err(261)
+				OR (f = Int64) & (x.mode = Stk)) THEN DevCPM.err(261); Free(x); x.mode := Stk; x.form := f
 		ELSE
 			y.mode := Undef; y.form := f; ConvMove(y, x, size >= 0, hint, stop)
 		END

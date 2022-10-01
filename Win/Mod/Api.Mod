@@ -11605,6 +11605,9 @@ MODULE WinApi ["KERNEL32.dll"];
 
 	PROCEDURE DebugBreak* ();
 	(*END DebugBreak;*)
+	
+	PROCEDURE DebugBreakProcess* (hProcess: HANDLE): BOOL;
+	(*END DebugBreakProcess;*)
 
 	PROCEDURE WaitForDebugEvent* (VAR [nil] lpDebugEvent: DEBUG_EVENT; dwMilliseconds: INTEGER): BOOL;
 	(*END WaitForDebugEvent;*)
@@ -11614,6 +11617,15 @@ MODULE WinApi ["KERNEL32.dll"];
 
 	PROCEDURE DebugActiveProcess* (dwProcessId: INTEGER): BOOL;
 	(*END DebugActiveProcess;*)
+
+	PROCEDURE DebugActiveProcessStop* (dwProcessId: INTEGER): BOOL;
+	(*END DebugActiveProcessStop;*)
+
+	PROCEDURE DebugSetProcessKillOnExit* (killOnExit: BOOL): BOOL;
+	(*END DebugSetProcessKillOnExit;*)
+
+	PROCEDURE IsDebuggerPresent* (): BOOL;
+	(*END IsDebuggerPresent;*)
 
 	PROCEDURE InitializeCriticalSection* (VAR [nil] lpCriticalSection: RTL_CRITICAL_SECTION);
 	(*END InitializeCriticalSection;*)

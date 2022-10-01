@@ -80,7 +80,7 @@ So far, the discussed features have been mainstream features of programming lang
 
 7 Drag & pick
 
-A novel feature of the BlackBox Component Framework is the capability to drag a selected object to another place in order to pick up attributes. The text system uses this facility to support setting the text attributes of a selected piece of text to those used by any other visible text stretch. To drag & pick, hold down the Alt key while you start dragging (or, alternatively, use the middle mouse button). Then move the cursor to a similar object with the desired attributes. After releasing the button, the attributes of the selected object(s) are overwritten by the corresponding attributes of the object where the button was released. Like drag & drop, drag & pick also works across windows.
+A novel feature of the BlackBox Component Framework is the capability to drag a selected object to another place in order to pick up attributes. The text system uses this facility to support setting the text attributes of a selected piece of text to those used by any other visible text stretch. To drag & pick, hold down the Alt key while you start dragging (or, alternatively, use the middle mouse button). Then move the cursor to a similar object with the desired attributes. After releasing the button, the attributes of the selected object(s) are overwritten by the corresponding attributes of the object where the button was released. Like drag & drop, drag & pick also works across windows. Unlike drag & drop, drag & pick does not work across applications.
 
 
 8 Text views as containers

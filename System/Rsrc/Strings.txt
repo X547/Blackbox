@@ -322,10 +322,10 @@ bus error	bus error
 address error	address error
 fpu error	fpu error
 
-appVersion	1.7.1
-appVerName	BlackBox Component Builder 1.7.1
-fileVersion	1.7.1.1014
-buildNum	1014
-buildDate	2017-12-11
+appVersion	1.7.2
+appVerName	BlackBox Component Builder 1.7.2
+fileVersion	1.7.2.1113
+buildNum	1113
+buildDate	2019-11-03
 buildBranch	master
-commitHash	258df0fe5395fd55cc979aa91f285ad6abceb52d
+commitHash	cd22b49c5498276cbccae01870b4cfb50e7a3d34

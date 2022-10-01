@@ -9,7 +9,8 @@
 DevComInterfaceGen 	generate Automation interfaces
 DevCommanders	command interpreters
 DevCompiler	Component Pascal compiler
-DevDebug	symbolic debugger
+DevDebug	symbolic post mortem debugger
+DevDebugCmds	attaching a run-time debugger
 DevDependencies 	display module graph
 DevHeapSpy	visual heap display
 DevInspector	control property inspector
@@ -21,5 +22,6 @@
 DevProfiler	statistical profiler
 DevRBrowser	repository browser
 DevReferences	source/docu symbol lookup
+DevRTDebug	symbolic run-time debugger
 DevSearch	global search tool
 DevSubTool	template generator

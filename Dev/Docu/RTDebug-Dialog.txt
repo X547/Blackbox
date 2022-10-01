@@ -1,0 +1,29 @@
+Debug
+
+This dialog provides the user interface for the BlackBox run-time debugger. The debugger shows information about the current run-time stack (Remote State) and the current source code position (Remote Source) of the debugged process. When execution is stopped, for example due to a breakpoint or when stepping through code, the current selection in the source code window shows the next statement to be executed.
+Terminating the debugger process detaches the debugger and continues execution of the debugged process. The debugging options as well as the window positions of the Remote State, Remote Source, and Debug windows are registered in the current user's Windows registry on exit.
+Closing this dialog closes all debugger windows, except those opened when the debugger was started or modified windows.
+For additional information about debugging in BlackBox in general and run-time debugging in particular please refer to Dev User Manual.
+
+Remote State:	Gives a summary about the state of the remote process. More details can be seen in the Remote State window.
+Step Over	Executes the current instruction and stops after it. Procedure calls are stepped over.
+Step Into	Executes the current instruction and stops after it. Procedure calls are not stepped over except for Windows system calls, which are external to the BlackBox debugger.
+Note: in rare situations stepping into a Windows system call does not stop after the system call but changes the state to running. This seems to be a property of the Windows debuging API.
+Continue	Continues execution until the next Breakpoint is hit, the Stop command is executed, or a trap is generated.
+Continue To	Like Continue but also stops when execution arrives at the caret (cursor) position in the active source code text.
+If there is no caret position in the focus text, for example when a text selection exists or when the Remote State window is the active window, execution also stops when the current procedure returns. This effectively acts as a Step Out function, except that it does not take recursion into account.
+Handle Trap	Continue the debugged process with handling a trap.
+Stop	Stops execution of the debugged process.
+Loaded Modules	Shows the loaded modules of the debugged process.
+Global Variables	Shows the global variables of the debugged process. A module name must be selected.
+Terminate	Terminates (kills) the debugged process.
+Breakpoint 1, 2, 3	Sets a breakpoint or clears the breakpoint if it was already set. A breakpoint can refer to the caret position in a source code text or it can be a data breakpoint (alias watchpoint). In the latter case, a fully qualified global variable name must be selected. If the name has an appended "-" sign, the watchpoint refers to write operations only. Otherwise it watches for both read and write operations.
+	Technical Note: The limitation to three breakpoints allows for full-speed debugging of both code and data breakpoints because the Intel i386 architecture offers 4 hardware debug registers of which one is used as a temporary breakpoint for ContinueTo.
+>	Shows the source position of a code breakpoint or the definition of a watchpoint.
+Help	Shows this help text.
+Remote State	Opens the Remote State window or brings it to front.
+Remote Source	If a module name is selected in the focus text, this command opens a separate source window for this module or brings it to front. The source file is looked up according to the debugged process. If the source file is not found, the user is asked for the location.
+If no module name is selected, this command opens the Remote Source window or brings it to front.
+Any source file document can be used for setting a Breakpoint or for the ContinueTo command. However, it should be noted that for such operations the module must already be loaded in the debugged BlackBox instance.
+Single source window	When checked, the debugger uses a single Remote Source window. Otherwise it uses a source code window per module.
+Expand all stack frames	When checked, all stack frames shown in the Remote State window are expanded. Otherwise only the top-most stack frame is expanded and others are collapsed.

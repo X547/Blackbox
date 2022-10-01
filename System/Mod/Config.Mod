@@ -5,13 +5,14 @@ MODULE Config;
 	PROCEDURE Setup*;
 		VAR res: INTEGER;
 	BEGIN
-		Converters.Register("HostTextConv.ImportText", "HostTextConv.ExportText", "TextViews.View", "txt", {Converters.importAll});
+		Converters.Register("HostTextConv.ImportUtf8", "HostTextConv.ExportUtf8", "TextViews.View", "utf8", {Converters.importAll});
+		Converters.Register("HostTextConv.ImportText", "HostTextConv.ExportText", "TextViews.View", "txt", {});
 		Converters.Register("HostTextConv.ImportRichText", "HostTextConv.ExportRichText", "TextViews.View", "rtf", {});
 		Converters.Register("HostTextConv.ImportUnicode", "HostTextConv.ExportUnicode", "TextViews.View", "utf", {});
 		Converters.Register("HostTextConv.ImportDosText", "", "TextViews.View", "txt", {});
 		Converters.Register("HostTextConv.ImportHex", "", "TextViews.View", "dat", {Converters.importAll});
-		Converters.Register("HostTextConv.ImportText", "HostTextConv.ExportText", "TextViews.View", "xml", {});
-		Converters.Register("HostTextConv.ImportText", "HostTextConv.ExportText", "TextViews.View", "html", {});
+		Converters.Register("HostTextConv.ImportUtf8", "HostTextConv.ExportUtf8", "TextViews.View", "xml", {});
+		Converters.Register("HostTextConv.ImportUtf8", "HostTextConv.ExportUtf8", "TextViews.View", "html", {});
 		Converters.Register("DevBrowser.ImportSymFile", "", "TextViews.View", "osf", {});
 		Converters.Register("DevBrowser.ImportCodeFile", "", "TextViews.View", "ocf", {});
 		Converters.Register("HostBitmaps.ImportBitmap", "HostBitmaps.ExportBitmap", "HostBitmaps.StdView", "bmp", {});
