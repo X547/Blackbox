@@ -1722,8 +1722,8 @@ MODULE DevCPB;
 					Construct(Nif, p, x); Construct(Nifelse, p, NIL); OptIf(p);
 				ELSE err(69)
 				END;
-				IF p = NIL THEN	(* ASSERT(TRUE) *)
-				ELSIF p.class = Ntrap THEN err(99)
+				IF p = NIL THEN	(* ASSERT(TRUE, num) *)
+				ELSIF p.class = Ntrap THEN	(* ASSERT(FALSE, num) *)
 				ELSE p.subcl := assertfn
 				END
 		| queryfn: (* COM.QUERY *)
@@ -1819,7 +1819,7 @@ MODULE DevCPB;
 				BindNodes(Ntrap, DevCPT.notyp, x, NewIntConst(AssertTrap));
 				Construct(Nif, p, x); Construct(Nifelse, p, NIL); OptIf(p);
 				IF p = NIL THEN	(* ASSERT(TRUE) *)
-				ELSIF p.class = Ntrap THEN err(99)
+				ELSIF p.class = Ntrap THEN	(* ASSERT(FALSE) *)
 				ELSE p.subcl := assertfn
 				END
 			ELSIF parno < 1 THEN err(65)

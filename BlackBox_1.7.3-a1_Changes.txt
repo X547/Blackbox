@@ -1,0 +1,41 @@
+BlackBox 1.7.3-a1 Changes
+
+Documentation
+#206 change text formatting from Default Font to Arial
+
+Bugs
+#197 Problems with Coroutines
+#205 rename file Sql/Docu/Db.odc to Sql/Docu/DB.odc
+#207 Compiler TRAPs with simple CONST expression
+#208 ASSERT(FALSE) rejected by compiler
+
+Details
+#197 (Bug, 2019-12-14): Problems with Coroutines
+# The procedure Cleanup should contain a test for main = NIL.
+# The Docu for Cleanup has an incorrect postcondition.
+# Coroutines cause fatal instabilities in the garbage collection process when the module implementing a coroutine gets unloaded.
+
+Reported by Robert and X512
+
+#205 (Bug, 2019-12-08): rename file Sql/Docu/Db.odc to Sql/Docu/DB.odc
+file name capitalization of the file Sql/Docu/Db.odc should be fixed to Sql/Docu/DB.odc.
+
+Reported by Ivan Denisov, 2019-10-14.
+
+#206 (Documentation, 2019-12-14): change text formatting from Default Font to Arial
+In P-S-I.odc in the subsection on Stack Size, for example, there is some text that uses the Default Font instead of Arial as used throughout the docu.
+
+Reported by Ivan Denisov, 2019-10-15.
+
+#207 (Bug, 2020-06-14): Compiler TRAPs with simple CONST expression
+The expression "b := (b OR ~logTop) & logTop", where logTop is the constant FALSE, causes the compiler to TRAP.
+
+There is a suggested fix from luowy on the community forum: https://community.blackboxframework.org/viewtopic.php?f=48&t=246
+
+Reported by Robert
+
+#208 (Bug, 2020-06-29): ASSERT(FALSE) rejected by compiler
+The Language Report permits ASSERT(x) where x is a Boolean expression, so the compiler should be adjusted to match the report.
+
+Reported by Robert
+

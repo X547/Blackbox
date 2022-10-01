@@ -95,10 +95,7 @@ target # NIL
 target.state = suspended	20
 
 PROCEDURE Cleanup
-Removes any globally anchored references to coroutines that may prevent those coroutines from being garbage collected. 
-
-Post
-main.from = NIL
+Removes any globally anchored references to coroutines that may prevent those coroutines from being garbage collected.
 
 
 TYPE Iterator

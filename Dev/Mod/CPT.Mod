@@ -1883,6 +1883,7 @@ stat          NIL
                                                                         (right.link = 3rd par)
               Ncall               fpar     design    nextexpr  stat
               Nifelse                      ifstat    stat      stat
+                        assertfn           ifstat              stat
               Ncase                        expr      casestat  stat
               Nwhile                       expr      stat      stat
               Nrepeat                      stat      expr      stat

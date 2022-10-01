@@ -2230,6 +2230,7 @@ MODULE Kernel;
 		IF mainCoroutineRefcnt > 0 THEN
 			DEC(mainCoroutineRefcnt);
 			IF mainCoroutineRefcnt = 0 THEN
+				mainCoroutine.fiber := 0;
 				currentCoroutine := NIL; mainCoroutine := NIL;
 				res := WinApi.ConvertFiberToThread()
 			END
@@ -2288,6 +2289,14 @@ MODULE Kernel;
 			WinApi.SwitchToFiber(target.fiber)
 		END
 	END TransferCoroutine;
+
+	(*  Note 1: mainCoroutine is always reachable until calling EndCoroutines.
+		Note 2: finalization of coroutines must be done in Kernel and not in Coroutines because a module
+		implementing a coroutine may be unloaded and then the finalizer is not executed at all, causing havoc. *)
+	PROCEDURE (this: Coroutine) FINALIZE-;
+	BEGIN
+		RemoveCoroutine(this)
+	END FINALIZE;
 
 	(* -------------------- Initialization --------------------- *)
 

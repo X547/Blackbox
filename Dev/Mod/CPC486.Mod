@@ -1042,7 +1042,11 @@ MODULE DevCPC486;
 	BEGIN
 		IF mem IN stop THEN GetReg(x, Bool, hint, stop) END;
 		IF (F = DevCPL486.NewLbl) & (T = DevCPL486.NewLbl) THEN (* no label used *)
-			DevCPL486.GenSetCC(y.offset, x)
+			IF y.offset >= 0 THEN DevCPL486.GenSetCC(y.offset, x)
+			ELSIF y.offset = ccAlways THEN Free(x); DevCPL486.MakeConst(x, 1, Bool)
+			ELSIF y.offset = ccNever THEN Free(x); DevCPL486.MakeConst(x, 0, Bool)
+			ELSE HALT(100) (* internal error *)
+			END
 		ELSE
 			end := DevCPL486.NewLbl; T1 := DevCPL486.NewLbl;
 			DevCPL486.GenJump(y.offset, T1, TRUE);	(* T1 to enable short jump *)

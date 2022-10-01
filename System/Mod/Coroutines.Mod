@@ -94,7 +94,7 @@ MODULE Coroutines;
 	
 	PROCEDURE Cleanup*;
 	BEGIN
-		main.source := NIL
+		IF main # NIL THEN main.source := NIL END
 	END Cleanup;
 
 	PROCEDURE InitMain;
@@ -183,14 +183,6 @@ MODULE Coroutines;
 		Transfer(main); this.time := Services.Ticks();
 		ASSERT(this.source = main, 80)
 	END Sleep;
-
-	PROCEDURE (this: Coroutine) FINALIZE-;
-	BEGIN
-		(* main is finalized in FiniMain *)
-		IF this.impl # NIL THEN
-			Kernel.RemoveCoroutine(this.impl)
-		END
-	END FINALIZE;
 
 	PROCEDURE FiniMain;
 	BEGIN
