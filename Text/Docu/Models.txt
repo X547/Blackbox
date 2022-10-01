@@ -794,3 +794,6 @@ Set model directory.
 Pre
 d # NIL	20
 d.attr # NIL	21
+
+Post
+dir = d

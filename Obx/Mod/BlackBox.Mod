@@ -357,9 +357,7 @@ MODULE ObxBlackBox;
 																				VAR focus: Views.View);
 	BEGIN
 		WITH msg: Controllers.TrackMsg DO
-			(* Views.BeginModification(Views.unundoableOp, v); *)
 			Track(v, f, msg.x, msg.y, msg.modifiers); Views.SetDirty(v)
-			(* Views.EndModification(Views.unundoableOp, v) *)
 		| msg: Controllers.PollOpsMsg DO
 			msg.type := "ObxBlackBox.View"
 		ELSE
@@ -396,10 +394,8 @@ MODULE ObxBlackBox;
 		v := Controllers.FocusView();
 		IF v # NIL THEN
 			WITH v: View DO
-				(* Views.BeginModification(v); *)
 				v.model.showsol := TRUE; v.model.score := Score(v.model);
-				Models.Broadcast(v.model, msg);
-				(* Views.EndModification(v) *)
+				Models.Broadcast(v.model, msg)
 			END
 		END
 	END ShowSolution;
@@ -417,12 +413,10 @@ MODULE ObxBlackBox;
 		v := Controllers.FocusView();
 		IF v # NIL THEN
 			WITH v: View DO
-				(* Views.BeginModification(v); *)
 				NewPuzzle(v.model);
 				v.model.n := 0; v.model.score := 0; v.model.showsol := FALSE;
 				v.i := 0; v.j := 0;
-				Models.Broadcast(v.model, msg);
-				(* Views.EndModification(v) *)
+				Models.Broadcast(v.model, msg)
 			END
 		END		
 	END New;
@@ -433,7 +427,6 @@ MODULE ObxBlackBox;
 		v := Controllers.FocusView();
 		IF v # NIL THEN
 			WITH v: View DO
-				(* Views.BeginModification(v); *)
 				v.model.p := 0;
 				FOR i := 0 TO v.model.m + 1 DO
 					FOR j := 0 TO v.model.m + 1 DO
@@ -444,8 +437,7 @@ MODULE ObxBlackBox;
 				END;
 				v.model.n := 0; v.model.score := 0; v.model.showsol := FALSE;
 				v.i := 0; v.j := 0;
-				Models.Broadcast(v.model, msg);
-				(* Views.EndModification(v) *)
+				Models.Broadcast(v.model, msg)
 			END
 		END		
 	END Set;

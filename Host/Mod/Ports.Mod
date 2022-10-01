@@ -2,7 +2,7 @@ MODULE HostPorts;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Marco Ciot, Alexander Iljin"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -12,8 +12,7 @@ MODULE HostPorts;
 **)
 
 	IMPORT
-		SYSTEM, WinApi, KERNEL32, GDI32, USER32,
-		Kernel, Fonts, Ports, Dialog, HostFonts;
+		SYSTEM, WinApi, Kernel, Fonts, Ports, Dialog, Services, HostFonts;
 	
 	CONST
 		resizeHCursor* = 16; resizeVCursor* = 17; resizeLCursor* = 18; resizeRCursor* = 19; resizeCursor* = 20;
@@ -34,10 +33,10 @@ MODULE HostPorts;
 	TYPE
 		Port* = POINTER TO RECORD (Ports.Port)
 			w-, h-: INTEGER;
-			dc-: USER32.Handle;	(* actual dc *)
-			wnd-: USER32.Handle;	(* used for invalidation, may be null *)
-			homedc-: USER32.Handle;	(* unbuffered dc *)
-			map: GDI32.Handle;	(* buffer bitmap *)
+			dc-: WinApi.HANDLE;	(* actual dc *)
+			wnd-: WinApi.HANDLE;	(* used for invalidation, may be null *)
+			homedc-: WinApi.HANDLE;	(* unbuffered dc *)
+			map: WinApi.HANDLE;	(* buffer bitmap *)
 			bl, bt, br, bb: INTEGER;	(* buffer rectangle *)
 			bx, by: INTEGER	(* bitmap pattern offset *)
 		END;
@@ -46,8 +45,8 @@ MODULE HostPorts;
 			l-, t-, r-, b-: INTEGER;
 			port-: Port;
 			dx, dy: INTEGER;	(* scroll offset *)
-			map: GDI32.Handle;	(* save bitmap *)
-			dc: USER32.Handle;	(* save dc *)
+			map: WinApi.HANDLE;	(* save bitmap *)
+			dc: WinApi.HANDLE;	(* save dc *)
 			sl, st, sr, sb: INTEGER	(* save rect *)
 		END;
 
@@ -57,15 +56,15 @@ MODULE HostPorts;
 		textCol-, selBackground-, selTextCol-,
 		dialogTextCol-, dialogShadowCol-, dialogLightCol-: Ports.Color;
 		
-		dialogBrush*, dim50Brush-: GDI32.Handle;
+		dialogBrush*, dim50Brush-: WinApi.HANDLE;
 		
 		debug*, noBuffer*, flag*: BOOLEAN;
 
-		cursors-: ARRAY 32 OF USER32.Handle;
+		cursors-: ARRAY 32 OF WinApi.HANDLE;
 		
-		nullBrush, nullPen: GDI32.Handle;
-		invertBrush, dim25Brush, dim75Brush, focusBrush: GDI32.Handle;
-		grgn: GDI32.Handle;
+		nullBrush, nullPen: WinApi.HANDLE;
+		invertBrush, dim25Brush, dim75Brush, focusBrush: WinApi.HANDLE;
+		grgn: WinApi.HANDLE;
 		mx, my: INTEGER;	(* actual mouse coordinates *)
 		mb: SET;	(* actual mouse buttons & modifiers *)
 		
@@ -97,21 +96,21 @@ MODULE HostPorts;
 		NEW(h); h.port := p; RETURN h
 	END NewRider;
 	
-	PROCEDURE (p: Port) SetDC* (dc, wnd: GDI32.Handle), NEW;
+	PROCEDURE (p: Port) SetDC* (dc, wnd: WinApi.HANDLE), NEW;
 		VAR res: INTEGER;
 	BEGIN
 		ASSERT(p.unit # 0, 20); ASSERT(dc # 0, 21);
 		p.dc := dc; p.homedc := dc;
-		res := GDI32.SetBkMode(dc, GDI32.Transparent);
-		res := GDI32.SetTextAlign(dc, 24);
-		res := GDI32.SetPolyFillMode(dc, 2);
-		res := GDI32.SelectObject(dc, nullPen);
-		res := GDI32.SelectObject(dc, nullBrush);
+		res := WinApi.SetBkMode(dc, WinApi.TRANSPARENT);
+		res := ORD(WinApi.SetTextAlign(dc, BITS(24)));
+		res := WinApi.SetPolyFillMode(dc, 2);
+		res := WinApi.SelectObject(dc, nullPen);
+		res := WinApi.SelectObject(dc, nullBrush);
 		p.wnd := wnd
 	END SetDC;
 
 	PROCEDURE (p: Port) OpenBuffer* (l, t, r, b: INTEGER);
-		VAR res: INTEGER; dc: USER32.Handle; pt: USER32.Point;
+		VAR res: INTEGER; dc: WinApi.HANDLE; pt: WinApi.POINT;
 	BEGIN
 		ASSERT(p.dc # 0, 20);
 		IF l < 0 THEN l := 0 END;
@@ -121,27 +120,27 @@ MODULE HostPorts;
 		IF (l < r) & (t < b) THEN
 			p.bl := l; p.bt := t; p.br := r; p.bb := b;
 			IF ~noBuffer THEN
-				dc := GDI32.CreateCompatibleDC(p.homedc);
+				dc := WinApi.CreateCompatibleDC(p.homedc);
 				IF dc # 0 THEN
 					IF p.wnd # 0 THEN	(* byte align bitmap to screen *)
 						pt.x := l; pt.y := 0;
-						res := USER32.ClientToScreen(p.wnd, pt);
+						res := WinApi.ClientToScreen(p.wnd, pt);
 						pt.x := pt.x DIV 8 * 8;
-						res := USER32.ScreenToClient(p.wnd, pt);
+						res := WinApi.ScreenToClient(p.wnd, pt);
 						l := pt.x
 					END;
-					p.map := GDI32.CreateCompatibleBitmap(p.homedc, r - l, b - t);
+					p.map := WinApi.CreateCompatibleBitmap(p.homedc, r - l, b - t);
 					IF p.map # 0 THEN
-						res := GDI32.SelectObject(dc, p.map);
-						res := GDI32.SetBkMode(dc, GDI32.Transparent);
-						res := GDI32.SetTextAlign(dc, 24);
-						res := GDI32.SetPolyFillMode(dc, 2);
-						res := GDI32.SetWindowOrgEx(dc, l, t, NIL);
-						res := GDI32.SelectObject(dc, nullPen);
-						res := GDI32.SelectObject(dc, nullBrush);
+						res := WinApi.SelectObject(dc, p.map);
+						res := WinApi.SetBkMode(dc, WinApi.TRANSPARENT);
+						res := ORD(WinApi.SetTextAlign(dc, BITS(24)));
+						res := WinApi.SetPolyFillMode(dc, 2);
+						res := WinApi.SetWindowOrgEx(dc, l, t, NIL);
+						res := WinApi.SelectObject(dc, nullPen);
+						res := WinApi.SelectObject(dc, nullBrush);
 						p.dc := dc; p.bx := l; p.by := t;
 					ELSE
-						res := GDI32.DeleteDC(dc)
+						res := WinApi.DeleteDC(dc)
 					END
 				END
 			END
@@ -149,18 +148,20 @@ MODULE HostPorts;
 	END OpenBuffer;
 	
 	PROCEDURE (p: Port) CloseBuffer*;
-		VAR res: INTEGER; rect: USER32.Rect;
+		VAR res: INTEGER; rect: WinApi.RECT;
 	BEGIN
 		IF p.map # 0 THEN
-			res := GDI32.SelectClipRgn(p.homedc, 0);
-			res := GDI32.BitBlt(p.homedc, p.bl, p.bt, p.br - p.bl, p.bb - p.bt, p.dc, p.bl, p.bt, copy);
-			res := GDI32.DeleteDC(p.dc);
-			res := GDI32.DeleteObject(p.map)
+			res := WinApi.SelectClipRgn(p.homedc, 0);
+			res := WinApi.BitBlt(p.homedc, p.bl, p.bt, p.br - p.bl, p.bb - p.bt, p.dc, p.bl, p.bt, copy);
+			res := WinApi.DeleteDC(p.dc);
+			res := WinApi.DeleteObject(p.map)
 		END;
+(*
 		IF p.wnd # 0 THEN
 			rect.left := p.bl; rect.top := p.bt; rect.right := p.br; rect.bottom := p.bb;
-			res := USER32.ValidateRect(p.wnd, rect)
+			res := WinApi.ValidateRect(p.wnd, rect)
 		END;
+*)
 		p.dc := p.homedc; p.map := 0;
 		p.bx := 0; p.by := 0
 	END CloseBuffer;
@@ -186,13 +187,13 @@ MODULE HostPorts;
 		l := rd.l; t := rd.t; r := rd.r; b := rd.b
 	END GetRect;
 
-	PROCEDURE SetClipRegion (rd: Rider; dc: USER32.Handle);
-		VAR res, res1: INTEGER; rect: USER32.Rect; rgn: GDI32.Handle; pts: ARRAY 2 OF GDI32.Point;
+	PROCEDURE SetClipRegion (rd: Rider; dc: WinApi.HANDLE);
+		VAR res, res1: INTEGER;
 	BEGIN
-		IF rd.port.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF rd.port.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b)
 	END SetClipRegion;
 
 	PROCEDURE (rd: Rider) InitPort* (port: Port), NEW;
@@ -207,98 +208,88 @@ MODULE HostPorts;
 	END Move;
 
 	PROCEDURE (rd: Rider) DrawRect* (l, t, r, b, s: INTEGER; col: Ports.Color);
-		VAR res, h: INTEGER; p: Port; dc, oldb, oldp: USER32.Handle; pt: GDI32.Point;
+		VAR res, h: INTEGER; p: Port; dc, oldb, oldp: WinApi.HANDLE; pt: WinApi.POINT;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		IF col = Ports.defaultColor THEN col := textCol END;
 		IF s = 0 THEN s := 1 END;
 		IF (s < 0) OR (r-l < 2*s) OR (b-t < 2*s) THEN
 			INC(r); INC(b);
 			IF (col # textCol) & (col # Ports.background) THEN
-				IF (Dialog.platform = 11) & (p.dc = p.homedc) & (p.wnd # 0) THEN	(* win32s *)
-					pt.x := 0; pt.y := 0; res := USER32.ClientToScreen(p.wnd, pt);
-					res := GDI32.FixBrushOrgEx(dc, (rd.dx + pt.x) MOD 8, (rd.dy + pt.y) MOD 8, NIL)
-				ELSE
-					res := GDI32.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
-				END
+				res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
 			END;
-			oldb := GDI32.SelectObject(dc, GDI32.CreateSolidBrush(col));
-			oldp := GDI32.SelectObject(dc, nullPen);
-			res := GDI32.Rectangle(dc, l, t, r, b);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldb));
-			res := GDI32.SelectObject(dc, oldp)
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col));
+			oldp := WinApi.SelectObject(dc, nullPen);
+			res := WinApi.Rectangle(dc, l, t, r, b);
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb));
+			res := WinApi.SelectObject(dc, oldp)
 		ELSE
 			h := s DIV 2; INC(l, h); INC(t, h); h := (s-1) DIV 2; DEC(r, h); DEC(b, h);
-			oldb := GDI32.SelectObject(dc, nullBrush);
-			oldp := GDI32.SelectObject(dc, GDI32.CreatePen(GDI32.PSSolid, s, col));
-			res := GDI32.Rectangle(dc, l, t, r, b);
-			res := GDI32.SelectObject(dc, oldb);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldp))
+			oldb := WinApi.SelectObject(dc, nullBrush);
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col));
+			res := WinApi.Rectangle(dc, l, t, r, b);
+			res := WinApi.SelectObject(dc, oldb);
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp))
 		END;
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END DrawRect;
 
 	PROCEDURE (rd: Rider) DrawOval* (l, t, r, b, s: INTEGER; col: Ports.Color);
-		VAR res, h: INTEGER; p: Port; dc, oldb, oldp: USER32.Handle; pt: GDI32.Point; rect: GDI32.Rect;
+		VAR res, h: INTEGER; p: Port; dc, oldb, oldp: WinApi.HANDLE; pt: WinApi.POINT; rect: WinApi.RECT;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		IF col = Ports.defaultColor THEN col := textCol END;
 		IF s < 0 THEN
 			INC(r); INC(b);
 			IF (col # textCol) & (col # Ports.background) THEN
-				IF (Dialog.platform = 11) & (p.dc = p.homedc) & (p.wnd # 0) THEN	(* win32s *)
-					pt.x := 0; pt.y := 0; res := USER32.ClientToScreen(p.wnd, pt);
-					res := GDI32.FixBrushOrgEx(dc, (rd.dx + pt.x) MOD 8, (rd.dy + pt.y) MOD 8, NIL)
-				ELSE
-					res := GDI32.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
-				END
+				res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
 			END;
-			oldb := GDI32.SelectObject(dc, GDI32.CreateSolidBrush(col));
-			oldp := GDI32.SelectObject(dc, nullPen);
-			res := GDI32.Ellipse(dc, l, t, r, b);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldb));
-			res := GDI32.SelectObject(dc, oldp)
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col));
+			oldp := WinApi.SelectObject(dc, nullPen);
+			res := WinApi.Ellipse(dc, l, t, r, b);
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb));
+			res := WinApi.SelectObject(dc, oldp)
 		ELSE
 			IF s = 0 THEN s := 1 END;
 			h := s DIV 2; INC(l, h); INC(t, h); h := (s-1) DIV 2; DEC(r, h); DEC(b, h);
-			oldb := GDI32.SelectObject(dc, nullBrush);
-			oldp := GDI32.SelectObject(dc, GDI32.CreatePen(GDI32.PSSolid, s, col));
-			res := GDI32.Ellipse(dc, l, t, r, b);
-			res := GDI32.SelectObject(dc, oldb);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldp))
+			oldb := WinApi.SelectObject(dc, nullBrush);
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col));
+			res := WinApi.Ellipse(dc, l, t, r, b);
+			res := WinApi.SelectObject(dc, oldb);
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp))
 		END;
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END DrawOval;
 
 	PROCEDURE (rd: Rider) DrawLine* (x0, y0, x1, y1, s: INTEGER; col: Ports.Color);
-		VAR res: INTEGER; pt: GDI32.Point; p: Port; dc, oldb, oldp: GDI32.Handle;
+		VAR res: INTEGER; pt: WinApi.POINT; p: Port; dc, oldb, oldp: WinApi.HANDLE;
 	BEGIN
 		ASSERT(s >= 0, 20);
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		IF col = Ports.defaultColor THEN col := textCol END;
 		IF s <= 0 THEN s := 1 END;
-		oldp := GDI32.SelectObject(dc, GDI32.CreatePen(GDI32.PSSolid, s, col));
-		res := GDI32.MoveToEx(dc, x0, y0, pt);
-		res := GDI32.LineTo(dc, x1, y1);
-		res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldp));
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col));
+		res := WinApi.MoveToEx(dc, x0, y0, pt);
+		res := WinApi.LineTo(dc, x1, y1);
+		res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp));
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END DrawLine;
 	
@@ -307,11 +298,11 @@ MODULE HostPorts;
 	);
 
 		TYPE
-			PAP = POINTER TO ARRAY [1] OF GDI32.Point;
+			PAP = POINTER TO ARRAY [1] OF WinApi.POINT;
 
 		VAR
-			res, i, j, k: INTEGER; p: Port; dc, oldp, oldb: GDI32.Handle;
-			pap: PAP; pt: GDI32.Point; poly: ARRAY 256 OF GDI32.Point;
+			res, i, j, k: INTEGER; p: Port; dc, oldp, oldb: WinApi.HANDLE;
+			pap: PAP; pt: WinApi.POINT; poly: ARRAY 256 OF WinApi.POINT;
 			polyPtr: POINTER TO ARRAY OF Ports.Point; polyLen: INTEGER;
 
 		PROCEDURE Bezier(x0, y0, xd0, yd0, x1, y1, xd1, yd1: INTEGER);
@@ -337,27 +328,22 @@ MODULE HostPorts;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		IF col = Ports.defaultColor THEN col := textCol END;
 		pap := SYSTEM.VAL(PAP, SYSTEM.ADR(pts));
 		
 		ASSERT(n >= 0, 20); ASSERT(n <= LEN(pts), 21);
 		ASSERT(s >= Ports.fill, 23);
 		IF s < 0 THEN
-			IF (Dialog.platform = 11) & (p.dc = p.homedc) & (p.wnd # 0) THEN	(* win32s *)
-				pt.x := 0; pt.y := 0; res := USER32.ClientToScreen(p.wnd, pt);
-				res := GDI32.FixBrushOrgEx(dc, (rd.dx + pt.x) MOD 8, (rd.dy + pt.y) MOD 8, NIL)
-			ELSE
-				res := GDI32.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
-			END;
-			oldb := GDI32.SelectObject(dc, GDI32.CreateSolidBrush(col));
-			oldp := GDI32.SelectObject(dc, nullPen);
+			res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL);
+			oldb := WinApi.SelectObject(dc, WinApi.CreateSolidBrush(col));
+			oldp := WinApi.SelectObject(dc, nullPen);
 			IF path = Ports.closedPoly THEN
 				ASSERT(n >= 2, 20);
-				res := GDI32.Polygon(dc, pap^, n)
+				res := WinApi.Polygon(dc, pap[0], n)
 			ELSE
 				ASSERT(n >= 3, 20);
 				ASSERT(path = Ports.closedBezier, 22);
@@ -371,20 +357,20 @@ MODULE HostPorts;
 							pts[j].x, pts[j].y, (pts[j].x - pts[i+2].x) * 3, (pts[j].y - pts[i+2].y) * 3);
 					INC(i, 3)
 				END;
-				res := GDI32.Polygon(dc, pap^, k)
+				res := WinApi.Polygon(dc, pap[0], k)
 			END;
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldb));
-			res := GDI32.SelectObject(dc, oldp)
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb));
+			res := WinApi.SelectObject(dc, oldp)
 		ELSE
 			IF s = 0 THEN s := 1 END;
-			oldb := GDI32.SelectObject(dc, nullBrush);
-			oldp := GDI32.SelectObject(dc, GDI32.CreatePen(GDI32.PSSolid, s, col));
+			oldb := WinApi.SelectObject(dc, nullBrush);
+			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col));
 			IF path = Ports.closedPoly THEN
 				ASSERT(n >= 2, 20);
-				res := GDI32.Polygon(dc, pap^, n)
+				res := WinApi.Polygon(dc, pap[0], n)
 			ELSIF path = Ports.openPoly THEN
 				ASSERT(n >= 2, 20);
-				res := GDI32.Polyline(dc, pap^, n)
+				res := WinApi.Polyline(dc, pap[0], n)
 			ELSE
 				IF path = Ports.closedBezier THEN
 					ASSERT(n >= 3, 20);
@@ -402,44 +388,39 @@ MODULE HostPorts;
 					Bezier(pts[i].x, pts[i].y, (pts[i+1].x - pts[i].x) * 3, (pts[i+1].y - pts[i].y) * 3,
 							pts[j].x, pts[j].y, (pts[j].x - pts[i+2].x) * 3, (pts[j].y - pts[i+2].y) * 3);
 					pap[k].x := pts[j].x; pap[k].y := pts[j].y; INC(k);
-					res := GDI32.Polyline(dc, pap^, k);
+					res := WinApi.Polyline(dc, pap[0], k);
 					INC(i, 3)
 				END
 			END;
-			res := GDI32.SelectObject(dc, oldb);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, oldp))
+			res := WinApi.SelectObject(dc, oldb);
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldp))
 		END;
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END DrawPath;
 
 	PROCEDURE (rd: Rider) MarkRect* (l, t, r, b, s, mode: INTEGER; show: BOOLEAN);
-		VAR res: INTEGER; p: Port; dc, old: GDI32.Handle; pt: GDI32.Point;
+		VAR res: INTEGER; p: Port; dc, old: WinApi.HANDLE; pt: WinApi.POINT;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
-		IF (Dialog.platform = 11) & (p.dc = p.homedc) & (p.wnd # 0) THEN	(* win32s *)
-			pt.x := 0; pt.y := 0; res := USER32.ClientToScreen(p.wnd, pt);
-			res := GDI32.FixBrushOrgEx(dc, (rd.dx + pt.x) MOD 8, (rd.dy + pt.y) MOD 8, NIL)
-		ELSE
-			res := GDI32.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
-		END;
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.SetBrushOrgEx(dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL);
 		IF (mode = Ports.invert) OR (mode = Ports.hilite) THEN
-			old := GDI32.SelectObject(dc, invertBrush)
+			old := WinApi.SelectObject(dc, invertBrush)
 		ELSIF mode = Ports.dim25 THEN
-			res := GDI32.UnrealizeObject(dim25Brush); old := GDI32.SelectObject(dc, dim25Brush)
+			res := WinApi.UnrealizeObject(dim25Brush); old := WinApi.SelectObject(dc, dim25Brush)
 		ELSIF mode = Ports.dim50 THEN
-			res := GDI32.UnrealizeObject(dim50Brush); old := GDI32.SelectObject(dc, dim50Brush)
+			res := WinApi.UnrealizeObject(dim50Brush); old := WinApi.SelectObject(dc, dim50Brush)
 		ELSIF mode = Ports.dim75 THEN
-			res := GDI32.UnrealizeObject(dim75Brush); old := GDI32.SelectObject(dc, dim75Brush)
+			res := WinApi.UnrealizeObject(dim75Brush); old := WinApi.SelectObject(dc, dim75Brush)
 		ELSE (* mode = focusPat *)
-			res := GDI32.UnrealizeObject(focusBrush); old := GDI32.SelectObject(dc, focusBrush)
+			res := WinApi.UnrealizeObject(focusBrush); old := WinApi.SelectObject(dc, focusBrush)
 		END;
-		res := GDI32.SetTextColor(dc, Ports.black);
+		res := WinApi.SetTextColor(dc, Ports.black);
 		
 		IF l < -32768 THEN l := -32768 END;	(* ??? *)
 		IF t < -32768 THEN t := -32768 END;
@@ -448,51 +429,51 @@ MODULE HostPorts;
 		
 		IF s = 0 THEN s := 1 END;
 		IF (s < 0) OR (r-l < 2*s) OR (b-t < 2*s) THEN
-			res := GDI32.PatBlt(dc, l, t, r-l, b-t, xor);
+			res := WinApi.PatBlt(dc, l, t, r-l, b-t, xor);
 		ELSE
-			res := GDI32.PatBlt(dc, l, t, s, b-t, xor); DEC(r, s);
-			res := GDI32.PatBlt(dc, r, t, s, b-t, xor); INC(l, s);
-			res := GDI32.PatBlt(dc, l, t, r-l, s, xor); DEC(b, s);
-			res := GDI32.PatBlt(dc, l, b, r-l, s, xor);
+			res := WinApi.PatBlt(dc, l, t, s, b-t, xor); DEC(r, s);
+			res := WinApi.PatBlt(dc, r, t, s, b-t, xor); INC(l, s);
+			res := WinApi.PatBlt(dc, l, t, r-l, s, xor); DEC(b, s);
+			res := WinApi.PatBlt(dc, l, b, r-l, s, xor);
 		END;
-		old := GDI32.SelectObject(dc, old);
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		old := WinApi.SelectObject(dc, old);
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END MarkRect;
 
 	
 	PROCEDURE (rd: Rider) Scroll* (dx, dy: INTEGER);
-		VAR res: INTEGER; p: Port; dc, par: GDI32.Handle; rect, rt: GDI32.Rect; pt: GDI32.Point;
+		VAR res: INTEGER; p: Port; dc, par: WinApi.HANDLE; rect, rt: WinApi.RECT; pt: WinApi.POINT;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
 (*
-		IF p.wnd # 0 THEN res := USER32.UpdateWindow(p.wnd) END;
+		IF p.wnd # 0 THEN res := WinApi.UpdateWindow(p.wnd) END;
 *)
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		rect.left := rd.l; rect.top := rd.t; rect.right := rd.r; rect.bottom := rd.b;
-		res := USER32.ScrollDC(dc, dx, dy, rect, rect, grgn, rt);
+		res := WinApi.ScrollDC(dc, dx, dy, rect, rect, grgn, rt);
 		IF p.wnd # 0 THEN
-			res := USER32.InvalidateRgn(p.wnd, grgn, 1);
-			par := USER32.GetParent(p.wnd);
-			IF (par # 0) & (USER32.GetTopWindow(par) # p.wnd) THEN
-				res := USER32.UpdateWindow(p.wnd)
+			res := WinApi.InvalidateRgn(p.wnd, grgn, 1);
+			par := WinApi.GetParent(p.wnd);
+			IF (par # 0) & (WinApi.GetTopWindow(par) # p.wnd) THEN
+				res := WinApi.UpdateWindow(p.wnd)
 			END
 		END;
 		(* pattern origin correction *)
 		INC(rd.dx, dx); INC(rd.dy, dy);
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		;IF debug THEN Wait END
 	END Scroll;
 
 
 	PROCEDURE (rd: Rider) SetCursor* (cursor: INTEGER);
-		VAR old: USER32.Handle;
+		VAR old: WinApi.HANDLE;
 	BEGIN
-		old := USER32.SetCursor(cursors[cursor])
+		old := WinApi.SetCursor(cursors[cursor])
 	END SetCursor;
 	
 	PROCEDURE SetMouseState* (x, y: INTEGER; but: SET; isDown: BOOLEAN);
@@ -501,14 +482,17 @@ MODULE HostPorts;
 	END SetMouseState;
 	
 	PROCEDURE (rd: Rider) Input* (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: BOOLEAN);
-		VAR msg: USER32.Message; wnd, mw: USER32.Handle; pt: USER32.Point; res: INTEGER; set: SET;
+		VAR msg: WinApi.MSG; wnd, mw: WinApi.HANDLE; pt: WinApi.POINT; res: INTEGER; set: SET;
 	BEGIN
-		wnd := rd.port.wnd; mw := USER32.GetCapture();
-		IF USER32.PeekMessageA(msg, mw, USER32.WMMouseMove, USER32.WMMButtonDblClk, 1) # 0 THEN
+		WinApi.Sleep(1);
+		wnd := rd.port.wnd; mw := WinApi.GetCapture();
+		res := WinApi.UpdateWindow(wnd);
+		IF WinApi.PeekMessageW(msg, mw, WinApi.WM_MOUSEMOVE,
+															WinApi.WM_MBUTTONDBLCLK, 1) # 0 THEN
 			mx := (msg.lParam + 32768) MOD 65536 - 32768; my := msg.lParam DIV 65536;
 			IF (mw # 0) & (wnd # mw) THEN
-				pt.x := mx; pt.y := my; res := USER32.ClientToScreen(mw, pt);
-				res := USER32.ScreenToClient(wnd, pt); mx := pt.x; my := pt.y
+				pt.x := mx; pt.y := my; res := WinApi.ClientToScreen(mw, pt);
+				res := WinApi.ScreenToClient(wnd, pt); mx := pt.x; my := pt.y
 			END;
 			mb := {};
 			set := SYSTEM.VAL(SET, msg.wParam);
@@ -517,19 +501,16 @@ MODULE HostPorts;
 			IF WinApi.MK_RBUTTON * set # {} THEN INCL(mb, right) END;
 			IF WinApi.MK_CONTROL * set # {} THEN INCL(mb, ctrl) END;
 			IF WinApi.MK_SHIFT * set # {} THEN INCL(mb, shift) END;
-			IF USER32.GetAsyncKeyState(12H) < 0 THEN INCL(mb, alt) END;
-(*
-			Windows.dir.Update(NIL)
-*)
+			IF WinApi.GetAsyncKeyState(12H) < 0 THEN INCL(mb, alt) END;
 		END;
 		IF WinApi.GetSystemMetrics(WinApi.SM_SWAPBUTTON) # 0 THEN
-			IF USER32.GetAsyncKeyState(1) >= 0 THEN EXCL(mb, right) END;
-			IF USER32.GetAsyncKeyState(2) >= 0 THEN EXCL(mb, left) END
+			IF WinApi.GetAsyncKeyState(1) >= 0 THEN EXCL(mb, right) END;
+			IF WinApi.GetAsyncKeyState(2) >= 0 THEN EXCL(mb, left) END
 		ELSE
-			IF USER32.GetAsyncKeyState(1) >= 0 THEN EXCL(mb, left) END;
-			IF USER32.GetAsyncKeyState(2) >= 0 THEN EXCL(mb, right) END
+			IF WinApi.GetAsyncKeyState(1) >= 0 THEN EXCL(mb, left) END;
+			IF WinApi.GetAsyncKeyState(2) >= 0 THEN EXCL(mb, right) END
 		END;
-		IF USER32.GetAsyncKeyState(4) >= 0 THEN EXCL(mb, middle) END;
+		IF WinApi.GetAsyncKeyState(4) >= 0 THEN EXCL(mb, middle) END;
 		IF WinApi.GetAsyncKeyState(WinApi.VK_SHIFT) < 0 THEN
 			mb := mb + {shift, extend} ELSE  mb := mb - {shift, extend}
 		END;
@@ -537,34 +518,30 @@ MODULE HostPorts;
 			mb := mb + {ctrl, modify} ELSE  mb := mb - {ctrl, modify}
 		END;
 		IF WinApi.GetAsyncKeyState(WinApi.VK_MENU) < 0 THEN INCL(mb, alt) ELSE EXCL(mb, alt) END;
-				
-(*
-		(* alt handling *)
-		res := USER32.PeekMessageA(msg, 0, USER32.WMSysKeyDown, USER32.WMSysKeyDown, 1);
-*)
 		x := mx; y := my; modifiers := mb; isDown := mb * {left, middle, right} # {}
 	END Input;
 	
 	PROCEDURE (rd: Rider) DrawSString* (
 		x, y: INTEGER; col: Ports.Color; IN s: ARRAY OF SHORTCHAR; font: Fonts.Font
 	);
-		VAR res, i, a, b, c, w, u, n: INTEGER; p: Port; dc, old: GDI32.Handle; ch: SHORTCHAR;
-			df: HostFonts.DevFont; dx: ARRAY 1024 OF INTEGER; s1: ARRAY 1024 OF SHORTCHAR; fsp: BOOLEAN;
+		VAR res, i, a, b, c, w, u, n: INTEGER; p: Port; dc, old: WinApi.HANDLE; ch: SHORTCHAR;
+			df: HostFonts.DevFont; dx: ARRAY 1024 OF INTEGER;
+			s1: ARRAY 1024 OF SHORTCHAR; fsp: BOOLEAN;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		WITH font: HostFonts.Font DO
 			p := rd.port; dc := p.dc; u := p.unit;
-			IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-			ELSE res := GDI32.SelectClipRgn(dc, 0);
+			IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+			ELSE res := WinApi.SelectClipRgn(dc, 0);
 			END;
-			res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 			df := font.dev;
 			WHILE (df # NIL) & (df.unit # u) DO df := df.next END;
 			IF df = NIL THEN HostFonts.InsertDevFont(dc, font, df, u) 
-			ELSE old := GDI32.SelectObject(dc, df.id)
+			ELSE old := WinApi.SelectObject(dc, df.id)
 			END;
 			IF col = Ports.defaultColor THEN col := textCol END;
-			res := GDI32.SetTextColor(dc, col);
+			res := WinApi.SetTextColor(dc, col);
 			IF df.noGap THEN INC(x) END;	(* caret pos optimization *)
 			INC(x, font.ftab[ORD(s[0])] DIV u);
 			a := LEN(s) - 1; n := 0; ch := s[0]; fsp := FALSE;
@@ -573,7 +550,7 @@ MODULE HostPorts;
 				INC(n); ch := s[n]
 			END;
 			IF (df.id = font.id) & ~fsp THEN	(* native metric *)
-				res := GDI32.TextOutA(dc, x, y, s, n)
+				res := WinApi.TextOutA(dc, x, y, s, n)
 			ELSE	(* adapt to meta metric *)
 				a := 0; b := 0; i := 0; ch := s[0];
 				WHILE i < n DO
@@ -587,16 +564,16 @@ MODULE HostPorts;
 				WHILE i < n DO
 					INC(w, c); b := w DIV n; INC(dx[i], b - a); a := b; INC(i)
 				END;
-				res := GDI32.ExtTextOutA(dc, x, y, {}, NIL, s1, n, dx)
+				res := WinApi.ExtTextOutA(dc, x, y, 0, NIL, s1, n, dx[0])
 			END
 		END;
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 	END DrawSString;
 
 	PROCEDURE (rd: Rider) SCharIndex* (
 		x, pos: INTEGER; IN s: ARRAY OF SHORTCHAR; font: Fonts.Font
 	): INTEGER;
-		VAR d, u, i, n, a, b, c, w: INTEGER; df: HostFonts.DevFont; ch: SHORTCHAR; dc: GDI32.Handle;
+		VAR d, u, i, n, a, b, c, w: INTEGER; df: HostFonts.DevFont; ch: SHORTCHAR; dc: WinApi.HANDLE;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		WITH font: HostFonts.Font DO
@@ -649,140 +626,115 @@ MODULE HostPorts;
 	PROCEDURE (rd: Rider) DrawString* (
 		x, y: INTEGER; col: Ports.Color; IN s: ARRAY OF CHAR; font: Fonts.Font
 	);
-		VAR res, i, a, b, c, n, w, u: INTEGER; p: Port; dc, old: GDI32.Handle; ch: SHORTCHAR;
-			str: ARRAY 1024 OF SHORTCHAR;
-			df: HostFonts.DevFont; dx: ARRAY 1024 OF INTEGER; wt: ARRAY 1 OF INTEGER;
+		VAR res, i, a, b, c, n, w, u: INTEGER; p: Port; dc, old: WinApi.HANDLE;
+			df: HostFonts.DevFont; dx: ARRAY 1024 OF INTEGER;
+			s1: ARRAY 1024 OF CHAR; fsp: BOOLEAN;
 	BEGIN
-		IF ~HostFonts.isUnicode THEN
-			ch := 1X;
-			res := KERNEL32.WideCharToMultiByte(0, {}, s, -1, str, LEN(str), ch, NIL);
-			str[res] := 0X;
-			rd.DrawSString(x, y, col, str, font);
-			RETURN
-		END;
 		ASSERT(rd.port # NIL, 100);
 		WITH font: HostFonts.Font DO
 			p := rd.port; dc := p.dc; u := p.unit;
-			IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-			ELSE res := GDI32.SelectClipRgn(dc, 0);
+			IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+			ELSE res := WinApi.SelectClipRgn(dc, 0);
 			END;
-			res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 			IF col = Ports.defaultColor THEN col := textCol END;
 			df := font.dev;
 			WHILE (df # NIL) & (df.unit # u) DO df := df.next END;
-			IF (df # NIL) & (df.id = font.id) THEN	(* native metric *)
-				n := LEN(s) - 1; i := 0;
+			n := LEN(s) - 1; i := 0; fsp := FALSE;
+			WHILE (i < n) & (s[i] # 0X) DO
+				IF s[i] = figureSpace THEN fsp := TRUE END;
+				INC(i)
+			END;
+			IF (df # NIL) & (df.id = font.id) & ~fsp THEN	(* native metric *)
+				i := 0;
 				WHILE (i < n) & (s[i] # 0X) DO INC(i) END;
-				res := GDI32.SelectObject(dc, df.id);
+				res := WinApi.SelectObject(dc, df.id);
 				IF df.noGap THEN INC(x) END;	(* caret pos optimization *)
-				res := GDI32.SetTextColor(dc, col);
-				res := GDI32.TextOutW(dc, x, y, s, i)
+				res := WinApi.SetTextColor(dc, col);
+				res := WinApi.TextOutW(dc, x, y, s, i)
 			ELSE	(* adapt to meta metric *)
-				old := GDI32.SelectObject(dc, font.id);
-				a := 0; b := 0; n := LEN(s) - 1; i := 0;
+				old := WinApi.SelectObject(dc, font.id);
+				a := 0; b := 0; i := 0;
 				WHILE (i < n) & (s[i] # 0X) DO INC(b, font.wTab(dc, s[i])); INC(i) END;
 				INC(x, font.fTab(dc, s[0]) DIV u);
 				IF df = NIL THEN HostFonts.InsertDevFont(dc, font, df, u)
-				ELSE res := GDI32.SelectObject(dc, df.id)
+				ELSE res := WinApi.SelectObject(dc, df.id)
 				END;
 				n := i; i := 0;
 				WHILE i < n DO
-					res := GDI32.GetCharWidth32W(dc, ORD(s[i]), ORD(s[i]), wt);
-					IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[i]), ORD(s[i]), wt) END;
-					IF res # 0 THEN c := wt[0] ELSE c := df.wtab[1] END;
+					c := df.wTab(dc, s[i]);
+					IF s[i] = figureSpace THEN s1[i] := " " ELSE s1[i] := s[i] END;
 					INC(a, c); dx[i] := c; INC(i)
 				END;
 				c := b DIV u - a; i := 0; w := 0; a := 0;
 				WHILE i < n DO
 					INC(w, c); b := w DIV n; INC(dx[i], b - a); a := b; INC(i)
 				END;
-				res := GDI32.SetTextColor(dc, col);
+				res := WinApi.SetTextColor(dc, col);
 				IF df.noGap THEN INC(x) END;	(* caret pos optimization *)
-				res := GDI32.ExtTextOutW(dc, x, y, {}, NIL, s, n, dx)
+				res := WinApi.ExtTextOutW(dc, x, y, 0, NIL, s1, n, dx[0])
 			END
 		END;
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 	END DrawString;
 
 	PROCEDURE (rd: Rider) CharIndex* (x, pos: INTEGER; IN s: ARRAY OF CHAR; font: Fonts.Font): INTEGER;
-		VAR res, d, u, i, a, b, c, w, n: INTEGER; ch: SHORTCHAR; str: ARRAY 1024 OF SHORTCHAR;
-			df: HostFonts.DevFont; dc: USER32.Handle; wt: ARRAY 1 OF INTEGER;
+		VAR res, d, u, i, a, b, c, w, n: INTEGER;
+			df: HostFonts.DevFont; dc: WinApi.HANDLE;
 	BEGIN
-		IF ~HostFonts.isUnicode THEN
-			ch := 1X;
-			res := KERNEL32.WideCharToMultiByte(0, {}, s, -1, str, LEN(str), ch, NIL);
-			str[res] := 0X;
-			RETURN rd.SCharIndex(x, pos, str, font)
-		END;
 		ASSERT(rd.port # NIL, 100);
 		dc := rd.port.dc;
 		WITH font: HostFonts.Font DO
-			res := GDI32.SelectObject(dc, font.id);
+			res := WinApi.SelectObject(dc, font.id);
 			u := rd.port.unit; df := font.dev;
 			WHILE (df # NIL) & (df.unit # u) DO df := df.next END;
 			a := 0; b := 0; n := LEN(s) - 1; i := 0;
 			WHILE (i < n) & (s[i] # 0X) DO INC(b, font.wTab(dc, s[i])); INC(i) END;
 			INC(x, font.fTab(dc, s[0]) DIV u);
 			IF df = NIL THEN HostFonts.InsertDevFont(dc, font, df, u)
-			ELSE res := GDI32.SelectObject(dc, df.id)
+			ELSE res := WinApi.SelectObject(dc, df.id)
 			END;
 			n := i; i := 0;
 			WHILE i < n DO
-				res := GDI32.GetCharWidth32W(dc, ORD(s[i]), ORD(s[i]), wt);
-				IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[i]), ORD(s[i]), wt) END;
-				IF res # 0 THEN c := wt[0] ELSE c := df.wtab[1] END;
+				c := df.wTab(dc, s[i]);
 				INC(a, c); INC(i)
 			END;
 			c := b DIV u - a; i := 0; w := 0; a := 0;
-			res := GDI32.GetCharWidth32W(dc, ORD(s[0]), ORD(s[0]), wt);
-			IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[0]), ORD(s[0]), wt) END;
-			IF res # 0 THEN d := wt[0] ELSE d := df.wtab[1] END;
+			d := df.wTab(dc, s[0]);
 			WHILE (i < n) & (pos > x + d DIV 2) DO
 				INC(w, c); b := w DIV n; INC(d, b - a); a := b;
 				INC(i); INC(x, d);
-				res := GDI32.GetCharWidth32W(dc, ORD(s[i]), ORD(s[i]), wt);
-				IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[i]), ORD(s[i]), wt) END;
-				IF res # 0 THEN d := wt[0] ELSE d := df.wtab[1] END;
+				d := df.wTab(dc, s[i])
 			END
 		END;
 		RETURN i
 	END CharIndex;
 
 	PROCEDURE (rd: Rider) CharPos* (x, index: INTEGER; IN s: ARRAY OF CHAR; font: Fonts.Font): INTEGER;
-		VAR res, i, u, a, b, c, w, d, n: INTEGER; ch: SHORTCHAR; str: ARRAY 1024 OF SHORTCHAR;
-			df: HostFonts.DevFont; dc: USER32.Handle; wt: ARRAY 1 OF INTEGER;
+		VAR res, i, u, a, b, c, w, d, n: INTEGER;
+			df: HostFonts.DevFont; dc: WinApi.HANDLE;
 	BEGIN
-		IF ~HostFonts.isUnicode THEN
-			ch := 1X;
-			res := KERNEL32.WideCharToMultiByte(0, {}, s, -1, str, LEN(str), ch, NIL);
-			str[res] := 0X;
-			RETURN rd.SCharPos(x, index, str, font)
-		END;
 		ASSERT(rd.port # NIL, 100); ASSERT(index <= LEN(s), 101);
 		dc := rd.port.dc;
 		WITH font: HostFonts.Font DO
-			res := GDI32.SelectObject(dc, font.id);
+			res := WinApi.SelectObject(dc, font.id);
 			u := rd.port.unit; df := font.dev;
 			WHILE (df # NIL) & (df.unit # u) DO df := df.next END;
 			a := 0; b := 0; n := LEN(s) - 1; i := 0;
 			WHILE (i < n) & (s[i] # 0X) DO INC(b, font.wTab(dc, s[i])); INC(i) END;
 			INC(x, font.fTab(dc, s[0]) DIV u);
 			IF df = NIL THEN HostFonts.InsertDevFont(dc, font, df, u)
-			ELSE res := GDI32.SelectObject(dc, df.id)
+			ELSE res := WinApi.SelectObject(dc, df.id)
 			END;
 			n := i; i := 0;
 			WHILE i < n DO
-				res := GDI32.GetCharWidth32W(dc, ORD(s[i]), ORD(s[i]), wt);
-				IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[i]), ORD(s[i]), wt) END;
-				IF res # 0 THEN c := wt[0] ELSE c := df.wtab[1] END;
+				c := df.wTab(dc, s[i]);
 				INC(a, c); INC(i)
 			END;
 			c := b DIV u - a; i := 0; w := 0; a := 0;
 			WHILE (i < n) & (i < index) DO
 				INC(w, c); b := w DIV n; INC(x, b - a); a := b;
-				res := GDI32.GetCharWidth32W(dc, ORD(s[i]), ORD(s[i]), wt);
-				IF res = 0 THEN res := GDI32.GetCharWidthW(dc, ORD(s[i]), ORD(s[i]), wt) END;
-				IF res # 0 THEN d := wt[0] ELSE d := df.wtab[1] END;
+				d := df.wTab(dc, s[i]);
 				INC(x, d); INC(i)
 			END
 		END;
@@ -800,103 +752,98 @@ MODULE HostPorts;
 		IF b > p.h THEN b := p.h END;
 		IF (l < r) & (t < b) THEN
 			rd.sl := l; rd.st := t; rd.sr := r; rd.sb := b;
-			rd.dc := GDI32.CreateCompatibleDC(p.dc);
+			rd.dc := WinApi.CreateCompatibleDC(p.dc);
 			IF rd.dc # 0 THEN
-				rd.map := GDI32.CreateCompatibleBitmap(p.dc, r - l, b - t);
+				rd.map := WinApi.CreateCompatibleBitmap(p.dc, r - l, b - t);
 				IF rd.map # 0 THEN
-					rs := GDI32.SelectObject(rd.dc, rd.map);
-					rs := GDI32.BitBlt(rd.dc, 0, 0, r - l, b - t, p.dc, l, t, copy);
+					rs := WinApi.SelectObject(rd.dc, rd.map);
+					rs := WinApi.BitBlt(rd.dc, 0, 0, r - l, b - t, p.dc, l, t, copy);
 					res := 0
 				ELSE
-					rs := GDI32.DeleteDC(rd.dc); rd.dc := 0
+					rs := WinApi.DeleteDC(rd.dc); rd.dc := 0
 				END
 			END
 		END
 	END SaveRect;
 	
 	PROCEDURE (rd: Rider) RestoreRect* (l, t, r, b: INTEGER; dispose: BOOLEAN);
-		VAR res: INTEGER; p: Port; dc: GDI32.Handle;
+		VAR res: INTEGER; p: Port; dc: WinApi.HANDLE;
 	BEGIN
 		IF rd.dc # 0 THEN
 			p := rd.port; dc := p.dc;
-			IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-			ELSE res := GDI32.SelectClipRgn(dc, 0);
+			IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+			ELSE res := WinApi.SelectClipRgn(dc, 0);
 			END;
-			res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+			res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 			IF l < rd.sl THEN l := rd.sl END;
 			IF t < rd.st THEN t := rd.st END;
 			IF r > rd.sr THEN r := rd.sr END;
 			IF b > rd.sb THEN b := rd.sb END;
-			res := GDI32.BitBlt(dc, l, t, r - l, b - t, rd.dc, l - rd.sl, t - rd.st, copy);
+			res := WinApi.BitBlt(dc, l, t, r - l, b - t, rd.dc, l - rd.sl, t - rd.st, copy);
 			IF dispose THEN
-				res := GDI32.DeleteDC(rd.dc);
-				res := GDI32.DeleteObject(rd.map);
+				res := WinApi.DeleteDC(rd.dc);
+				res := WinApi.DeleteObject(rd.map);
 				rd.dc := 0; rd.map := 0
 			END;
-			IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+			IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 		END
 	END RestoreRect;
 	
-	PROCEDURE (rd: Rider) CopyFrom* (sdc: GDI32.Handle; x, y: INTEGER), NEW;
-		VAR res: INTEGER; p: Port; dc: GDI32.Handle;
+	PROCEDURE (rd: Rider) CopyFrom* (sdc: WinApi.HANDLE; x, y: INTEGER), NEW;
+		VAR res: INTEGER; p: Port; dc: WinApi.HANDLE;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port; dc := p.dc;
-		IF p.wnd = 0 THEN res := GDI32.SaveDC(dc)
-		ELSE res := GDI32.SelectClipRgn(dc, 0);
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
 		END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
-		res := GDI32.BitBlt(dc, rd.l, rd.t, rd.r - rd.l, rd.b - rd.t, sdc, x, y, copy);
-		IF p.wnd = 0 THEN res := GDI32.RestoreDC(dc, -1) END
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.BitBlt(dc, rd.l, rd.t, rd.r - rd.l, rd.b - rd.t, sdc, x, y, copy);
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 	END CopyFrom;
 	
-	PROCEDURE (rd: Rider) DrawBitmap* (bmdc: GDI32.Handle; bw, bh, x, y, w, h: INTEGER), NEW;
-		VAR res, u: INTEGER; p: Port; dc: GDI32.Handle;
+	PROCEDURE (rd: Rider) DrawBitmap* (bmdc: WinApi.HANDLE; bw, bh, x, y, w, h: INTEGER), NEW;
+		VAR res, u: INTEGER; p: Port; dc: WinApi.HANDLE;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port;
 		dc := p.dc; u := p.unit;
-		res := GDI32.SaveDC(dc);
-		IF p.wnd # 0 THEN res := GDI32.SelectClipRgn(dc, 0) END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		res := WinApi.SaveDC(dc);
+		IF p.wnd # 0 THEN res := WinApi.SelectClipRgn(dc, 0) END;
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
 		IF (bw * u = w) & (bh * u = h) THEN
-			res := GDI32.BitBlt(dc, x DIV u, y DIV u, bw, bh, bmdc, 0, 0, copy)
+			res := WinApi.BitBlt(dc, x DIV u, y DIV u, bw, bh, bmdc, 0, 0, copy)
 		ELSE
-			res := GDI32.StretchBlt(dc, x DIV u, y DIV u, w DIV u, h DIV u, bmdc, 0, 0, bw, bh, copy)
+			res := WinApi.StretchBlt(dc, x DIV u, y DIV u, w DIV u, h DIV u, bmdc, 0, 0, bw, bh, copy)
 		END;
-		res := GDI32.RestoreDC(dc, -1)
+		res := WinApi.RestoreDC(dc, -1)
 	END DrawBitmap;
 	
-	PROCEDURE (rd: Rider) DrawMetafile* (mf: GDI32.Handle; mode, x, y, w, h: INTEGER), NEW;
-		VAR res, oldMode, u: INTEGER; p: Port; dc: GDI32.Handle;
+	PROCEDURE (rd: Rider) DrawMetafile* (mf: WinApi.HANDLE; mode, x, y, w, h: INTEGER), NEW;
+		VAR res, oldMode, u: INTEGER; p: Port; dc: WinApi.HANDLE;
 	BEGIN
 		ASSERT(rd.port # NIL, 100);
 		p := rd.port;
 		p.CloseBuffer;
 		dc := p.dc; u := p.unit;
-		res := GDI32.SaveDC(dc);
-		IF p.wnd # 0 THEN res := GDI32.SelectClipRgn(dc, 0) END;
-		res := GDI32.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
-		oldMode := GDI32.SetMapMode(dc, mode);
-		res := GDI32.SetViewportOrgEx(dc, x DIV u, y DIV u, NIL);
-		res := GDI32.SetViewportExtEx(dc, w DIV u, h DIV u, NIL);
-		res := GDI32.SetTextAlign(dc, 0);
-		res := GDI32.PlayMetaFile(dc, mf);
-		res := GDI32.SetViewportOrgEx(dc, 0, 0, NIL);
-		res := GDI32.SetMapMode(dc, oldMode);
-		res := GDI32.RestoreDC(dc, -1)
+		res := WinApi.SaveDC(dc);
+		IF p.wnd # 0 THEN res := WinApi.SelectClipRgn(dc, 0) END;
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		oldMode := WinApi.SetMapMode(dc, mode);
+		res := WinApi.SetViewportOrgEx(dc, x DIV u, y DIV u, NIL);
+		res := WinApi.SetViewportExtEx(dc, w DIV u, h DIV u, NIL);
+		res := ORD(WinApi.SetTextAlign(dc, {}));
+		res := WinApi.PlayMetaFile(dc, mf);
+		res := WinApi.SetViewportOrgEx(dc, 0, 0, NIL);
+		res := WinApi.SetMapMode(dc, oldMode);
+		res := WinApi.RestoreDC(dc, -1)
 	END DrawMetafile;
 	
 	PROCEDURE (rd: Rider) FixOrigin*, NEW;
-		VAR p: Port; res: INTEGER; pt: GDI32.Point;
+		VAR p: Port; res: INTEGER;
 	BEGIN
 		p := rd.port;
-		IF (Dialog.platform = 11) & (p.dc = p.homedc) & (p.wnd # 0) THEN	(* win32s *)
-			pt.x := 0; pt.y := 0; res := USER32.ClientToScreen(p.wnd, pt);
-			res := GDI32.FixBrushOrgEx(p.dc, (rd.dx + pt.x) MOD 8, (rd.dy + pt.y) MOD 8, NIL)
-		ELSE
-			res := GDI32.SetBrushOrgEx(p.dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
-		END
+		res := WinApi.SetBrushOrgEx(p.dc, (rd.dx - p.bx) MOD 8, (rd.dy - p.by) MOD 8, NIL)
 	END FixOrigin;
 
 	
@@ -904,14 +851,14 @@ MODULE HostPorts;
 
 	PROCEDURE ResetColors*;
 	BEGIN
-		Ports.background := USER32.GetSysColor(5);
-		textCol := USER32.GetSysColor(8);
-		selBackground := USER32.GetSysColor(13);
-		selTextCol := USER32.GetSysColor(14);
-		Ports.dialogBackground := USER32.GetSysColor(15);
-		dialogTextCol := USER32.GetSysColor(18);
-		dialogShadowCol := USER32.GetSysColor(16);
-		dialogLightCol := USER32.GetSysColor(20);
+		Ports.background := WinApi.GetSysColor(5);
+		textCol := WinApi.GetSysColor(8);
+		selBackground := WinApi.GetSysColor(13);
+		selTextCol := WinApi.GetSysColor(14);
+		Ports.dialogBackground := WinApi.GetSysColor(15);
+		dialogTextCol := WinApi.GetSysColor(18);
+		dialogShadowCol := WinApi.GetSysColor(16);
+		dialogLightCol := WinApi.GetSysColor(20);
 	END ResetColors;
 	
 	PROCEDURE SetPrinterColors*;
@@ -934,33 +881,36 @@ MODULE HostPorts;
 	END ToggleBuffer;
 	
 	PROCEDURE Init;
-		VAR i: INTEGER; instance, bm: KERNEL32.Handle; pat: ARRAY 12 OF SHORTINT;
+		VAR i: INTEGER; instance, bm: WinApi.HANDLE; pat: ARRAY 12 OF SHORTINT;
 	BEGIN
-		instance := KERNEL32.GetModuleHandleA(NIL);
+		instance := WinApi.GetModuleHandleW(NIL);
 		ResetColors;
-		grgn := GDI32.CreateRectRgn(0, 0, 0, 0);
-		nullBrush := GDI32.GetStockObject(GDI32.NullBrush);
-		nullPen := GDI32.GetStockObject(GDI32.NullPen);
-		cursors[Ports.arrowCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCArrow));
-		cursors[Ports.textCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCIBeam));
-		cursors[Ports.graphicsCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCCross));
-		cursors[Ports.bitmapCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCCross));
-		cursors[Ports.tableCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(7));
+		grgn := WinApi.CreateRectRgn(0, 0, 0, 0);
+		nullBrush := WinApi.GetStockObject(WinApi.NULL_BRUSH);
+		nullPen := WinApi.GetStockObject(WinApi.NULL_PEN);
+		cursors[Ports.arrowCursor] :=
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW));
+		cursors[Ports.textCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_IBEAM));
+		cursors[Ports.graphicsCursor] :=
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_CROSS));
+		cursors[Ports.bitmapCursor] :=
+			WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_CROSS));
+		cursors[Ports.tableCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 7));
 		IF cursors[Ports.tableCursor] = 0 THEN cursors[Ports.tableCursor] := cursors[Ports.graphicsCursor] END;
-		cursors[Ports.refCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(6));
-		cursors[resizeHCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCSizeWE));
-		cursors[resizeVCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCSizeNS));
-		cursors[resizeLCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCSizeNWSE));
-		cursors[resizeRCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCSizeNESW));
-		cursors[resizeCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCSizeAll));
-		cursors[busyCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCWait));
-		cursors[stopCursor] := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCNo));
-		cursors[moveCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(1));
-		cursors[copyCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(2));
-		cursors[linkCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(3));
-		cursors[pickCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(4));
+		cursors[Ports.refCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 6));
+		cursors[resizeHCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZEWE));
+		cursors[resizeVCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENS));
+		cursors[resizeLCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENWSE));
+		cursors[resizeRCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZENESW));
+		cursors[resizeCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_SIZE));
+		cursors[busyCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_WAIT));
+		cursors[stopCursor] := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_NO));
+		cursors[moveCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1));
+		cursors[copyCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 2));
+		cursors[linkCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 3));
+		cursors[pickCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 4));
 		IF cursors[stopCursor] = 0 THEN
-			cursors[stopCursor] := USER32.LoadCursorA(instance, USER32.MakeIntRsrc(5))
+			cursors[stopCursor] := WinApi.LoadCursorW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 5))
 		END;
 		i := 0;
 		WHILE i < LEN(cursors) DO
@@ -969,21 +919,21 @@ MODULE HostPorts;
 		END;
 		pat[0] := 0EEH; pat[1] := 0DDH; pat[2] := 0BBH; pat[3] := 077H;
 		pat[4] := 0EEH; pat[5] := 0DDH; pat[6] := 0BBH; pat[7] := 077H;
-		bm := GDI32.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
-		focusBrush := GDI32.CreatePatternBrush(bm);
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
+		focusBrush := WinApi.CreatePatternBrush(bm);
 		pat[0] := 0EEH; pat[1] := 0BBH; pat[2] := 0DDH; pat[3] := 077H;
 		pat[4] := 0EEH; pat[5] := 0BBH; pat[6] := 0DDH; pat[7] := 077H;
-		bm := GDI32.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
-		dim25Brush := GDI32.CreatePatternBrush(bm);
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
+		dim25Brush := WinApi.CreatePatternBrush(bm);
 		pat[0] := 0AAH; pat[1] := 055H; pat[2] := 0AAH; pat[3] := 055H;
 		pat[4] := 0AAH; pat[5] := 055H; pat[6] := 0AAH; pat[7] := 055H;
-		bm := GDI32.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
-		dim50Brush := GDI32.CreatePatternBrush(bm);
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
+		dim50Brush := WinApi.CreatePatternBrush(bm);
 		pat[0] := 011H; pat[1] := 044H; pat[2] := 022H; pat[3] := 088H;
 		pat[4] := 011H; pat[5] := 044H; pat[6] := 022H; pat[7] := 088H;
-		bm := GDI32.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
-		dim75Brush := GDI32.CreatePatternBrush(bm);
-		invertBrush := GDI32.GetStockObject(GDI32.BlackBrush);
+		bm := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
+		dim75Brush := WinApi.CreatePatternBrush(bm);
+		invertBrush := WinApi.GetStockObject(WinApi.BLACK_BRUSH);
 	END Init;
 
 BEGIN

@@ -1251,7 +1251,7 @@ MODULE DevAnalyzer;
 			END ;
 			CPS.Get(sym)
 		ELSIF sym = string THEN
-			x := CPB.NewString(CPS.str, CPS.intval);
+			x := CPB.NewString(CPS.str, CPS.lstr, CPS.intval);
 			CPS.Get(sym)
 		ELSIF sym = nil THEN
 			x := CPB.Nil(); CPS.Get(sym)

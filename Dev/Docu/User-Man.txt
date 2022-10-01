@@ -71,8 +71,8 @@ The module's code file exists, but its internal format is not correct.
 Object not found
 The module imports some object (constant, type, variable, procedure) from another module, where this object is not exported.
 
-Obect j inconsistently imported
-The modulee imports some object (constant, type, variable, procedure) from another module, where this object is exported, but with a different signature.
+Object inconsistently imported
+The module imports some object (constant, type, variable, procedure) from another module, where this object is exported, but with a different signature.
 Such inconsistencies typically occur if a module's interface was changed (e.g., a procedure got an additional parameter), but not all client modules were recompiled afterwards. Another possibility is that the module whose interface was changed has not been reloaded after compilation. In this case, everything will work fine after it has been unloaded (e.g., after a restart of BlackBox).
 
 Cyclic import
@@ -147,7 +147,7 @@ If a trap in one of those categories occurs, this behavior will be disabled (i.e
 
 This means that erroneous views "degrade gracefully", by freezing only those behaviors that already have led to traps. If for some reason a view should be "unfrozen" again, the command Dev->Revalidate View can be used.
 
-An endless loop can be interrupted by pressing ctrl-break (Windows 95/NT) / command-option-. (Mac OS).
+An endless loop can be interrupted by pressing ctrl-break (Windows) / command-option-. (Mac OS).
 
 The following standard traps may occur at run-time (depending on the platform, some of these errors don't occur):
 

@@ -18,7 +18,7 @@ MODULE Meta;
 		undef* = 0;
 
 		(** object classes **)
-		typObj* = 2; varObj* = 3; procObj* = 4; fieldObj* = 5; modObj* = 6; 
+		typObj* = 2; varObj* = 3; procObj* = 4; fieldObj* = 5; modObj* = 6; parObj* = 7;
 
 		(** type classes **)
 		boolTyp* = 1; sCharTyp* = 2; charTyp* = 3;
@@ -33,6 +33,7 @@ MODULE Meta;
 		
 		(** visibility **)
 		hidden* = 1; readOnly* = 2; private = 3; exported* = 4;
+		value* = 10; in* = 11; out* = 12; var* = 13;
 
 		(* scanner modes *)
 		modScan = 1; globScan = 2; recVarScan = 3; recTypeScan = 4;
@@ -45,13 +46,13 @@ MODULE Meta;
 		ArrayPtr = POINTER TO Array;
 
 		Item* = RECORD (Value)
-			obj-: INTEGER;		(* typObj, varObj, procObj, fieldObj, modObj *)
-			typ-: INTEGER;		(* typObj, varObj, fieldObj: type;	procObj, modObj: 0 *)
-			vis-: INTEGER;		(* varObj, procObj, fieldObj: vis;	typObj, modObj: 0 *)
-			adr-: INTEGER;		(* varObj, procObj: adr;	fieldObj: offs;	typObj, modObj: 0 *)
-			mod: Kernel.Module;	(* stat varObj, procObj, modObj: mod;	dyn varObj, typObj, fieldObj: NIL *)
-			desc: Kernel.Type;		(* typObj, varObj, fieldObj: struct;	procObj: signature;	modObj: NIL *)
-			ptr: ArrayPtr;			(* # NIL => item valid;	dyn varObj: ptr;	else: dummy *)
+			obj-: INTEGER;			(* typObj, varObj, procObj, fieldObj, modObj, parObj *)
+			typ-: INTEGER;			(* typObj, varObj, fieldObj, parObj: type;	else: 0 *)
+			vis-: INTEGER;			(* varObj, procObj, fieldObj, parObj: vis;	else: 0 *)
+			adr-: INTEGER;			(* varObj, procObj: adr;	fieldObj: offs;	parObj: num;	else: 0 *)
+			mod: Kernel.Module;	(* static varObj, procObj, modObj: mod;	else: NIL *)
+			desc: Kernel.Type;		(* typObj, varObj, fieldObj, parObj: struct;	procObj: sig;	else: NIL *)
+			ptr: ArrayPtr;				  (* # NIL => item valid;	dynamic varObj: ptr;	else: dummy *)
 			ext: Kernel.ItemExt		(* all method calls forwarded if # NIL *)
 		END;
 
@@ -112,9 +113,9 @@ MODULE Meta;
 	PROCEDURE TypOf (struct: Kernel.Type): INTEGER;
 	BEGIN
 		IF SYSTEM.VAL(INTEGER, struct) DIV 256 = 0 THEN
-			RETURN SHORT(SHORT(SYSTEM.VAL(INTEGER, struct)))
+			RETURN SYSTEM.VAL(INTEGER, struct)
 		ELSE
-			RETURN SHORT(SHORT(16 + struct.id MOD 4))
+			RETURN 16 + struct.id MOD 4
 		END
 	END TypOf;
 	
@@ -141,6 +142,15 @@ MODULE Meta;
 		ELSE RETURN 4
 		END
 	END SizeOf;
+	
+	PROCEDURE SignatureOf (IN i: Item): Kernel.Signature;
+	BEGIN
+		IF i.obj = procObj THEN
+			RETURN SYSTEM.VAL(Kernel.Signature, i.desc)
+		ELSE
+			RETURN SYSTEM.VAL(Kernel.Signature, i.desc.base[0])
+		END
+	END SignatureOf;
 	
 	
 	PROCEDURE GetName (IN path: ARRAY OF CHAR; OUT name: ARRAY OF CHAR; VAR i: INTEGER);
@@ -201,7 +211,7 @@ MODULE Meta;
 		ASSERT(i.ext = NIL, 31);
 		ASSERT(i.ptr # NIL, 20);
 		ASSERT(i.typ IN {recTyp, arrTyp}, 21);
-		RETURN SHORT(SHORT(i.desc.id DIV 16 MOD 16))
+		RETURN i.desc.id DIV 16 MOD 16
 	END Level;
 
 	PROCEDURE (VAR i: Item) Attribute* (): INTEGER, NEW;
@@ -209,7 +219,7 @@ MODULE Meta;
 		ASSERT(i.ext = NIL, 31);
 		ASSERT(i.ptr # NIL, 20);
 		ASSERT(i.typ = recTyp, 21);
-		RETURN SHORT(SHORT(i.desc.id DIV 4 MOD 4))
+		RETURN i.desc.id DIV 4 MOD 4
 	END Attribute;
 
 	PROCEDURE (VAR i: Item) Size* (): INTEGER, NEW;
@@ -233,16 +243,16 @@ MODULE Meta;
 	PROCEDURE SetUndef (VAR i: Item);
 	BEGIN
 		i.typ := undef; i.obj := undef; i.vis := undef;
-		i.adr := undef; i.mod := NIL; i.desc := NIL; i.ptr := NIL; i.ext := NIL
+		i.adr := undef; i.mod := NIL; i.desc := NIL; i.ptr := NIL; i.ext := NIL;
 	END SetUndef;
 	
 	PROCEDURE SetItem (VAR i: Item; obj: Kernel.Object; mod: Kernel.Module);
 		VAR t: Kernel.Type;
 	BEGIN
-		i.obj := SHORT(SHORT(obj.id MOD 16));
-		i.vis := SHORT(SHORT(obj.id DIV 16 MOD 16));
+		i.obj := obj.id MOD 16;
+		i.vis := obj.id DIV 16 MOD 16;
 		IF i.obj = procObj THEN
-			i.typ := undef; i.desc := SYSTEM.VAL(Kernel.Type, obj.fprint);
+			i.typ := undef; i.desc := SYSTEM.VAL(Kernel.Type, obj.struct);
 			i.adr := mod.procBase + obj.offs; i.mod := mod
 		ELSE
 			i.typ := TypOf(obj.struct); i.desc := obj.struct;
@@ -355,6 +365,67 @@ MODULE Meta;
 		END
 	END GetThisBaseType;
 	
+	PROCEDURE (VAR proc: Item) NumParam* (): INTEGER, NEW;
+		VAR sig: Kernel.Signature;
+	BEGIN
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		ASSERT((proc.obj = procObj) OR (proc.typ = procTyp), 21);
+		sig := SignatureOf(proc);
+		IF sig # NIL THEN RETURN sig.num ELSE RETURN -1 END
+	END NumParam;
+
+	PROCEDURE (VAR proc: Item) GetParam* (n: INTEGER; VAR par: Item), NEW;
+		VAR sig: Kernel.Signature;
+	BEGIN
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		ASSERT((proc.obj = procObj) OR (proc.typ = procTyp), 21);
+		sig := SignatureOf(proc);
+		IF (sig # NIL) & (n >= 0) & (n < sig.num) THEN
+			par.obj := parObj; par.adr := n;
+			par.vis := sig.par[n].id MOD 16; 
+			par.mod := NIL; par.ptr := dummy; par.ext := NIL;
+			par.desc := sig.par[n].struct; par.typ := TypOf(par.desc)
+		ELSE
+			SetUndef(par)
+		END
+	END GetParam;
+
+	PROCEDURE (VAR proc: Item) GetParamName* (n: INTEGER; OUT name: Name), NEW;
+		VAR sig: Kernel.Signature; mod: Kernel.Module; nm: Kernel.Name;
+	BEGIN
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		IF proc.obj = procObj THEN mod := proc.mod
+		ELSE ASSERT(proc.typ = procTyp, 21); mod := proc.desc.mod
+		END;
+		ASSERT(mod.refcnt >= 0, 23);
+		sig := SignatureOf(proc);
+		IF (sig # NIL) & (n >= 0) & (n < sig.num) THEN
+			Kernel.GetObjName(mod, SYSTEM.VAL(Kernel.Object, SYSTEM.ADR(sig.par[n]) - 8), nm);
+			name := nm$
+		ELSE
+			name := ""
+		END
+	END GetParamName;
+
+	PROCEDURE (VAR proc: Item) GetReturnType* (VAR type: Item), NEW;
+		VAR sig: Kernel.Signature;
+	BEGIN
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		ASSERT((proc.obj = procObj) OR (proc.typ = procTyp), 21);
+		sig := SignatureOf(proc);
+		IF sig # NIL THEN
+			type.obj := typObj; type.vis := undef; type.adr := undef;
+			type.mod := NIL; type.ptr := dummy; type.ext := NIL;
+			type.desc := sig.retStruct; type.typ := TypOf(type.desc)
+		ELSE
+			SetUndef(type)
+		END
+	END GetReturnType;
+
 	PROCEDURE (VAR rec: Item) Is* (IN type: Value): BOOLEAN, NEW;
 		VAR d: Kernel.Type;
 	BEGIN
@@ -532,21 +603,6 @@ MODULE Meta;
 
 	(* ---------- access to item values ---------- *)
 
-	PROCEDURE (VAR proc: Item) Call* (OUT ok: BOOLEAN), NEW;
-		VAR p: Kernel.Command; sig: INTEGER;
-	BEGIN
-		IF proc.ext # NIL THEN proc.ext.Call(ok); RETURN END;
-		ASSERT(proc.ptr # NIL, 20);
-		IF proc.obj = procObj THEN
-			p := SYSTEM.VAL(Kernel.Command, proc.adr); sig := SYSTEM.VAL(INTEGER, proc.desc)
-		ELSE ASSERT((proc.obj = varObj) & (proc.typ = procTyp), 22);
-			SYSTEM.GET(proc.adr, p); sig := proc.desc.size
-		END;
-		IF (sig = Kernel.comSig) & (p # NIL) THEN p(); ok := TRUE
-		ELSE ok := FALSE
-		END
-	END Call;
-	
 	PROCEDURE ValToItem (IN x: Value; VAR i: Item);
 		VAR desc: Kernel.Type;
 	BEGIN
@@ -554,16 +610,50 @@ MODULE Meta;
 		ASSERT(desc.id DIV 16 MOD 16 = 1, 25);	(* level of x = 1*)
 		ASSERT(desc.fields.num = 1, 26);	(* one field in x *)
 		i.desc := desc.fields.obj[0].struct;
-		i.typ := TypOf(i.desc); i.obj := varObj; i.ext := NIL;
+		i.typ := TypOf(i.desc); i.obj := varObj; i.ext := NIL; i.vis := exported;
 		i.ptr := dummy; i.adr := SYSTEM.ADR(x)
 	END ValToItem;
+	
+	PROCEDURE^ EqualSignature (a, b: Kernel.Signature): BOOLEAN;
+	
+	PROCEDURE EqualType (a, b: Kernel.Type): BOOLEAN;
+	BEGIN
+		LOOP
+			IF a = b THEN RETURN TRUE END;
+			IF (SYSTEM.VAL(INTEGER, a) DIV 256 = 0)
+				OR (SYSTEM.VAL(INTEGER, b) DIV 256 = 0)
+				OR (a.id MOD 4 # b.id MOD 4) THEN RETURN FALSE END;
+			CASE a.id MOD 4 OF
+			| recTyp - 16: RETURN FALSE
+			| arrTyp - 16: IF (a.size # 0) OR (b.size # 0) THEN RETURN FALSE END
+			| procTyp - 16: RETURN EqualSignature(SYSTEM.VAL(Kernel.Signature, a.base[0]),
+																	 SYSTEM.VAL(Kernel.Signature, b.base[0]))
+			ELSE (* ptrTyp *)
+			END;
+			a := a.base[0]; b := b.base[0]
+		END
+	END EqualType;
+	
+	PROCEDURE EqualSignature (a, b: Kernel.Signature): BOOLEAN;
+		VAR i: INTEGER;
+	BEGIN
+		IF (a.num # b.num) OR ~EqualType(a.retStruct, b.retStruct) THEN RETURN FALSE END;
+		i := 0;
+		WHILE i < a.num DO
+			IF (a.par[i].id MOD 256 # b.par[i].id MOD 256)
+				OR ~EqualType(a.par[i].struct, b.par[i].struct) THEN RETURN FALSE END;
+			INC(i)
+		END;
+		RETURN TRUE
+	END EqualSignature;
 	
 	PROCEDURE Copy (IN a, b: Item; OUT ok: BOOLEAN);	(* b := a *)
 		VAR n: INTEGER; at, bt: Item;
 	BEGIN
 		ok := FALSE;
 		IF a.obj = procObj THEN
-			IF (b.typ # procTyp) OR (b.desc.size # SYSTEM.VAL(INTEGER, a.desc)) THEN RETURN END;
+			IF (b.typ # procTyp)
+				OR ~EqualSignature(SignatureOf(a), SignatureOf(b)) THEN RETURN END;
 			SYSTEM.PUT(b.adr, a.adr); 
 		ELSE	(* a.obj = varObj *)
 			IF a.typ # b.typ THEN RETURN END;
@@ -584,13 +674,195 @@ MODULE Meta;
 					bt.desc := bt.desc.base[0]; bt.typ := TypOf(bt.desc)
 				END;
 				IF (at.desc # bt.desc) &
-					~((at.typ = procTyp) & (bt.typ = procTyp) & (at.desc.size = bt.desc.size)) THEN RETURN END
+					~((at.typ = procTyp) & (bt.typ = procTyp)
+						& EqualSignature(SignatureOf(at), SignatureOf(bt))) THEN RETURN END
 			END;
 			SYSTEM.MOVE(a.adr, b.adr, SizeOf(b))
 		END;
 		ok := TRUE
 	END Copy;
 	
+	PROCEDURE (VAR proc: Item) Call* (OUT ok: BOOLEAN), NEW;
+		VAR p: Kernel.Command; sig: Kernel.Signature;
+	BEGIN
+		IF proc.ext # NIL THEN proc.ext.Call(ok); RETURN END;
+		ASSERT(proc.ptr # NIL, 20);
+		IF proc.obj = procObj THEN
+			p := SYSTEM.VAL(Kernel.Command, proc.adr)
+		ELSE ASSERT((proc.obj = varObj) & (proc.typ = procTyp), 22);
+			SYSTEM.GET(proc.adr, p)
+		END;
+		ASSERT((proc.mod = NIL) OR (proc.mod.refcnt >= 0), 23);
+		sig := SignatureOf(proc);
+		IF (sig.retStruct = NIL) & (sig.num = 0) & (p # NIL) THEN p(); ok := TRUE
+		ELSE ok := FALSE
+		END
+	END Call;
+	
+	PROCEDURE PutParam (IN par: Item; sig: Kernel.Signature; p: INTEGER;
+										VAR data: ARRAY OF INTEGER; VAR n: INTEGER;
+										OUT ok: BOOLEAN);	(* check & assign a parameter *)
+		VAR mode, fTyp, aTyp, padr, i: INTEGER; fDesc, aDesc: Kernel.Type;
+			l: LONGINT; s: SHORTINT; b: BYTE;
+	BEGIN
+		ok := FALSE;
+		ASSERT(par.ext = NIL, 31);
+		ASSERT(par.ptr # NIL, 20);
+		ASSERT(par.obj = varObj, 22);
+		ASSERT((par.mod = NIL) OR (par.mod.refcnt >= 0), 23);
+		mode := sig.par[p].id MOD 16;
+		IF mode >= out THEN ASSERT(par.vis = exported, 27) END;
+		fDesc := sig.par[p].struct;
+		fTyp := TypOf(fDesc);
+		aDesc := par.desc;
+		aTyp := TypOf(aDesc);
+		padr := par.adr;
+		IF (fTyp = recTyp) OR (fTyp = anyRecTyp) THEN
+			IF (aTyp # recTyp)
+				OR (mode = value) & (aDesc # fDesc)
+				OR (fTyp = recTyp) & (aDesc.base[fDesc.id DIV 16 MOD 16] # fDesc) THEN RETURN END;
+			data[n] := padr; INC(n);
+			data[n] := SYSTEM.VAL(INTEGER, aDesc); INC(n)
+		ELSIF fTyp = arrTyp THEN
+			data[n] := padr; INC(n);
+			IF fDesc.size # 0 THEN data[n] := SizeOf(par); INC(n) END;
+			WHILE (TypOf(fDesc) = arrTyp) & (TypOf(aDesc) = arrTyp) DO
+				IF aDesc.size # 0 THEN i := aDesc.size	(* actual static size *)
+				ELSE i := par.ptr.len[aDesc.id DIV 16 MOD 16 - 1]	(* actual dynamic size *)
+				END;
+				IF fDesc.size = 0 THEN data[n] := i; INC(n)
+				ELSIF fDesc.size # i THEN RETURN
+				END;
+				fDesc := fDesc.base[0]; aDesc := aDesc.base[0]
+			END;
+			IF fDesc # aDesc THEN RETURN END
+		ELSIF fTyp >= anyPtrTyp THEN	(* pointer *)
+			IF fTyp = ptrTyp THEN
+				fDesc := fDesc.base[0];	(* formal base type *)
+				IF (mode = value) & (TypOf(fDesc) = recTyp) THEN
+					IF (aTyp # ptrTyp) & (aTyp # anyPtrTyp) THEN RETURN END;
+					SYSTEM.GET(padr, i); SYSTEM.GET(i - 4, aDesc);	(* dynamic record type *)
+					aDesc := aDesc.base[fDesc.id DIV 16 MOD 16]	(* projection *)
+				ELSE
+					IF aTyp # ptrTyp THEN RETURN END;
+					aDesc := aDesc.base[0];	(* actual base type *)
+					WHILE (TypOf(fDesc) = arrTyp) & (TypOf(aDesc) = arrTyp) DO
+						IF fDesc.size # aDesc.size THEN RETURN END;
+						fDesc := fDesc.base[0]; aDesc := aDesc.base[0]
+					END
+				END;
+				IF fDesc # aDesc THEN RETURN END
+			ELSIF fTyp = anyPtrTyp THEN
+				IF (aTyp # anyPtrTyp) & ((aTyp # ptrTyp) OR (TypOf(aDesc.base[0]) # recTyp)) THEN RETURN END
+			ELSIF fTyp = procTyp THEN
+				IF (aTyp # procTyp) OR (fDesc.size # aDesc.size) THEN RETURN END	(* same fingerprint *)
+			END;
+			IF mode = value THEN SYSTEM.GET(padr, data[n]); INC(n)
+			ELSE data[n] := padr; INC(n)
+			END
+		ELSE	(* basic type *)
+			IF fTyp # aTyp THEN RETURN END;
+			IF mode = value THEN
+				CASE SizeOf(par) OF
+				| 1: SYSTEM.GET(padr, b); data[n] := b; INC(n)
+				| 2: SYSTEM.GET(padr, s); data[n] := s; INC(n)
+				| 4: SYSTEM.GET(padr, i); data[n] := i; INC(n)
+				| 8: SYSTEM.GET(padr, l); data[n] := SHORT(l); INC(n); data[n] := SHORT(l DIV 100000000L); INC(n)
+				END
+			ELSE	(* var par *)
+				data[n] := padr; INC(n)
+			END
+		END;
+		ok := TRUE
+	END PutParam;
+	
+	PROCEDURE GetResult (ret: LONGINT; VAR dest: Item; sig: Kernel.Signature;
+											OUT ok: BOOLEAN);	(* assign return value *)
+		VAR x: Item; i: INTEGER; s: SHORTINT; b: BYTE;
+	BEGIN
+		ASSERT(dest.ext = NIL, 31);
+		ASSERT(dest.ptr # NIL, 20);
+		ASSERT(dest.obj = varObj, 22);
+		ASSERT((dest.mod = NIL) OR (dest.mod.refcnt >= 0), 23);
+		ASSERT(dest.vis = exported, 27);
+		x.desc := sig.retStruct; x.typ := TypOf(x.desc);
+		x.obj := varObj; x.ptr := dummy;
+		CASE TypOf(sig.retStruct) OF
+		| boolTyp, sCharTyp, byteTyp: b := SHORT(SHORT(SHORT(ret))); x.adr := SYSTEM.ADR(b);
+		| charTyp, sIntTyp: s := SHORT(SHORT(ret)); x.adr := SYSTEM.ADR(s);
+		| longTyp, realTyp: x.adr := SYSTEM.ADR(ret);
+		| intTyp, sRealTyp, setTyp, anyPtrTyp, procTyp, ptrTyp: i := SHORT(ret); x.adr := SYSTEM.ADR(i);
+		END;
+		Copy(x, dest, ok)
+	END GetResult;
+	
+	PROCEDURE (VAR proc: Item) ParamCall* (IN par: ARRAY OF Item; VAR dest: Item;
+																			OUT ok: BOOLEAN), NEW;
+		VAR n, p, adr, padr: INTEGER; ret: LONGINT;
+			data: ARRAY 256 OF INTEGER; sig: Kernel.Signature;
+	BEGIN
+		ok := TRUE;
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		IF proc.obj = procObj THEN adr := proc.adr
+		ELSE ASSERT((proc.obj = varObj) & (proc.typ = procTyp), 22);
+			SYSTEM.GET(proc.adr, adr);
+			IF adr = 0 THEN ok := FALSE; RETURN END
+		END;
+		ASSERT((proc.mod = NIL) OR (proc.mod.refcnt >= 0), 23);
+		sig := SignatureOf(proc);
+		ASSERT((sig # NIL) & (LEN(par) >= sig.num), 32);
+		n := 0; p := 0;
+		WHILE ok & (p < sig.num) DO	(* check & assign parameters *)
+			PutParam(par[p], sig, p, data, n, ok);
+			INC(p)
+		END;
+		IF ok THEN
+			ret := Kernel.Call(adr, sig, data, n);
+			IF sig.retStruct # NIL THEN GetResult(ret, dest, sig, ok) END
+		END
+	END ParamCall;
+
+	PROCEDURE (VAR proc: Item) ParamCallVal* (IN par: ARRAY OF POINTER TO Value; VAR dest: Value;
+																			OUT ok: BOOLEAN), NEW;
+		TYPE IP = POINTER TO Item;
+		VAR n, p, adr, padr: INTEGER; ret: LONGINT; x: Item;
+			data: ARRAY 256 OF INTEGER; sig: Kernel.Signature;
+	BEGIN
+		ok := TRUE;
+		ASSERT(proc.ext = NIL, 31);
+		ASSERT(proc.ptr # NIL, 20);
+		IF proc.obj = procObj THEN adr := proc.adr
+		ELSE ASSERT((proc.obj = varObj) & (proc.typ = procTyp), 22);
+			SYSTEM.GET(proc.adr, adr);
+			IF adr = 0 THEN ok := FALSE; RETURN END
+		END;
+		ASSERT((proc.mod = NIL) OR (proc.mod.refcnt >= 0), 23);
+		sig := SignatureOf(proc);
+		ASSERT((sig # NIL) & (LEN(par) >= sig.num), 32);
+		n := 0; p := 0;
+		WHILE ok & (p < sig.num) DO	(* check & assign parameters *)
+			IF par[p] IS IP THEN
+				PutParam(par[p](IP)^, sig, p, data, n, ok)
+			ELSE
+				ValToItem(par[p]^, x);
+				PutParam(x, sig, p, data, n, ok)
+			END;
+			INC(p)
+		END;
+		IF ok THEN
+			ret := Kernel.Call(adr, sig, data, n);
+			IF sig.retStruct # NIL THEN
+				WITH dest: Item DO
+					GetResult(ret, dest, sig, ok)
+				ELSE
+					ValToItem(dest, x);
+					GetResult(ret, x, sig, ok)
+				END
+			END
+		END
+	END ParamCallVal;
+
 	PROCEDURE (VAR var: Item) GetVal* (VAR x: Value; OUT ok: BOOLEAN), NEW;
 		VAR xi: Item;
 	BEGIN

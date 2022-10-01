@@ -94,8 +94,8 @@ MODULE DevCPV486;
 		
 		ParOff = 8;
 		interfaceSize = 16;	(* SIZE(Kernel.Interface) *)
-		addRefFP = 48H;	(* fingerprint of AddRef and Release procedures *)
-		intHandlerFP = 12A8H;	(* fingerprint of InterfaceTrapHandler *)
+		addRefFP = 4E27A847H;	(* fingerprint of AddRef and Release procedures *)
+		intHandlerFP = 24B0EAE3H;	(* fingerprint of InterfaceTrapHandler *)
 		numPreIntProc = 2;
 		
 		
@@ -1366,7 +1366,7 @@ MODULE DevCPV486;
 	PROCEDURE CaseStat (n: DevCPT.Node; VAR end: DevCPL486.Label);
 		VAR x: DevCPL486.Item; case, lab: DevCPT.Node; low, high, tab: INTEGER; else, this: DevCPL486.Label;
 	BEGIN
-		expr(n.left, x, {}, {mem, con, short}); else := DevCPL486.NewLbl;
+		expr(n.left, x, {}, {mem, con, short, float, stk}); else := DevCPL486.NewLbl;
 		IF (n.right.right # NIL) & (n.right.right.class = Ngoto) THEN	(* jump to goto optimization *)
 			CasePart(n.right.link, x, else, FALSE); DevCPC486.Free(x);
 			n.right.right.right.conval.intval2 := else; sequential := FALSE
@@ -1399,8 +1399,8 @@ MODULE DevCPV486;
 	BEGIN
 		Check(n, u, s);
 		IF (nofel.mode = Reg) & (nofel.reg IN u) THEN DevCPC486.Push(nofel) END;
-		IF nofel.mode = Stk THEN DevCPC486.Pop(nofel, Int32, {}, {}) END;
 		expr(n, len, {}, {mem, short});
+		IF nofel.mode = Stk THEN DevCPC486.Pop(nofel, Int32, {}, {}) END;
 		IF len.mode = Stk THEN DevCPC486.Pop(len, Int32, {}, {}) END;
 		DevCPC486.MulDim(len, nofel, fact, dimtyp);
 		IF n.link # NIL THEN

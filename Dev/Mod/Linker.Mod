@@ -6,7 +6,10 @@ MODULE DevLinker;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	changes	= ""
+	changes	= "
+	- 20070123, bh, support for more general resource files
+	- 20120531, BdT, changes for correction of Microsoft AppLocker problem
+	"
 	issues	= ""
 
 **)
@@ -17,8 +20,8 @@ MODULE DevLinker;
 		Log := StdLog, DevCommanders;
 	
 	CONST
-		NewRecFP = 00000048H;
-		NewArrFP = 000004A8H;
+		NewRecFP = 4E27A847H;
+		NewArrFP = 76068C78H;
 
 		ImageBase = 00400000H;
 		ObjAlign = 1000H;
@@ -78,6 +81,7 @@ MODULE DevLinker;
 		resList: Resource;
 		numType, resHSize: INTEGER;
 		numId: ARRAY 32 OF INTEGER;
+		rsrcName: ARRAY 16 OF CHAR;	(* name of resource file *)
 		firstExp, lastExp: Export;
 		entryPos, isPos, fixPos, himpPos, hexpPos, hrsrcPos, termPos: INTEGER;
 		codePos, dataPos, conPos, rsrcPos, impPos, expPos, relPos: INTEGER;
@@ -91,11 +95,11 @@ MODULE DevLinker;
 		ntab: POINTER TO ARRAY OF SHORTCHAR;
 	
 	PROCEDURE TimeStamp (): INTEGER;	(* seconds since 1.1.1970 00:00:00 *)
-		VAR a: INTEGER; t: Dates.Time; d: Dates.Date;
+		VAR a: INTEGER; t: Dates.Time; d, epoch: Dates.Date;
 	BEGIN
-		Dates.GetTime(t); Dates.GetDate(d);
-		a := 12 * (d.year - 70) + d.month - 3;
-		a := a DIV 12 * 1461 DIV 4 + (a MOD 12 * 153 + 2) DIV 5 + d.day + 59;
+		Dates.GetUTCTime(t); Dates.GetUTCDate(d);
+		epoch.year := 1970; epoch.month := 1; epoch.day := 1;
+		a := Dates.Day(d) - Dates.Day(epoch);
 		RETURN ((a * 24 + t.hour) * 60 + t.minute) * 60 + t.second;
 	END TimeStamp;
 
@@ -482,7 +486,7 @@ MODULE DevLinker;
 	END MenuSize;
 	
 	PROCEDURE PrepResources;
-		VAR res, r, s: Resource; n, i, j, t, x: INTEGER;
+		VAR res, r, s: Resource; n, i, j, t, x: INTEGER; loc: Files.Locator;
 	BEGIN
 		r := resList;
 		WHILE r # NIL DO
@@ -496,7 +500,7 @@ MODULE DevLinker;
 				r.file := ThisResFile(r.name);
 				IF r.file # NIL THEN
 					IF r.typ = -1 THEN	(* typelib *)
-						r.typ := 0; r.size := r.file.Length(); r.pos := 0
+						r.typ := 0; r.size := r.file.Length(); r.pos := 0; rsrcName := "TYPELIB"
 					ELSE
 						R := r.file.NewReader(R); R.SetPos(0); Read2(n);
 						IF n = 4D42H THEN	(* bitmap *)
@@ -523,12 +527,20 @@ MODULE DevLinker;
 								Read4(n);
 								IF (x = 0) & (n = 20H) THEN	(* resource file *)
 									Read4(n); Read4(n); Read4(n); Read4(n); Read4(n); Read4(n);	(* 32 bit marker *)
-									Read4(r.size); Read4(n); Read2(i); Read2(j);
-									IF (i = 0FFFFH) & (j >= 4) & ((j <= 11) OR (j = 16)) THEN
-										r.typ := j; r.pos := n + 32;
+									Read4(r.size); Read4(n); Read2(i); 
+									IF i = 0FFFFH THEN
+										Read2(j);
+										IF (j >= 4) & ((j <= 11) OR (j = 16)) THEN
+											r.typ := j; r.pos := n + 32;
+										ELSE
+											W.WriteString(r.name); W.WriteString(": invalid type"); W.WriteLn;
+											Log.text.Append(Log.buf); error := TRUE
+										END
 									ELSE
-										W.WriteString(r.name); W.WriteString(": invalid type"); W.WriteLn;
-										Log.text.Append(Log.buf); error := TRUE
+										j := 0;
+										WHILE i # 0 DO rsrcName[j] := CHR(i); INC(j); Read2(i) END;
+										rsrcName[j] := 0X;
+										r.typ := 0; r.pos := n + 32
 									END
 								ELSE
 									W.WriteString(r.name); W.WriteString(": unknown type"); W.WriteLn;
@@ -569,7 +581,7 @@ MODULE DevLinker;
 				END
 			END
 		END;
-		IF numId[0] > 0 THEN INC(n, 16) END;
+		IF numId[0] > 0 THEN INC(n, (LEN(rsrcName$) + 1) * 2) END;
 		RsrcSize := resHSize + n;
 		ImpRva := RsrcRva + (RsrcSize + (ObjAlign - 1)) DIV ObjAlign * ObjAlign
 	END PrepResources;
@@ -605,7 +617,7 @@ MODULE DevLinker;
 			Write2(838EH); (* program image flags *)
 		END;
 		Write2(10BH); (* magic (normal ececutable file) *)
-		Write2(0301H); (* linker version !!! *)
+		Write2(0502H); (* linker version !!! *) (* BdT: if value < 2.5, Microsoft AppLocker may report "not a valid Win32 application" *)
 		Write4(CodeSize); (* code size *)
 		Write4(ConSize); (* initialized data size *)
 		Write4(DataSize); (* uninitialized data size *)
@@ -756,31 +768,22 @@ MODULE DevLinker;
 							Get(mod, p + 4, adr); INC(adr, CodeBase + mod.ca)
 						END;
 						IF f # fp THEN
-							IF opt = -1 THEN adr := -1
-							ELSE
-								W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
-								W.WriteString(" imported from "); W.WriteString(impg.name);
-								W.WriteString(" has wrong fprint"); W.WriteLn; error := TRUE
-							END
-						END
-					ELSE
-						IF opt = -1 THEN adr := -1
-						ELSE
 							W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
 							W.WriteString(" imported from "); W.WriteString(impg.name);
-							W.WriteString(" has wrong class"); W.WriteLn; error := TRUE
+							W.WriteString(" has wrong fprint"); W.WriteLn; error := TRUE
 						END
+					ELSE
+						W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+						W.WriteString(" imported from "); W.WriteString(impg.name);
+						W.WriteString(" has wrong class"); W.WriteLn; error := TRUE
 					END;
 					RETURN
 				END;
 				IF och < nch THEN l := n + 1 ELSE r := n END
 			END;
-			IF opt = -1 THEN adr := -1
-			ELSE
-				W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
-				W.WriteString(" not found (imported from "); W.WriteString(impg.name);
-				W.WriteChar(")"); W.WriteLn; error := TRUE
-			END
+			W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+			W.WriteString(" not found (imported from "); W.WriteString(impg.name);
+			W.WriteChar(")"); W.WriteLn; error := TRUE
 		ELSE (* anonymous type *)
 			WHILE len > 0 DO
 				Get(mod, dir + 4, f); Get(mod, dir + 8, id);
@@ -824,24 +827,7 @@ MODULE DevLinker;
 			INC(n); INC(dir, 16)
 		END
 	END CollectExports;
-(*
-	PROCEDURE WriteTermCode (m: Module; i: INTEGER);
-		VAR x: INTEGER;
-	BEGIN
-		IF m # NIL THEN
-			IF m.dll THEN WriteTermCode(m.next, i)
-			ELSE
-				IF isStatic THEN WriteTermCode(m.next, i + 1) END;
-				SearchObj(m, terminator, mProc, terminatorFP, -1, x);
-				IF x = -1 THEN
-					WriteCh(005X); Write4(0)	(* add EAX, 0 (nop) *)
-				ELSE
-					WriteCh(0E8X); Write4(x - lastTerm + 5 * i - CodeBase)	(* call term *)
-				END
-			END
-		END
-	END WriteTermCode;
-*)	
+
 	PROCEDURE WriteTermCode (m: Module; i: INTEGER);
 		VAR x: INTEGER;
 	BEGIN
@@ -932,7 +918,7 @@ MODULE DevLinker;
 				RNum(x);
 				IF x # 0 THEN
 					IF (mod # kernel) & (kernel # NIL) THEN
-						SearchObj(kernel, newRec, mProc, NewRecFP, 0, a); Fixup0(x, a)
+						SearchObj(kernel, newRec, mProc, NewRecFP, -1, a); Fixup0(x, a)
 					ELSE
 						W.WriteSString("no kernel"); W.WriteLn;
 						Log.text.Append(Log.buf); error := TRUE; RETURN
@@ -941,7 +927,7 @@ MODULE DevLinker;
 				RNum(x);
 				IF x # 0 THEN
 					IF (mod # kernel) & (kernel # NIL) THEN
-						SearchObj(kernel, newArr, mProc, NewArrFP, 0, a); Fixup0(x, a)
+						SearchObj(kernel, newArr, mProc, NewArrFP, -1, a); Fixup0(x, a)
 					ELSE
 						W.WriteSString("no kernel"); W.WriteLn;
 						Log.text.Append(Log.buf); error := TRUE; RETURN
@@ -1055,9 +1041,9 @@ MODULE DevLinker;
 	END WriteMenu;
 	
 	PROCEDURE WriteResource;
-		VAR r, s: Resource; i, t, a, x, n: INTEGER;
+		VAR r, s: Resource; i, t, a, x, n, nlen, nsize: INTEGER;
 	BEGIN
-		IF numId[0] > 0 THEN WriteResDir(1, numType - 1)
+		IF numId[0] > 0 THEN WriteResDir(1, numType - 1); nlen := LEN(rsrcName$); nsize := (nlen + 1) * 2;
 		ELSE WriteResDir(0, numType)
 		END;
 		a := 16 + 8 * numType; t := 0;
@@ -1079,7 +1065,7 @@ MODULE DevLinker;
 			WHILE r # s DO WriteResDirEntry(r.lid, a, FALSE); INC(a, 16); r := r.next END
 		END;
 		ASSERT(a = resHSize);
-		IF numId[0] > 0 THEN INC(a, 16) END;	(* TYPELIB string *)
+		IF numId[0] > 0 THEN INC(a, nsize) END;	(* TYPELIB string *)
 		r := resList;
 		WHILE r # NIL DO
 			Write4(a + RsrcRva); INC(a, (r.size + 3) DIV 4 * 4);
@@ -1089,8 +1075,8 @@ MODULE DevLinker;
 		END;
 		ASSERT(a = RsrcSize);
 		IF numId[0] > 0 THEN
-			Write2(7); Write2(ORD("T")); Write2(ORD("Y")); Write2(ORD("P"));
-			Write2(ORD("E")); Write2(ORD("L")); Write2(ORD("I")); Write2(ORD("B"))
+			Write2(nlen); i := 0;
+			WHILE rsrcName[i] # 0X DO Write2(ORD(rsrcName[i])); INC(i) END
 		END;
 		r := resList;
 		WHILE r # NIL DO

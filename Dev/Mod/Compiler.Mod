@@ -23,7 +23,7 @@ MODULE DevCompiler;
 		(* compiler options: *)
 		checks = 0; allchecks = 1; assert = 2; obj = 3; ref = 4; allref = 5; srcpos = 6; reallib = 7; signatures = 8;
 		hint = 29; oberon = 30; errorTrap = 31;
-		defopt = {checks, assert, obj, ref, allref, srcpos (*, signatures *)};
+		defopt = {checks, assert, obj, ref, allref, srcpos, signatures};
 
 		(* additional scanner types *)
 		import = 100; module = 101; semicolon = 102; becomes = 103; comEnd = 104;

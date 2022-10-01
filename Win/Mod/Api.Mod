@@ -19,7 +19,6 @@ MODULE WinApi ["KERNEL32.dll"];
 		PtrWSTR* = POINTER TO ARRAY [untagged] OF CHAR;
 		DATE* = REAL;
 		CY* = LONGINT;
-		FILETIME* = LONGINT;
 		ACCESS_MASK* = SET;
 		SECURITY_INFORMATION* = SET;
 
@@ -30,6 +29,7 @@ MODULE WinApi ["KERNEL32.dll"];
 		HKEY_USERS* = 80000003H;
 		
 	CONST (* macros *)
+		INVALID_HANDLE_VALUE* = -1;
 		MAX_PATH* = 260 (* {2, 8} *);
 		NULL* = 0 (* {} *);
 		FALSE* = 0 (* {} *);
@@ -3890,7 +3890,8 @@ MODULE WinApi ["KERNEL32.dll"];
 		WM_SYSKEYUP* = 261 (* {0, 2, 8} *);
 		WM_SYSCHAR* = 262 (* {1, 2, 8} *);
 		WM_SYSDEADCHAR* = 263 (* {0..2, 8} *);
-		WM_KEYLAST* = 264 (* {3, 8} *);
+		WM_UNICHAR* = 265;
+		WM_KEYLAST* = 265;
 		WM_IME_STARTCOMPOSITION* = 269 (* {0, 2, 3, 8} *);
 		WM_IME_ENDCOMPOSITION* = 270 (* {1..3, 8} *);
 		WM_IME_COMPOSITION* = 271 (* {0..3, 8} *);
@@ -3925,6 +3926,7 @@ MODULE WinApi ["KERNEL32.dll"];
 		WM_MBUTTONUP* = 520 (* {3, 9} *);
 		WM_MBUTTONDBLCLK* = 521 (* {0, 3, 9} *);
 		WM_MOUSELAST* = 521 (* {0, 3, 9} *);
+		WM_MOUSEWHEEL* = 522;
 		WM_PARENTNOTIFY* = 528 (* {4, 9} *);
 		MENULOOP_WINDOW* = 0 (* {} *);
 		MENULOOP_POPUP* = 1 (* {0} *);
@@ -3996,6 +3998,7 @@ MODULE WinApi ["KERNEL32.dll"];
 		WMSZ_BOTTOM* = 6 (* {1, 2} *);
 		WMSZ_BOTTOMLEFT* = 7 (* {0..2} *);
 		WMSZ_BOTTOMRIGHT* = 8 (* {3} *);
+		UNICODE_NOCHAR* = 0FFFFH;
 		ST_BEGINSWP* = 0 (* {} *);
 		ST_ENDSWP* = 1 (* {0} *);
 		HTERROR* = -2 (* {1..31} *);
@@ -7398,11 +7401,11 @@ MODULE WinApi ["KERNEL32.dll"];
 			dwThreadId*: INTEGER;
 		END;
 		PtrPROCESS_INFORMATION* = POINTER TO PROCESS_INFORMATION;
-		_FILETIME* = RECORD [untagged]
+		FILETIME* = RECORD [untagged]
 			dwLowDateTime*: INTEGER;
 			dwHighDateTime*: INTEGER;
 		END;
-		Ptr_FILETIME* = POINTER TO _FILETIME;
+		PtrFILETIME* = POINTER TO FILETIME;
 		SYSTEMTIME* = RECORD [untagged]
 			wYear*: SHORTINT;
 			wMonth*: SHORTINT;
@@ -8601,9 +8604,15 @@ MODULE WinApi ["KERNEL32.dll"];
 		END;
 		PtrPIXELFORMATDESCRIPTOR* = POINTER TO PIXELFORMATDESCRIPTOR;
 		OLDFONTENUMPROC* = PROCEDURE (): INTEGER;
-		FONTENUMPROCA* = PROCEDURE (): INTEGER;
-		FONTENUMPROCW* = PROCEDURE (): INTEGER;
-		FONTENUMPROC* = PROCEDURE (): INTEGER;
+		FONTENUMPROCA* = PROCEDURE (VAR [nil] lplf: LOGFONTA; VAR [nil] lptm:TEXTMETRICA; dwType, lParam: INTEGER): INTEGER;
+		FONTENUMPROCW* = PROCEDURE (VAR [nil] lplf: LOGFONTW; VAR [nil] lptm:TEXTMETRICW; dwType, lParam: INTEGER): INTEGER;
+		FONTENUMPROC* = PROCEDURE (VAR [nil] lplf: LOGFONTA; VAR [nil] lptm:TEXTMETRICA; dwType, lParam: INTEGER): INTEGER;
+		FONTENUMPROCEXA* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTEXA; VAR [nil] lpntm: NEWTEXTMETRICEXA; FontType, lParam: INTEGER): INTEGER;
+		FONTENUMPROCEXW* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTEXW; VAR [nil] lpntm: NEWTEXTMETRICEXW; FontType, lParam: INTEGER): INTEGER;
+		FONTENUMPROCEX* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTEXA; VAR [nil] lpntm: NEWTEXTMETRICEXA; FontType, lParam: INTEGER): INTEGER;
+		NEWFONTENUMPROCA* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTA; VAR [nil] lpntm: NEWTEXTMETRICA; FontType, lParam: INTEGER): INTEGER;
+		NEWFONTENUMPROCW* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTW; VAR [nil] lpntm: NEWTEXTMETRICW; FontType, lParam: INTEGER): INTEGER;
+		NEWFONTENUMPROC* = PROCEDURE (VAR [nil] lpelf: ENUMLOGFONTA; VAR [nil] lpntm: NEWTEXTMETRICA; FontType, lParam: INTEGER): INTEGER;
 		GOBJENUMPROC* = PROCEDURE (): INTEGER;
 		LINEDDAPROC* = PROCEDURE (): INTEGER;
 		FNDEVMODE* = PROCEDURE (p0: HWND; p1: HMODULE; VAR [nil] p2: DEVMODEA; p3: PtrSTR; p4: PtrSTR; VAR [nil] p5: DEVMODEA; p6: PtrSTR; p7: INTEGER): INTEGER;
@@ -8633,7 +8642,7 @@ MODULE WinApi ["KERNEL32.dll"];
 			caRedGreenTint*: SHORTINT;
 		END;
 		PtrCOLORADJUSTMENT* = POINTER TO COLORADJUSTMENT;
-		ABORTPROC* = PROCEDURE (): INTEGER;
+		ABORTPROC* = PROCEDURE (hdc: HDC; iError: INTEGER): INTEGER;
 		DOCINFOA* = RECORD [untagged]
 			cbSize*: INTEGER;
 			lpszDocName*: PtrSTR;
@@ -11381,7 +11390,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE SetProcessAffinityMask* (hProcess: HANDLE; dwProcessAffinityMask: INTEGER): BOOL;
 	(*END SetProcessAffinityMask;*)
 
-	PROCEDURE GetProcessTimes* (hProcess: HANDLE; VAR [nil] lpCreationTime: _FILETIME; VAR [nil] lpExitTime: _FILETIME; VAR [nil] lpKernelTime: _FILETIME; VAR [nil] lpUserTime: _FILETIME): BOOL;
+	PROCEDURE GetProcessTimes* (hProcess: HANDLE; VAR [nil] lpCreationTime: FILETIME; VAR [nil] lpExitTime: FILETIME; VAR [nil] lpKernelTime: FILETIME; VAR [nil] lpUserTime: FILETIME): BOOL;
 	(*END GetProcessTimes;*)
 
 	PROCEDURE GetProcessWorkingSetSize* (hProcess: HANDLE; VAR [nil] lpMinimumWorkingSetSize: INTEGER; VAR [nil] lpMaximumWorkingSetSize: INTEGER): BOOL;
@@ -11480,7 +11489,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE GetThreadPriority* (hThread: HANDLE): INTEGER;
 	(*END GetThreadPriority;*)
 
-	PROCEDURE GetThreadTimes* (hThread: HANDLE; VAR [nil] lpCreationTime: _FILETIME; VAR [nil] lpExitTime: _FILETIME; VAR [nil] lpKernelTime: _FILETIME; VAR [nil] lpUserTime: _FILETIME): BOOL;
+	PROCEDURE GetThreadTimes* (hThread: HANDLE; VAR [nil] lpCreationTime: FILETIME; VAR [nil] lpExitTime: FILETIME; VAR [nil] lpKernelTime: FILETIME; VAR [nil] lpUserTime: FILETIME): BOOL;
 	(*END GetThreadTimes;*)
 
 	PROCEDURE ExitThread* (dwExitCode: INTEGER);
@@ -11660,10 +11669,10 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE FindClose* (hFindFile: HANDLE): BOOL;
 	(*END FindClose;*)
 
-	PROCEDURE GetFileTime* (hFile: HANDLE; VAR [nil] lpCreationTime: _FILETIME; VAR [nil] lpLastAccessTime: _FILETIME; VAR [nil] lpLastWriteTime: _FILETIME): BOOL;
+	PROCEDURE GetFileTime* (hFile: HANDLE; VAR [nil] lpCreationTime: FILETIME; VAR [nil] lpLastAccessTime: FILETIME; VAR [nil] lpLastWriteTime: FILETIME): BOOL;
 	(*END GetFileTime;*)
 
-	PROCEDURE SetFileTime* (hFile: HANDLE; lpCreationTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; lpLastAccessTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; lpLastWriteTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME): BOOL;
+	PROCEDURE SetFileTime* (hFile: HANDLE; VAR [nil] lpCreationTime: FILETIME; VAR [nil] lpLastAccessTime: FILETIME; VAR [nil] lpLastWriteTime: FILETIME): BOOL;
 	(*END SetFileTime;*)
 
 	PROCEDURE CloseHandle* (hObject: HANDLE): BOOL;
@@ -11774,7 +11783,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE GetSystemTime* (VAR [nil] lpSystemTime: SYSTEMTIME);
 	(*END GetSystemTime;*)
 
-	PROCEDURE GetSystemTimeAsFileTime* (VAR [nil] lpSystemTimeAsFileTime: _FILETIME);
+	PROCEDURE GetSystemTimeAsFileTime* (VAR [nil] lpSystemTimeAsFileTime: FILETIME);
 	(*END GetSystemTimeAsFileTime;*)
 
 	PROCEDURE SetSystemTime* (VAR [nil] lpSystemTime: SYSTEMTIME): BOOL;
@@ -11798,25 +11807,25 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE SetTimeZoneInformation* (VAR [nil] lpTimeZoneInformation: TIME_ZONE_INFORMATION): BOOL;
 	(*END SetTimeZoneInformation;*)
 
-	PROCEDURE SystemTimeToFileTime* (VAR [nil] lpSystemTime: SYSTEMTIME; VAR [nil] lpFileTime: _FILETIME): BOOL;
+	PROCEDURE SystemTimeToFileTime* (VAR [nil] lpSystemTime: SYSTEMTIME; VAR [nil] lpFileTime: FILETIME): BOOL;
 	(*END SystemTimeToFileTime;*)
 
-	PROCEDURE FileTimeToLocalFileTime* (lpFileTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; VAR [nil] lpLocalFileTime: _FILETIME): BOOL;
+	PROCEDURE FileTimeToLocalFileTime* (VAR [nil] lpFileTime: FILETIME; VAR [nil] lpLocalFileTime: FILETIME): BOOL;
 	(*END FileTimeToLocalFileTime;*)
 
-	PROCEDURE LocalFileTimeToFileTime* (lpLocalFileTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; VAR [nil] lpFileTime: _FILETIME): BOOL;
+	PROCEDURE LocalFileTimeToFileTime* (VAR [nil] lpLocalFileTime: FILETIME; VAR [nil] lpFileTime: FILETIME): BOOL;
 	(*END LocalFileTimeToFileTime;*)
 
-	PROCEDURE FileTimeToSystemTime* (lpFileTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; VAR [nil] lpSystemTime: SYSTEMTIME): BOOL;
+	PROCEDURE FileTimeToSystemTime* (VAR [nil] lpFileTime: FILETIME; VAR [nil] lpSystemTime: SYSTEMTIME): BOOL;
 	(*END FileTimeToSystemTime;*)
 
-	PROCEDURE CompareFileTime* (lpFileTime1: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; lpFileTime2: POINTER TO (*?*) ARRAY [untagged] OF FILETIME): INTEGER;
+	PROCEDURE CompareFileTime* (VAR [nil] lpFileTime1: FILETIME; VAR [nil] lpFileTime2: FILETIME): INTEGER;
 	(*END CompareFileTime;*)
 
-	PROCEDURE FileTimeToDosDateTime* (lpFileTime: POINTER TO (*?*) ARRAY [untagged] OF FILETIME; VAR [nil] lpFatDate: SHORTINT; VAR [nil] lpFatTime: SHORTINT): BOOL;
+	PROCEDURE FileTimeToDosDateTime* (VAR [nil] lpFileTime: FILETIME; VAR [nil] lpFatDate: SHORTINT; VAR [nil] lpFatTime: SHORTINT): BOOL;
 	(*END FileTimeToDosDateTime;*)
 
-	PROCEDURE DosDateTimeToFileTime* (wFatDate: SHORTINT; wFatTime: SHORTINT; VAR [nil] lpFileTime: _FILETIME): BOOL;
+	PROCEDURE DosDateTimeToFileTime* (wFatDate: SHORTINT; wFatTime: SHORTINT; VAR [nil] lpFileTime: FILETIME): BOOL;
 	(*END DosDateTimeToFileTime;*)
 
 	PROCEDURE GetTickCount* (): INTEGER;
@@ -12569,13 +12578,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RemoveDirectory* ["RemoveDirectoryA"] (lpPathName: PtrSTR): BOOL;
 	(*END RemoveDirectory;*)
 
-	PROCEDURE GetFullPathNameA* (lpFileName: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrSTR): INTEGER;
+	PROCEDURE GetFullPathNameA* (lpFileName: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; VAR [nil] lpFilePart: PtrSTR): INTEGER;
 	(*END GetFullPathNameA;*)
 
-	PROCEDURE GetFullPathNameW* (lpFileName: PtrWSTR; nBufferLength: INTEGER; lpBuffer: PtrWSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrWSTR): INTEGER;
+	PROCEDURE GetFullPathNameW* (lpFileName: PtrWSTR; nBufferLength: INTEGER; lpBuffer: PtrWSTR; VAR [nil] lpFilePart: PtrWSTR): INTEGER;
 	(*END GetFullPathNameW;*)
 
-	PROCEDURE GetFullPathName* ["GetFullPathNameA"] (lpFileName: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrSTR): INTEGER;
+	PROCEDURE GetFullPathName* ["GetFullPathNameA"] (lpFileName: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; VAR [nil] lpFilePart: PtrSTR): INTEGER;
 	(*END GetFullPathName;*)
 
 	PROCEDURE DefineDosDeviceA* (dwFlags: SET; lpDeviceName: PtrSTR; lpTargetPath: PtrSTR): BOOL;
@@ -12668,10 +12677,10 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE FindNextFile* ["FindNextFileA"] (hFindFile: HANDLE; VAR [nil] lpFindFileData: WIN32_FIND_DATAA): BOOL;
 	(*END FindNextFile;*)
 
-	PROCEDURE SearchPathA* (lpPath: PtrSTR; lpFileName: PtrSTR; lpExtension: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrSTR): INTEGER;
+	PROCEDURE SearchPathA* (lpPath: PtrSTR; lpFileName: PtrSTR; lpExtension: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; VAR [nil] lpFilePart: PtrSTR): INTEGER;
 	(*END SearchPathA;*)
 
-	PROCEDURE SearchPathW* (lpPath: PtrWSTR; lpFileName: PtrWSTR; lpExtension: PtrWSTR; nBufferLength: INTEGER; lpBuffer: PtrWSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrWSTR): INTEGER;
+	PROCEDURE SearchPathW* (lpPath: PtrWSTR; lpFileName: PtrWSTR; lpExtension: PtrWSTR; nBufferLength: INTEGER; lpBuffer: PtrWSTR; VAR [nil] lpFilePart: PtrWSTR): INTEGER;
 	(*END SearchPathW;*)
 
 	PROCEDURE SearchPath* ["SearchPathA"] (lpPath: PtrSTR; lpFileName: PtrSTR; lpExtension: PtrSTR; nBufferLength: INTEGER; lpBuffer: PtrSTR; lpFilePart: POINTER TO (*?*) ARRAY [untagged] OF PtrSTR): INTEGER;
@@ -13508,22 +13517,22 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE Ellipse* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; p4: INTEGER): BOOL;
 	(*END Ellipse;*)
 
-	PROCEDURE EnumFontFamiliesExA* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: LOGFONTA; p2: FONTENUMPROCA; p3: LPARAM; p4: INTEGER): INTEGER;
+	PROCEDURE EnumFontFamiliesExA* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: LOGFONTA; p2: FONTENUMPROCEXA; p3: LPARAM; p4: INTEGER): INTEGER;
 	(*END EnumFontFamiliesExA;*)
 
-	PROCEDURE EnumFontFamiliesExW* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: LOGFONTW; p2: FONTENUMPROCW; p3: LPARAM; p4: INTEGER): INTEGER;
+	PROCEDURE EnumFontFamiliesExW* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: LOGFONTW; p2: FONTENUMPROCEXW; p3: LPARAM; p4: INTEGER): INTEGER;
 	(*END EnumFontFamiliesExW;*)
 
-	PROCEDURE EnumFontFamiliesEx* ["GDI32.dll", "EnumFontFamiliesExA"] (p0: HDC; VAR [nil] p1: LOGFONTA; p2: FONTENUMPROCA; p3: LPARAM; p4: INTEGER): INTEGER;
+	PROCEDURE EnumFontFamiliesEx* ["GDI32.dll", "EnumFontFamiliesExA"] (p0: HDC; VAR [nil] p1: LOGFONTA; p2: FONTENUMPROCEXA; p3: LPARAM; p4: INTEGER): INTEGER;
 	(*END EnumFontFamiliesEx;*)
 
-	PROCEDURE EnumFontFamiliesA* ["GDI32.dll", ""] (p0: HDC; p1: PtrSTR; p2: FONTENUMPROCA; p3: LPARAM): INTEGER;
+	PROCEDURE EnumFontFamiliesA* ["GDI32.dll", ""] (p0: HDC; p1: PtrSTR; p2: NEWFONTENUMPROCA; p3: LPARAM): INTEGER;
 	(*END EnumFontFamiliesA;*)
 
-	PROCEDURE EnumFontFamiliesW* ["GDI32.dll", ""] (p0: HDC; p1: PtrWSTR; p2: FONTENUMPROCW; p3: LPARAM): INTEGER;
+	PROCEDURE EnumFontFamiliesW* ["GDI32.dll", ""] (p0: HDC; p1: PtrWSTR; p2: NEWFONTENUMPROCW; p3: LPARAM): INTEGER;
 	(*END EnumFontFamiliesW;*)
 
-	PROCEDURE EnumFontFamilies* ["GDI32.dll", "EnumFontFamiliesA"] (p0: HDC; p1: PtrSTR; p2: FONTENUMPROCA; p3: LPARAM): INTEGER;
+	PROCEDURE EnumFontFamilies* ["GDI32.dll", "EnumFontFamiliesA"] (p0: HDC; p1: PtrSTR; p2: NEWFONTENUMPROCA; p3: LPARAM): INTEGER;
 	(*END EnumFontFamilies;*)
 
 	PROCEDURE EnumFontsA* ["GDI32.dll", ""] (p0: HDC; p1: PtrSTR; p2: FONTENUMPROCA; p3: LPARAM): INTEGER;
@@ -13673,7 +13682,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE GetMapMode* ["GDI32.dll", ""] (p0: HDC): INTEGER;
 	(*END GetMapMode;*)
 
-	PROCEDURE GetMetaFileBitsEx* ["GDI32.dll", ""] (p0: HMETAFILE; p1: INTEGER; p2: PtrVoid): INTEGER;
+	PROCEDURE GetMetaFileBitsEx* ["GDI32.dll", ""] (p0: HMETAFILE; p1: INTEGER; VAR [nil] p2: ARRAY [untagged] OF BYTE): INTEGER;
 	(*END GetMetaFileBitsEx;*)
 
 	PROCEDURE GetMetaFileA* ["GDI32.dll", ""] (p0: PtrSTR): HMETAFILE;
@@ -13934,7 +13943,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE SetMapMode* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER): INTEGER;
 	(*END SetMapMode;*)
 
-	PROCEDURE SetMetaFileBitsEx* ["GDI32.dll", ""] (p0: INTEGER; VAR [nil] p1: SHORTCHAR): HMETAFILE;
+	PROCEDURE SetMetaFileBitsEx* ["GDI32.dll", ""] (p0: INTEGER; VAR [nil] p1: ARRAY [untagged] OF BYTE): HMETAFILE;
 	(*END SetMetaFileBitsEx;*)
 
 	PROCEDURE SetPaletteEntries* ["GDI32.dll", ""] (p0: HPALETTE; p1: INTEGER; p2: INTEGER; VAR [nil] p3: PALETTEENTRY): INTEGER;
@@ -15482,7 +15491,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE CheckMenuItem* ["USER32.dll", ""] (hMenu: HMENU; uIDCheckItem: INTEGER; uCheck: SET): INTEGER;
 	(*END CheckMenuItem;*)
 
-	PROCEDURE EnableMenuItem* ["USER32.dll", ""] (hMenu: HMENU; uIDEnableItem: INTEGER; uEnable: INTEGER): BOOL;
+	PROCEDURE EnableMenuItem* ["USER32.dll", ""] (hMenu: HMENU; uIDEnableItem: INTEGER; uEnable: SET): BOOL;
 	(*END EnableMenuItem;*)
 
 	PROCEDURE GetSubMenu* ["USER32.dll", ""] (hMenu: HMENU; nPos: INTEGER): HMENU;
@@ -16841,13 +16850,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegEnumKey* ["ADVAPI32.dll", "RegEnumKeyA"] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; cbName: INTEGER): INTEGER;
 	(*END RegEnumKey;*)
 
-	PROCEDURE RegEnumKeyExA* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegEnumKeyExA* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegEnumKeyExA;*)
 
-	PROCEDURE RegEnumKeyExW* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrWSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrWSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegEnumKeyExW* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrWSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrWSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegEnumKeyExW;*)
 
-	PROCEDURE RegEnumKeyEx* ["ADVAPI32.dll", "RegEnumKeyExA"] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegEnumKeyEx* ["ADVAPI32.dll", "RegEnumKeyExA"] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegEnumKeyEx;*)
 
 	PROCEDURE RegEnumValueA* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
@@ -16895,13 +16904,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegOpenKeyEx* ["ADVAPI32.dll", "RegOpenKeyExA"] (hKey: HKEY; lpSubKey: PtrSTR; ulOptions: INTEGER; samDesired: REGSAM; VAR [nil] phkResult: HKEY): INTEGER;
 	(*END RegOpenKeyEx;*)
 
-	PROCEDURE RegQueryInfoKeyA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegQueryInfoKeyA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegQueryInfoKeyA;*)
 
-	PROCEDURE RegQueryInfoKeyW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpClass: PtrWSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegQueryInfoKeyW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpClass: PtrWSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegQueryInfoKeyW;*)
 
-	PROCEDURE RegQueryInfoKey* ["ADVAPI32.dll", "RegQueryInfoKeyA"] (hKey: HKEY; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: _FILETIME): INTEGER;
+	PROCEDURE RegQueryInfoKey* ["ADVAPI32.dll", "RegQueryInfoKeyA"] (hKey: HKEY; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpcSubKeys: INTEGER; VAR [nil] lpcbMaxSubKeyLen: INTEGER; VAR [nil] lpcbMaxClassLen: INTEGER; VAR [nil] lpcValues: INTEGER; VAR [nil] lpcbMaxValueNameLen: INTEGER; VAR [nil] lpcbMaxValueLen: INTEGER; VAR [nil] lpcbSecurityDescriptor: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegQueryInfoKey;*)
 
 	PROCEDURE RegQueryValueA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpSubKey: PtrSTR; lpValue: PtrSTR; VAR [nil] lpcbValue: INTEGER): INTEGER;
@@ -16973,7 +16982,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegSetValueExA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; VAR [nil] lpData: SHORTCHAR; cbData: INTEGER): INTEGER;
 	(*END RegSetValueExA;*)
 
-	PROCEDURE RegSetValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; Reserved: INTEGER; dwType: INTEGER; VAR [nil] lpData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE RegSetValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; Reserved: INTEGER; dwType: INTEGER; lpData: PtrWSTR; cbData: INTEGER): INTEGER;
 	(*END RegSetValueExW;*)
 
 	PROCEDURE RegSetValueEx* ["ADVAPI32.dll", "RegSetValueExA"] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; VAR [nil] lpData: SHORTCHAR; cbData: INTEGER): INTEGER;
@@ -17899,5 +17908,8 @@ MODULE WinApi ["KERNEL32.dll"];
 
 	PROCEDURE UnlockServiceDatabase* ["ADVAPI32.dll", ""] (ScLock: SC_LOCK): BOOL;
 	(*END UnlockServiceDatabase;*)
+
+	PROCEDURE RtlUnwind* (targetFrame: PtrVoid; targetIp: INTEGER; excpRec: PtrEXCEPTION_RECORD; retVal: INTEGER);
+	(*END RtlUnwind;*)
 
 END WinApi.

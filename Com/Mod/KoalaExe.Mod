@@ -41,7 +41,7 @@ MODULE ComKoalaExe;
 	BEGIN
 		DEC(objects);
 		IF objects = 0 THEN
-			res := WinApi.PostMessage(mainWnd, WinApi.WM_CLOSE, 0, 0);
+			res := WinApi.PostMessageW(mainWnd, WinApi.WM_CLOSE, 0, 0);
 		END
 	END RELEASE;
 	
@@ -71,7 +71,7 @@ MODULE ComKoalaExe;
 	BEGIN
 		IF lock # 0 THEN INC(locks) ELSE DEC(locks) END;
 		IF locks = 0 THEN
-			res := WinApi.PostMessage(mainWnd, WinApi.WM_CLOSE, 0, 0);
+			res := WinApi.PostMessageW(mainWnd, WinApi.WM_CLOSE, 0, 0);
 		END;
 		RETURN WinApi.S_OK
 	END LockServer;
@@ -89,18 +89,18 @@ MODULE ComKoalaExe;
 			RETURN 0
 		ELSIF message = WinApi.WM_PAINT THEN
 			dc := WinApi.BeginPaint(wnd, ps);
-			res := WinApi.TextOut(dc, 50, 50, "Koala Server", 12);
+			res := WinApi.TextOutW(dc, 50, 50, "Koala Server", 12);
 			res := WinApi.EndPaint(wnd, ps);
 			RETURN 0
 		END;
-		RETURN WinApi.DefWindowProc(wnd, message, wParam, lParam)
+		RETURN WinApi.DefWindowProcW(wnd, message, wParam, lParam)
 	END WndHandler;
 	
 	PROCEDURE OpenWindow;
-		VAR class: WinApi.WNDCLASS; res: INTEGER;
+		VAR class: WinApi.WNDCLASSW; res: INTEGER;
 	BEGIN
-		class.hCursor := WinApi.LoadCursor(0, S.VAL(WinApi.PtrSTR, WinApi.IDC_ARROW));
-		class.hIcon := WinApi.LoadIcon(0, S.VAL(WinApi.PtrSTR, WinApi.IDI_APPLICATION));
+		class.hCursor := WinApi.LoadCursorW(0, S.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW));
+		class.hIcon := WinApi.LoadIconW(0, S.VAL(WinApi.PtrWSTR, WinApi.IDI_APPLICATION));
 		class.lpszMenuName := NIL;
 		class.lpszClassName := "Koala";
 		class.hbrBackground := WinApi.GetStockObject(WinApi.WHITE_BRUSH);
@@ -109,8 +109,8 @@ MODULE ComKoalaExe;
 		class.lpfnWndProc := WndHandler;
 		class.cbClsExtra := 0;
 		class.cbWndExtra := 0;
-		res := WinApi.RegisterClass(class);
-		mainWnd := WinApi.CreateWindowEx({}, "Koala", "Koala",
+		res := WinApi.RegisterClassW(class);
+		mainWnd := WinApi.CreateWindowExW({}, "Koala", "Koala",
 														WinApi.WS_OVERLAPPEDWINDOW,
 														WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
 														WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
@@ -125,15 +125,15 @@ MODULE ComKoalaExe;
 	PROCEDURE Main;
 		VAR msg: WinApi.MSG; res: COM.RESULT; factory: KoalaFactory; token: INTEGER;
 	BEGIN
-		instance := WinApi.GetModuleHandle(NIL);
+		instance := WinApi.GetModuleHandleW(NIL);
 		res := WinOle.CoInitialize(0);
 		NEW(factory);
 		res := WinOle.CoRegisterClassObject(KoalaId, factory,
 					WinOle.CLSCTX_LOCAL_SERVER, WinOle.REGCLS_MULTIPLEUSE, token);
 		OpenWindow;
-		WHILE WinApi.GetMessage(msg, 0, 0, 0) # 0 DO
+		WHILE WinApi.GetMessageW(msg, 0, 0, 0) # 0 DO
 			res := WinApi.TranslateMessage(msg);
-			res := WinApi.DispatchMessage(msg);
+			res := WinApi.DispatchMessageW(msg);
 		END;
 		res := WinOle.CoRevokeClassObject(token);
 		WinOle.CoUninitialize;

@@ -309,8 +309,6 @@ Pre
 d # NIL	20
 
 Post
-stdDir' = NIL
-	stdDir = d
 dir = d
 
 PROCEDURE Focus (): View

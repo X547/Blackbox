@@ -30,6 +30,8 @@ MODULE Printers;
 	PROCEDURE (p: Printer) OpenPage* (), NEW, ABSTRACT;
 	PROCEDURE (p: Printer) ClosePage* (), NEW, ABSTRACT;
 
+	PROCEDURE (p: Printer) SetOrientation* (landscape: BOOLEAN), NEW, EMPTY;
+
 	PROCEDURE (p: Printer) InitPort* (port: Ports.Port), NEW;
 	BEGIN
 		ASSERT((p.port = NIL) OR (p.port = port), 20);

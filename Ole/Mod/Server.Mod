@@ -164,7 +164,7 @@ MODULE OleServer;
 	
 	PROCEDURE CheckVerb (v: Views.View; n: INTEGER; VAR pvm: Properties.PollVerbMsg);
 	BEGIN
-		pvm.verb := SHORT(n);
+		pvm.verb := n;
 		pvm.label := "";
 		pvm.disabled := FALSE; pvm.checked := FALSE;
 		IF v # NIL THEN Views.HandlePropMsg(v, pvm) END
@@ -338,7 +338,7 @@ MODULE OleServer;
 	
 	PROCEDURE (this: Object) InPlaceMenuCreate (), NEW;
 		VAR menu: WinApi.HMENU; res, i, p, n: INTEGER; widths: WinOle.OLEMENUGROUPWIDTHS;
-			m: HostMenus.Menu; ss: ARRAY 256 OF SHORTCHAR;
+			m: HostMenus.Menu;
 	BEGIN
 		IF debug THEN Log.String("create menu"); Log.Ln END;
 		i := 0; WHILE i < 6 DO widths.width[i] := 0; INC(i) END;
@@ -350,8 +350,8 @@ MODULE OleServer;
 			INC(i, widths.width[p]); INC(p); n := 0;
 			WHILE (m # NIL) & (m.class = p) DO
 				IF (m.type = "") OR (m.type = this.menuType) THEN
-					ss := SHORT(m.menu$);
-					res := WinApi.InsertMenu(menu, i, WinApi.MF_POPUP + WinApi.MF_BYPOSITION, m.menuH, ss);
+					res := WinApi.InsertMenuW(menu, i, WinApi.MF_POPUP + WinApi.MF_BYPOSITION,
+															m.menuH, m.menu);
 					INC(n); INC(i)
 				END;
 				m := m.next;
@@ -560,7 +560,7 @@ MODULE OleServer;
 			RETURN WinApi.OLEOBJ_S_INVALIDVERB
 		END;
 		dvm.frame := NIL;
-		dvm.verb := SHORT(verb);
+		dvm.verb := verb;
 		Views.HandlePropMsg(this.view, dvm);
 		RETURN WinApi.S_OK
 	END CustomVerb;
@@ -1208,8 +1208,8 @@ MODULE OleServer;
 				r := Min(d.pos.right + bw, d.clip.right);
 				b := Min(d.pos.bottom + bw, d.clip.bottom);
 				style := {30};	(* child *)
-				wnd := WinApi.CreateWindowEx({}, "Oberon Dlg", "", style, l, t, r - l, b - t,
-															d.host, 0, WinApi.GetModuleHandle(NIL), SYSTEM.VAL(INTEGER, w));
+				wnd := WinApi.CreateWindowExW({}, "Oberon Dlg", "", style, l, t, r - l, b - t,
+															d.host, 0, WinApi.GetModuleHandleW(NIL), SYSTEM.VAL(INTEGER, w));
 				ASSERT(wnd # 0, 100);
 				dc := WinApi.GetDC(wnd);
 				w.port(HostPorts.Port).SetDC(dc, wnd);
@@ -1227,7 +1227,7 @@ MODULE OleServer;
 				res := WinApi.ShowWindow(wnd, 1);
 				d.obj.unit := u;
 				IF debug THEN
-					style := SYSTEM.VAL(SET, WinApi.GetWindowLong(wnd, -16));
+					style := SYSTEM.VAL(SET, WinApi.GetWindowLongW(wnd, -16));
 					Log.Set(style);
 					Log.Ln
 				END;				

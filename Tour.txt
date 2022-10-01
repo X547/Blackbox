@@ -65,7 +65,7 @@ The following module defines a simple record variable to be used for a data entr
 
 	
 
-After compiling the module, a dialog box can be created for the items exported by ObxAddress1 using command New Form... from menu Controls. Just enter the name ObxAddress1 into the Link field, and then click on the Create button. The type information extracted by the compiler is available to the BlackBox Component Builder at run-time, and is used to automatically create a data-entry form for the record declaration above. The form has a simple default layout. This default layout may be edited, and then opened as a dialog using the Open as Aux Dialog command in menu Controls.
+After compiling the module, a dialog box can be created for the items exported by ObxAddress1 using command New Form... from menu Controls. Just enter the name ObxAddress1 into the Link field, and then click on the OK button. The type information extracted by the compiler is available to the BlackBox Component Builder at run-time, and is used to automatically create a data-entry form for the record declaration above. The form has a simple default layout. This default layout may be edited, and then opened as a dialog using the Open as Aux Dialog command in menu Controls.
 
 The text entry fields and the checkbox of the form are directly linked to the fields name, city, country, customer  and update of the record ObxAddress1.adr. The button is linked to the command OpenText, i.e., to the procedure exported by module ObxAddress1. Clicking the button causes procedure OpenText to be called. As a result, a new text is created; a textual report based on the variable adr is written to this text; a new text view is created; and the view is opened in a window, displaying the report.
 

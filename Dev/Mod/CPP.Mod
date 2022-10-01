@@ -474,12 +474,14 @@ MODULE DevCPP;
 				(* typ.pbused is set when parameter type name is parsed *)
 				WHILE first # NIL DO
 					SetType (NIL, first, typ, name);
-					IF ODD(sys DIV newBit) THEN
-						IF (newPar # NIL) OR (typ.form # Pointer) OR (typ.sysflag # interface) THEN err(168) END;
-						newPar := first
-					ELSIF ODD(sys DIV iidBit) THEN
-						IF (iidPar # NIL) OR (typ # DevCPT.guidtyp) THEN err(168) END;
-						iidPar := first
+					IF DevCPM.com IN DevCPM.options THEN
+						IF ODD(sys DIV newBit) THEN
+							IF (newPar # NIL) OR (typ.form # Pointer) OR (typ.sysflag # interface) THEN err(168) END;
+							newPar := first
+						ELSIF ODD(sys DIV iidBit) THEN
+							IF (iidPar # NIL) OR (typ # DevCPT.guidtyp) THEN err(168) END;
+							iidPar := first
+						END
 					END;
 					first := first.link
 				END;
@@ -744,10 +746,8 @@ MODULE DevCPP;
 			DevCPS.Get(sym); PointerType(typ)
 		ELSIF sym = procedure THEN
 			DevCPS.Get(sym); typ := DevCPT.NewStr(ProcTyp, Basic);
-(*
 			CheckSysFlag(typ.sysflag, DevCPM.GetProcTypSysFlag);
 			typ.untagged := typ.sysflag > 0;
-*)
 			IF sym = lparen THEN
 				DevCPS.Get(sym); DevCPT.OpenScope(level, NIL);
 				FormalParameters(typ.link, typ.BaseTyp, tname); SetType(typ, NIL, typ.BaseTyp, tname); DevCPT.CloseScope
@@ -987,7 +987,7 @@ MODULE DevCPP;
 			END ;
 			DevCPS.Get(sym)
 		ELSIF sym = string THEN
-			x := DevCPB.NewString(DevCPS.str, DevCPS.intval);
+			x := DevCPB.NewString(DevCPS.str, DevCPS.lstr, DevCPS.intval);
 			DevCPS.Get(sym)
 		ELSIF sym = nil THEN
 			x := DevCPB.Nil(); DevCPS.Get(sym)
@@ -1258,13 +1258,13 @@ MODULE DevCPP;
 		
 	BEGIN lab := NIL; lastlab := NIL;
 		LOOP ConstExpression(x); f := x.typ.form;
-			IF f IN intSet + charSet THEN  xval := x.conval.intval
+			IF f IN {Int8..Int32} + charSet THEN  xval := x.conval.intval
 			ELSE err(61); xval := 1
 			END ;
-			IF (f IN intSet) # (LabelForm IN intSet) THEN err(60) END;
+			IF (f IN {Int8..Int32}) # (LabelForm IN {Int8..Int32}) THEN err(60) END;
 			IF sym = upto THEN
 				DevCPS.Get(sym); ConstExpression(y); yval := y.conval.intval;
-				IF (y.typ.form IN intSet) # (LabelForm IN intSet) THEN err(60) END;
+				IF (y.typ.form IN {Int8..Int32}) # (LabelForm IN {Int8..Int32}) THEN err(60) END;
 				IF yval < xval THEN err(63); yval := xval END
 			ELSE yval := xval
 			END ;
@@ -1301,7 +1301,7 @@ MODULE DevCPP;
 			Expression(x);
 			IF (x.class = Ntype) OR (x.class = Nproc) THEN err(126)
 			ELSIF x.typ.form = Int64 THEN err(260)
-			ELSIF ~(x.typ.form IN intSet + charSet) THEN err(125)
+			ELSIF ~(x.typ.form IN {Int8..Int32} + charSet) THEN err(125)
 			END ;
 			CheckSym(of); cases := NIL; lastcase := NIL; root := NIL;
 			low := MAX(INTEGER); high := MIN(INTEGER);

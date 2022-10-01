@@ -28,6 +28,7 @@ MODULE DevCPS;
 	VAR
 		name*: DevCPT.Name;
 		str*: DevCPT.String;
+		lstr*: POINTER TO ARRAY OF CHAR;
 		numtyp*: SHORTINT; (* 1 = char, 2 = integer, 4 = real, 5 = int64, 6 = real32, 7 = real64 *)
 		intval*: INTEGER;	(* integer value or string length (incl. 0X) *)
 		realval*: REAL;
@@ -62,23 +63,33 @@ MODULE DevCPS;
 	END err;
 	
 	PROCEDURE Str(VAR sym: BYTE);
-		VAR i: SHORTINT; och: SHORTCHAR; s: DevCPT.Name; t: DevCPT.String;
-	BEGIN i := 0; och := ch;
-		LOOP DevCPM.Get(ch);
-			IF ch = och THEN EXIT END ;
-			IF (ch < " ") & (ch # 9X) THEN err(3); EXIT END ;
-			IF i < LEN(s) - 1 THEN s[i] := ch
-			ELSIF i = LEN(s) - 1 THEN s[i] := 0X; NEW(str, 2 * LEN(s)); str^ := s$; str[i] := ch
-			ELSIF i < LEN(str^) - 1 THEN str[i] := ch
-			ELSE t := str; t[i] := 0X; NEW(str, 2 * LEN(t^)); str^ := t^$; str[i] := ch
+		VAR i: SHORTINT; och: SHORTCHAR; lch: CHAR; long: BOOLEAN;
+			s: ARRAY 256 OF CHAR; t: POINTER TO ARRAY OF CHAR;
+	BEGIN i := 0; och := ch; long := FALSE;
+		LOOP DevCPM.GetL(lch);
+			IF lch = och THEN EXIT END ;
+			IF (lch < " ") & (lch # 9X) THEN err(3); EXIT END;
+			IF lch > 0FFX THEN long := TRUE END;
+			IF i < LEN(s) - 1 THEN s[i] := lch
+			ELSIF i = LEN(s) - 1 THEN s[i] := 0X; NEW(lstr, 2 * LEN(s)); lstr^ := s$; lstr[i] := lch
+			ELSIF i < LEN(lstr^) - 1 THEN lstr[i] := lch
+			ELSE t := lstr; t[i] := 0X; NEW(lstr, 2 * LEN(t^)); lstr^ := t^$; lstr[i] := lch
 			END;
 			INC(i)
 		END ;
 		IF i = 1 THEN sym := number; numtyp := 1; intval := ORD(s[0])
 		ELSE
-			sym := string; numtyp := 0; intval := i + 1;
-			IF i < LEN(s) THEN s[i] := 0X; NEW(str, intval); str^ := s$
-			ELSE str[i] := 0X
+			sym := string; numtyp := 0; intval := i + 1; NEW(str, intval);
+			IF long THEN
+				IF i < LEN(s) THEN s[i] := 0X; NEW(lstr, intval); lstr^ := s$
+				ELSE lstr[i] := 0X
+				END;
+				str^ := SHORT(lstr$)
+			ELSE
+				IF i < LEN(s) THEN s[i] := 0X; str^ := SHORT(s$);
+				ELSE lstr[i] := 0X; str^ := SHORT(lstr$)
+				END;
+				lstr := NIL
 			END
 		END;
 		DevCPM.Get(ch)

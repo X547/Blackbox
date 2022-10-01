@@ -15,12 +15,9 @@ MODULE SqlObxTab;
 		
 	
 	CONST
-		protocol = "DtfDriver";	(* single user version of dtF *)
-(*
-		protocol = "DtfCDriver";	(* server version of dtF *)
-*)
-		id = "dtfadm"; password = "dtfadm";
-		datasource = "Default";
+		protocol = "SqlOdbc3";
+		id = ""; password = "";
+		datasource = "Test Database";
 		
 		colWidth = 30 * Ports.mm;
 		minCol = 4;

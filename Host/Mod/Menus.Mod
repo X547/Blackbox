@@ -2,7 +2,7 @@ MODULE HostMenus;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Alexander Iljin, Josef Templ"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -11,8 +11,7 @@ MODULE HostMenus;
 
 **)
 
-	IMPORT Log, Services,
-		SYSTEM, KERNEL32, GDI32, USER32, SHELL32, WinApi, Kernel,
+	IMPORT SYSTEM, WinApi, Kernel, Log, Services,
 		Fonts, Files, Strings, Ports, Stores, Properties, Printers, Dialog,
 		Models, Views, Controllers, Containers, Converters,
 		Documents, Windows, Controls,
@@ -24,11 +23,9 @@ MODULE HostMenus;
 		
 		idlePeriod = 50; (* ms *)
 		gcCycle = 100;
-		titleLen = 64;
 
 		(* hints *)
 		impAll = 0;	(* can import all file types *)
-		expDoc = 1;	(* imported view should be stored as document *)
 
 		HYPHEN = 90X; NBHYPHEN = 91X; SOFTHYPHEN = 0ADX;
 		NBSPACE = 0A0X; NUMSPACE = 8FX;
@@ -59,7 +56,7 @@ MODULE HostMenus;
 			next-: Menu;
 			menu-, type-: Dialog.String;
 			firstItem-, lastItem: Item;
-			menuH-: USER32.Handle;
+			menuH-: WinApi.HANDLE;
 			isWinMenu-: BOOLEAN;
 			isPopup-: BOOLEAN;
 			class-: INTEGER;
@@ -74,22 +71,24 @@ MODULE HostMenus;
 	VAR
 		(* active menu bar state *)
 		menus-: Menu;
-		menuBar-: USER32.Handle;
+		menuBar-: WinApi.HANDLE;
 		lastId-: INTEGER;	(* last custom menu id *)
 		
 		disablePipe*: BOOLEAN;
 		
-		winMenu, popMenu: USER32.Handle;
+		hookApplWinHandler*: PROCEDURE (message, wPar, lPar: INTEGER; VAR res: INTEGER): BOOLEAN;
+			(* hook for handling application specific messages; returns TRUE iff handled *)		
+		winMenu, popMenu: WinApi.HANDLE;
 		type: Stores.TypeName;
 
 		(* new menu bar state *)
-		newMenuBar, newWinMenu, newPopMenu: USER32.Handle;
+		newMenuBar, newWinMenu, newPopMenu: WinApi.HANDLE;
 		nextId: INTEGER;	(* id of next menu item *)
 		firstMenu, lastMenu, curMenu: Menu;
 		
 		gc: INTEGER;	(* how many events must be executed before next GC *)
-		defMenu: USER32.Handle;	(* default menu *)
-		objMenu: USER32.Handle;	(* object menu (verbs) *)
+		defMenu: WinApi.HANDLE;	(* default menu *)
+		objMenu: WinApi.HANDLE;	(* object menu (verbs) *)
 		shiftStr, ctrlStr, spaceStr: Dialog.String;
 		minusCode: INTEGER;	(* key code for "-" *)
 		num: INTEGER;
@@ -99,7 +98,7 @@ MODULE HostMenus;
 		state: INTEGER;
 		
 		openUsed: BOOLEAN;
-		openParam: ARRAY 256 OF SHORTCHAR;
+		openParam: ARRAY 256 OF CHAR;
 		
 		isCont*, isObj*: BOOLEAN;
 		
@@ -145,7 +144,7 @@ MODULE HostMenus;
 		DEC(locks);
 		IF (state = hidden) & (locks = 0) THEN
 			HostClipboard.Flush;
-			res := USER32.DestroyWindow(HostWindows.main)
+			res := WinApi.DestroyWindow(HostWindows.main)
 		END
 	END Unlock;
 	
@@ -317,11 +316,11 @@ MODULE HostMenus;
 
 	(* custom menus *)
 	
-	PROCEDURE AppendMenu (menu: USER32.Handle; id: INTEGER; name: Dialog.String);
-		VAR res: INTEGER; ss: ARRAY 256 OF SHORTCHAR;
+	PROCEDURE AppendMenu (menu: WinApi.HANDLE; id: INTEGER; name: Dialog.String);
+		VAR res: INTEGER;
 	BEGIN
-		Dialog.MapString(name, name); ss := SHORT(name$);
-		res := USER32.AppendMenuA(menu, {}, id, ss)
+		Dialog.MapString(name, name);
+		res := WinApi.AppendMenuW(menu, {}, id, name)
 	END AppendMenu;
 
 	PROCEDURE FirstMenu* (): Menu;
@@ -331,7 +330,7 @@ MODULE HostMenus;
 
 	PROCEDURE DeleteAll*;
 	BEGIN
-		WHILE USER32.RemoveMenu(menuBar, 0, {USER32.MFByPosition}) # 0 DO END;
+		WHILE WinApi.RemoveMenu(menuBar, 0, WinApi.MF_BYPOSITION) # 0 DO END;
 		firstMenu := NIL; lastMenu := NIL; curMenu := NIL;
 		newWinMenu := 0; newPopMenu := 0;
 		nextId := firstId
@@ -341,7 +340,7 @@ MODULE HostMenus;
 	BEGIN
 		ASSERT(curMenu = NIL, 20); ASSERT(menu # "", 21);
 		NEW(curMenu); curMenu.next := NIL;
-		curMenu.menuH := USER32.CreatePopupMenu();
+		curMenu.menuH := WinApi.CreatePopupMenu();
 		(* curMenu.menu := menu$; *)
 		Dialog.MapString(menu, curMenu.menu);
 		curMenu.type := type$;
@@ -368,9 +367,9 @@ MODULE HostMenus;
 	END AddItem;
 
 	PROCEDURE ChangeItem (m: Menu; i: Item; VAR name: Dialog.String);
-		VAR res: INTEGER; old: Dialog.String; so: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; old: Dialog.String;
 	BEGIN
-		res := USER32.GetMenuStringA(m.menuH, i.id, so, LEN(old), {}); old := so$;
+		res := WinApi.GetMenuStringW(m.menuH, i.id, old, LEN(old), {});
 		UpdateHotkey(old, name);
 		SetShortcut(i, name)
 	END ChangeItem;
@@ -387,8 +386,7 @@ MODULE HostMenus;
 	END AddSeparator;
 	
 	PROCEDURE Close*;
-		VAR res, j, n: INTEGER; i: StdDialog.Item;
-			tab: POINTER TO ARRAY OF Dialog.String; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, j, n: INTEGER; i: StdDialog.Item; tab: POINTER TO ARRAY OF Dialog.String;
 	BEGIN
 		ASSERT(curMenu # NIL, 20);
 		i := curMenu.firstItem; n := 0;
@@ -401,14 +399,14 @@ MODULE HostMenus;
 		WHILE i # NIL DO
 			WITH i: Item DO
 				IF i.item^ # "" THEN
-					SetShortcut(i, tab[j]); ss := SHORT(tab[j]$);
+					SetShortcut(i, tab[j]);
 					IF i.id = iObject THEN
-						res := USER32.AppendMenuA(curMenu.menuH, {USER32.MFPopup}, objMenu, ss)
+						res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_POPUP, objMenu, tab[j])
 					ELSE
-						res := USER32.AppendMenuA(curMenu.menuH, {}, i.id, ss)
+						res := WinApi.AppendMenuW(curMenu.menuH, {}, i.id, tab[j])
 					END
 				ELSIF i.next # NIL THEN
-					res := USER32.AppendMenuA(curMenu.menuH, {USER32.MFSeparator}, 0, NIL)
+					res := WinApi.AppendMenuW(curMenu.menuH, WinApi.MF_SEPARATOR, 0, NIL)
 				END
 			END;
 			i := i.next; INC(j)
@@ -423,8 +421,7 @@ MODULE HostMenus;
 	END Close;
 
 	PROCEDURE InitMenus*;
-		VAR m, n, old: Menu; res, i: INTEGER; used, u: SET; tp: Stores.TypeName; oldBar: USER32.Handle;
-			ss: ARRAY 256 OF SHORTCHAR;
+		VAR m, n, old: Menu; res, i: INTEGER; used, u: SET; tp: Stores.TypeName; oldBar: WinApi.HANDLE;
 	BEGIN
 		ASSERT(curMenu = NIL, 20);
 		IF firstMenu # NIL THEN
@@ -454,12 +451,11 @@ MODULE HostMenus;
 				IF m.hot >= 0 THEN SetHotkey(m.menu, m.hot) END;
 				m := m.next
 			END;
-			newMenuBar := USER32.CreateMenu();
+			newMenuBar := WinApi.CreateMenu();
 			m := firstMenu;
 			WHILE m # NIL DO
 				IF ((m.type = "") OR (m.type = type)) & ~m.isPopup THEN
-					ss := SHORT(m.menu$);
-					res := USER32.AppendMenuA(newMenuBar, {USER32.MFPopup}, m.menuH, ss)
+					res := WinApi.AppendMenuW(newMenuBar, WinApi.MF_POPUP, m.menuH, m.menu)
 				END;
 				m := m.next
 			END;
@@ -467,16 +463,16 @@ MODULE HostMenus;
 			winMenu := newWinMenu; popMenu := newPopMenu;
 			old := menus; menus := firstMenu; lastId := nextId;
 			IF UpdateOleMenus # NIL THEN UpdateOleMenus() END;
-			res := USER32.SendMessageA(HostWindows.client, USER32.WMMDISetMenu, menuBar, winMenu);
+			res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDISETMENU, menuBar, winMenu);
 			IF res # 0 THEN
-				res := USER32.DrawMenuBar(HostWindows.main);
+				res := WinApi.DrawMenuBar(HostWindows.main);
 				m := old;
 				WHILE m # NIL DO	(* prevent submenus from being deleted *)
-					WHILE USER32.RemoveMenu(m.menuH, 0, {USER32.MFByPosition}) # 0 DO END;
-					res := USER32.DestroyMenu(m.menuH);
+					WHILE WinApi.RemoveMenu(m.menuH, 0, WinApi.MF_BYPOSITION) # 0 DO END;
+					res := WinApi.DestroyMenu(m.menuH);
 					m := m.next
 				END;
-				res := USER32.DestroyMenu(oldBar)
+				res := WinApi.DestroyMenu(oldBar)
 			END
 		END
 	END InitMenus;
@@ -487,32 +483,32 @@ MODULE HostMenus;
 	PROCEDURE Cascade*;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(HostWindows.client, USER32.WMMDICascade, 2, 0)
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDICASCADE, 2, 0)
 	END Cascade;
 	
 	PROCEDURE TileHorizontal*;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(HostWindows.client, USER32.WMMDITile, 3, 0)
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDITILE, 3, 0)
 	END TileHorizontal;
 	
 	PROCEDURE TileVertical*;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(HostWindows.client, USER32.WMMDITile, 2, 0)
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDITILE, 2, 0)
 	END TileVertical;
 	
 	PROCEDURE ArrangeIcons*;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(HostWindows.client, USER32.WMMDIIconArrange, 0, 0)
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDIICONARRANGE, 0, 0)
 	END ArrangeIcons;
 	
 	
 	PROCEDURE Exit*;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(HostWindows.main, USER32.WMClose, 0, 0)
+		res := WinApi.SendMessageW(HostWindows.main, WinApi.WM_CLOSE, 0, 0)
 	END Exit;
 	
 
@@ -556,14 +552,14 @@ MODULE HostMenus;
 		v := Containers.FocusSingleton();
 		IF v # NIL THEN
 			dvm.frame := Views.ThisFrame(Controllers.FocusFrame(), v);
-			dvm.verb := SHORT(n);
+			dvm.verb := n;
 			Views.HandlePropMsg(v, dvm)
 		END
 	END HandleVerb;
 	
 	PROCEDURE CheckVerb (v: Views.View; n: INTEGER; VAR pvm: Properties.PollVerbMsg);
 	BEGIN
-		pvm.verb := SHORT(n);
+		pvm.verb := n;
 		pvm.label := "";
 		pvm.disabled := FALSE; pvm.checked := FALSE;
 		Views.HandlePropMsg(v, pvm)
@@ -635,7 +631,7 @@ MODULE HostMenus;
 		v := Containers.FocusSingleton();
 		IF v # NIL THEN
 			(* remove old object menu entries *)
-			WHILE USER32.RemoveMenu(objMenu, 0, {USER32.MFByPosition}) # 0 DO END;
+			WHILE WinApi.RemoveMenu(objMenu, 0, WinApi.MF_BYPOSITION) # 0 DO END;
 			(* insert verbs *)
 			i := 0; id := iVerb0;
 			CheckVerb(v, 0, pvm);
@@ -643,7 +639,7 @@ MODULE HostMenus;
 				AppendMenu(objMenu, iObjEdit, "#Host:Edit");
 				AppendMenu(objMenu, iObjOpen, "#Host:Open");
 				IF v.ThisModel() = NIL THEN
-					res := USER32.EnableMenuItem(objMenu, iObjOpen, {USER32.MFGrayed})
+					res := WinApi.EnableMenuItem(objMenu, iObjOpen, WinApi.MF_GRAYED)
 				END;
 				INC(i); INC(id);
 				CheckVerb(v, i, pvm)
@@ -651,8 +647,8 @@ MODULE HostMenus;
 			WHILE (id < firstId) & (pvm.label # "") DO
 				str := pvm.label$;
 				AppendMenu(objMenu, id, str);
-				IF pvm.disabled THEN res := USER32.EnableMenuItem(objMenu, id, {USER32.MFGrayed}) END;
-				IF pvm.checked THEN res := USER32.CheckMenuItem(objMenu, id, {USER32.MFChecked}) END;
+				IF pvm.disabled THEN res := WinApi.EnableMenuItem(objMenu, id, WinApi.MF_GRAYED) END;
+				IF pvm.checked THEN res := WinApi.CheckMenuItem(objMenu, id, WinApi.MF_CHECKED) END;
 				INC(i); INC(id);
 				CheckVerb(v, i, pvm)
 			END;
@@ -670,34 +666,36 @@ MODULE HostMenus;
 		END
 	END ObjectMenuGuard;
 
+	PROCEDURE^ UpdateType ();
+
 	PROCEDURE PopupMenu*;
-		VAR f: Views.Frame; res, x, y: INTEGER; d: BOOLEAN; pt: USER32.Point; m: SET;
-			menu: Menu; menuH: USER32.Handle;
+		VAR f: Views.Frame; res, x, y: INTEGER; d: BOOLEAN; pt: WinApi.POINT; m: SET;
+			menu: Menu; menuH: WinApi.HANDLE;
 	BEGIN
 		f := Controllers.FocusFrame();
 		IF (f # NIL) & f.front THEN
+			UpdateType();
 			menu := menus;
 			WHILE (menu # NIL) & (~menu.isPopup OR (menu.type # "") & (menu.type # type)) DO
 				menu := menu.next
 			END;
 			IF menu # NIL THEN menuH := menu.menuH ELSE menuH := popMenu END;
-			IF USER32.GetCapture() # 0 THEN f.Input(x, y, m, d)
+			IF WinApi.GetCapture() # 0 THEN f.Input(x, y, m, d)
 			ELSE x := (f.l + f.r) DIV 2; y := (f.t + f.b) DIV 2
 			END;
 			pt.x := (x + f.gx) DIV f.unit; pt.y := (y + f.gy) DIV f.unit;
-			res := USER32.ClientToScreen(f.rider(HostPorts.Rider).port.wnd, pt);
-			res := USER32.TrackPopupMenu(menuH, {1}, pt.x, pt.y + 2, 0, HostWindows.main, NIL)
+			res := WinApi.ClientToScreen(f.rider(HostPorts.Rider).port.wnd, pt);
+			res := WinApi.TrackPopupMenu(menuH, {1}, pt.x, pt.y + 2, 0, HostWindows.main, NIL)
 		END
 	END PopupMenu;
 	
 	
 	(* menu dispatching *)
 
-	PROCEDURE PrepareMenu (wnd, menu: USER32.Handle; lParam: INTEGER);
+	PROCEDURE PrepareMenu (wnd, menu: WinApi.HANDLE; lParam: INTEGER);
 	(* this procedure is called after the user has clicked into the menu bar, but before
 		showing the menu; to prepare item enabling/disabling, check marks, etc. *)
 		VAR res, n: INTEGER; failed, ok: BOOLEAN; par: Dialog.Par; m: Menu; i: StdDialog.Item; str: Dialog.String;
-			ss: ARRAY 256 OF SHORTCHAR;
 	BEGIN
 		m := menus;
 		WHILE (m # NIL) & (m.menuH # menu) DO m := m.next END;
@@ -710,42 +708,42 @@ MODULE HostMenus;
 						IF ~failed THEN
 							IF par.label = "-" THEN
 								IF ~i.del THEN
-									res := USER32.RemoveMenu(m.menuH, n, {USER32.MFByPosition});
+									res := WinApi.RemoveMenu(m.menuH, n, WinApi.MF_BYPOSITION);
 									i.del := TRUE
 								END;
 								DEC(n)
 							ELSE
 								IF i.del THEN
-									res := USER32.InsertMenuA(m.menuH, n, {USER32.MFByPosition}, i.id, "+");
+									res := WinApi.InsertMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, "+");
 									i.del := FALSE
 								END;
 								IF par.label # i.item$ THEN
 									Dialog.MapString(par.label, str);
-									ChangeItem(m, i, str); ss := SHORT(str$);
+									ChangeItem(m, i, str);
 									IF i.id = iObject THEN
-										res := USER32.ModifyMenuA(
-											m.menuH, n, {USER32.MFByPosition, USER32.MFPopup}, objMenu, ss)
+										res := WinApi.ModifyMenuW(
+											m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, str)
 									ELSE
-										res := USER32.ModifyMenuA(m.menuH, n, {USER32.MFByPosition}, i.id, ss)
+										res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, str)
 									END
 								END;
 								IF par.disabled THEN
-									res := USER32.EnableMenuItem(
-										m.menuH, n, {USER32.MFByPosition, USER32.MFGrayed})
+									res := WinApi.EnableMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_GRAYED)
 								ELSE
-									res := USER32.EnableMenuItem(m.menuH, n, {USER32.MFByPosition})
+									res := WinApi.EnableMenuItem(m.menuH, n, WinApi.MF_BYPOSITION)
 								END;
-								IF par.checked & ~ODD(USER32.GetMenuState(m.menuH, n, {USER32.MFByPosition}))
+								IF par.checked & ~ODD(WinApi.GetMenuState(m.menuH, n, WinApi.MF_BYPOSITION))
 								THEN
-									res := USER32.CheckMenuItem(
-										m.menuH, n, {USER32.MFByPosition, USER32.MFChecked})
+									res := WinApi.CheckMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_CHECKED)
 								ELSE
-									res := USER32.CheckMenuItem(m.menuH, n, {USER32.MFByPosition})
+									res := WinApi.CheckMenuItem(m.menuH, n, WinApi.MF_BYPOSITION)
 								END;
 								IF ~ok THEN
 									(* mark with "?" !!! *)
-									res := USER32.EnableMenuItem(
-										m.menuH, n, {USER32.MFByPosition, USER32.MFGrayed})
+									res := WinApi.EnableMenuItem(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_GRAYED)
 								END
 							END
 						END
@@ -767,11 +765,11 @@ MODULE HostMenus;
 		END
 	END HandleCustomMenu;
 
-	PROCEDURE MenuCommand (wnd: USER32.Handle; wParam, lParam: INTEGER);
-		VAR res, id: INTEGER; old: USER32.Handle;
+	PROCEDURE MenuCommand (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
+		VAR res, id: INTEGER; old: WinApi.HANDLE;
 	BEGIN
 
-		old := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor]);
+		old := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor]);
 		Dialog.ShowStatus("");
 
 		DEC(gc); id := wParam MOD 65536;
@@ -797,19 +795,19 @@ MODULE HostMenus;
 		END;
 		Properties.IncEra;
 
-		old := USER32.SetCursor(old)
+		old := WinApi.SetCursor(old)
 
 	END MenuCommand;
 	
 	
-	PROCEDURE TranslateAccelerators (VAR msg: USER32.Message; filter: SET; VAR done: BOOLEAN);
+	PROCEDURE TranslateAccelerators (VAR msg: WinApi.MSG; filter: SET; VAR done: BOOLEAN);
 		VAR m: Menu; i: StdDialog.Item; id, code: INTEGER; ctrl, shift, alt: BOOLEAN; ch: CHAR;
 			failed, ok: BOOLEAN; par: Dialog.Par;
 	BEGIN
-		IF (msg.message = USER32.WMSysKeyDown) OR (msg.message = USER32.WMKeyDown) THEN
+		IF (msg.message = WinApi.WM_SYSKEYDOWN) OR (msg.message = WinApi.WM_KEYDOWN) THEN
 			code := msg.wParam; id := 0; ch := 0X;
-			shift := USER32.GetKeyState(10H) < 0;
-			ctrl := USER32.GetKeyState(11H) < 0;
+			shift := WinApi.GetKeyState(10H) < 0;
+			ctrl := WinApi.GetKeyState(11H) < 0;
 			alt := ODD(msg.lParam DIV 20000000H);
 			IF 1 IN filter THEN
 				IF shift & (code = 79H) THEN id := iPopup	(* shift F10 *)
@@ -852,26 +850,25 @@ MODULE HostMenus;
 				END
 			END;
 			IF id # 0 THEN
-				msg.message := USER32.WMCommand; msg.wParam := id + 65536;
-				msg.wnd := HostWindows.main; msg.lParam := 0; done := TRUE
+				msg.message := WinApi.WM_COMMAND; msg.wParam := id + 65536;
+				msg.hwnd := HostWindows.main; msg.lParam := 0; done := TRUE
 			ELSIF ch # 0X THEN
-				msg.message := USER32.WMChar; msg.wParam := ORD(ch); done := TRUE
+				msg.message := WinApi.WM_CHAR; msg.wParam := ORD(ch); done := TRUE
 			END
 		END
 	END TranslateAccelerators;
 
 
-	PROCEDURE OpenFile (VAR name: ARRAY OF SHORTCHAR; l, t, r, b: INTEGER; VAR ok: BOOLEAN);
-		VAR res: INTEGER; loc: Files.Locator; np: KERNEL32.StringPtr; path: HostFiles.FullName;
+	PROCEDURE OpenFile (VAR name: ARRAY OF CHAR; l, t, r, b: INTEGER; VAR ok: BOOLEAN);
+		VAR res: INTEGER; loc: Files.Locator; np: WinApi.PtrWSTR; path: HostFiles.FullName;
 			file: Files.Name; v: Views.View; conv: Converters.Converter; f: Files.File;
-			sp: ARRAY 260 OF SHORTCHAR;
 	BEGIN
 		ok := FALSE;
-		res := KERNEL32.GetFullPathNameA(name, LEN(path), sp, np);
+		res := WinApi.GetFullPathNameW(name, LEN(path), path, np);
 		IF np # NIL THEN
 			file := np^$;
 			IF file # "" THEN
-				DEC(SYSTEM.VAL(INTEGER, np)); np^[0] := 0X; path := sp$;
+				DEC(SYSTEM.VAL(INTEGER, np), 2); np^[0] := 0X;
 				loc := HostFiles.NewLocator(path);
 				f := Files.dir.Old(loc, file, Files.shared);
 				IF f # NIL THEN
@@ -894,12 +891,12 @@ MODULE HostMenus;
 	END OpenFile;
 	
 	PROCEDURE IncludingFileCommandLine(
-		IN line: ARRAY [untagged] OF SHORTCHAR
-	): POINTER TO ARRAY OF SHORTCHAR;
+		IN line: ARRAY [untagged] OF CHAR
+	): POINTER TO ARRAY OF CHAR;
 		VAR f: Files.File; r: Files.Reader; i, len: INTEGER; 
 			header: ARRAY 12 OF BYTE; keyword: ARRAY 12 OF CHAR;
 			b: POINTER TO ARRAY OF BYTE;
-			l2: POINTER TO ARRAY OF SHORTCHAR;
+			l2: POINTER TO ARRAY OF CHAR;
 	BEGIN
 		len := LEN(line$);
 		f := Files.dir.Old(Files.dir.This(cmdLinePath), cmdLineFile, Files.shared);
@@ -911,7 +908,7 @@ MODULE HostMenus;
 				NEW(b, f.Length() - LEN(header)); NEW(l2, LEN(b) + len + 1);
 				r.ReadBytes(b, 0, LEN(b));
 				FOR i := 0 TO len - 1 DO l2[i] := line[i] END; l2[i] := " ";
-				FOR i := 0 TO LEN(b) - 1 DO l2[i + len + 1] := SHORT(CHR(b[i])) END;
+				FOR i := 0 TO LEN(b) - 1 DO l2[i + len + 1] := CHR(b[i] MOD 256) END;
 				RETURN l2
 			END
 		END;
@@ -920,12 +917,11 @@ MODULE HostMenus;
 		RETURN l2
 	END IncludingFileCommandLine;
 	
-	PROCEDURE ReadCommandLine (IN line: ARRAY [untagged] OF SHORTCHAR; open: BOOLEAN);
-		VAR name, opt: ARRAY 260 OF SHORTCHAR; i, l, t, r, b, res: INTEGER;
-			ok: BOOLEAN; ln: ARRAY 260 OF CHAR;
+	PROCEDURE ReadCommandLine (IN line: ARRAY [untagged] OF CHAR; open: BOOLEAN);
+		VAR name, opt: ARRAY 260 OF CHAR; i, l, t, r, b, res: INTEGER; ok: BOOLEAN;
 		
 		PROCEDURE CopyName;
-			VAR ch, tch: SHORTCHAR; j: INTEGER;
+			VAR ch, tch: CHAR; j: INTEGER;
 		BEGIN
 			j := 0; ch := line[i]; tch := " ";
 			WHILE ch = " " DO INC(i); ch := line[i] END;
@@ -948,8 +944,8 @@ MODULE HostMenus;
 		WHILE line[i] > " " DO
 			CopyName;
 			IF opt = "/LOAD" THEN	(* load module *)
-				CopyName; ln := name$;
-				IF open THEN Kernel.LoadMod(ln) END
+				CopyName;
+				IF open THEN Kernel.LoadMod(name) END
 			ELSIF opt = "/USE" THEN	(* use directory *)
 				CopyName	(* working directory: handled in HostFiles *)
 			ELSIF opt = "/P" THEN	(* print file *)	(* to be completed !!! *)
@@ -969,13 +965,15 @@ MODULE HostMenus;
 			ELSIF opt = "/FULLSIZE" THEN
 				HostWindows.fullSize := TRUE
 			ELSIF opt = "/LTRB" THEN	(* window position *)
-				CopyName; ln := name$; Strings.StringToInt(ln, l, res);
-				CopyName; ln := name$; Strings.StringToInt(ln, t, res);
-				CopyName; ln := name$; Strings.StringToInt(ln, r, res);
-				CopyName; ln := name$; Strings.StringToInt(ln, b, res)
+				CopyName; Strings.StringToInt(name, l, res);
+				CopyName; Strings.StringToInt(name, t, res);
+				CopyName; Strings.StringToInt(name, r, res);
+				CopyName; Strings.StringToInt(name, b, res)
 			ELSIF opt = "/LANG" THEN
-				CopyName; ln := name$;
-				IF LEN(ln$) = 2 THEN Strings.ToLower(ln, ln); Dialog.SetLanguage(ln$, Dialog.nonPersistent) END
+				CopyName;
+				IF LEN(name$) = 2 THEN
+					Strings.ToLower(name, name); Dialog.SetLanguage(name$, Dialog.nonPersistent)
+				END
 			ELSIF opt = "/O" THEN	(* open file *)
 				CopyName; openUsed := TRUE;
 				IF open THEN OpenFile(name, l, t, r, b, ok) END;
@@ -991,74 +989,83 @@ MODULE HostMenus;
 		END
 	END ReadCommandLine;
 
-	PROCEDURE DropFiles (wnd: USER32.Handle; wParam, lParam: INTEGER);
-		VAR i, n, res: INTEGER; name: ARRAY 260 OF SHORTCHAR; ok: BOOLEAN;
+	PROCEDURE DropFiles (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
+		VAR i, n, res: INTEGER; name: ARRAY 260 OF CHAR; ok: BOOLEAN;
 	BEGIN
 		IF state = noAppWin THEN RETURN END;
-		n := SHELL32.DragQueryFileA(wParam, -1, name, LEN(name)); i := 0;
+		n := WinApi.DragQueryFileW(wParam, -1, name, LEN(name)); i := 0;
 		WHILE i < n DO
-			res := SHELL32.DragQueryFileA(wParam, i, name, LEN(name));
+			res := WinApi.DragQueryFileW(wParam, i, name, LEN(name));
 			OpenFile(name, 0, 0, 0, 0, ok);
-			IF ok THEN res := USER32.SetForegroundWindow(HostWindows.main) END;
+			IF ok THEN res := WinApi.SetForegroundWindow(HostWindows.main) END;
 			INC(i)
 		END;
-		SHELL32.DragFinish(wParam)
+		WinApi.DragFinish(wParam)
 	END DropFiles;
 
 
 	(* main window handler *)
 	
-	PROCEDURE Quit (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE Quit (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 	BEGIN
 		HostCmds.Quit
 	END Quit;
 	
 	PROCEDURE UpdateMenus;
-		VAR res: INTEGER; m: Menu; old: USER32.Handle; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; m: Menu; old: WinApi.HANDLE;
 	BEGIN
-		old := menuBar; menuBar := USER32.CreateMenu();
+		old := menuBar; menuBar := WinApi.CreateMenu();
 		m := menus;
 		WHILE m # NIL DO
 			IF ((m.type = "") OR (m.type = type)) & ~m.isPopup THEN
-				ss := SHORT(m.menu$);
-				res := USER32.AppendMenuA(menuBar, {USER32.MFPopup},  m.menuH, ss)
+				res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP,  m.menuH, m.menu)
 			END;
 			m := m.next
 		END;
-		res := USER32.SendMessageA(HostWindows.client, USER32.WMMDISetMenu, menuBar, winMenu);
-		res := USER32.DrawMenuBar(HostWindows.main);
-		WHILE USER32.RemoveMenu(old, 0, {USER32.MFByPosition}) # 0 DO END;
-		res := USER32.DestroyMenu(old)
+		res := WinApi.SendMessageW(HostWindows.client, WinApi.WM_MDISETMENU, menuBar, winMenu);
+		res := WinApi.DrawMenuBar(HostWindows.main);
+		WHILE WinApi.RemoveMenu(old, 0, WinApi.MF_BYPOSITION) # 0 DO END;
+		res := WinApi.DestroyMenu(old)
 	END UpdateMenus;
 
-	PROCEDURE TimerTick (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE UpdateType;
 		VAR ops: Controllers.PollOpsMsg;
 	BEGIN
-		IF ~Log.synch THEN Log.FlushBuf END;
-		IF ~HostCFrames.inHandleMouse THEN HostWindows.Idle END;
 		Controllers.SetCurrentPath(Controllers.targetPath);
 		Controllers.PollOps(ops);
-		IF (ops.type # type) & (menus # NIL) & (USER32.GetMenu(HostWindows.main) = menuBar) THEN
+		IF (ops.type # type) & (menus # NIL) & (WinApi.GetMenu(HostWindows.main) = menuBar) THEN
 			type := ops.type$;
 			UpdateMenus
 		END;
 		Controllers.ResetCurrentPath()
+	END UpdateType;
+
+	PROCEDURE TimerTick (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
+		VAR ops: Controllers.PollOpsMsg;
+	BEGIN
+		IF ~Log.synch THEN Log.FlushBuf END;
+		IF ~HostCFrames.inHandleMouse THEN HostWindows.Idle END;
+		UpdateType()
 	END TimerTick;
 	
-	PROCEDURE Flush (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE Flush (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 	BEGIN
 		HostClipboard.Flush
 	END Flush;
 	
 	
-	PROCEDURE [2] ApplWinHandler (wnd: USER32.Handle; message, wParam, lParam: INTEGER): INTEGER;
-		TYPE PPS = POINTER TO USER32.PaintStruct; PR = POINTER TO USER32.Rect;
-		VAR res: INTEGER; w: USER32.Handle; r: USER32.Rect; hit: BOOLEAN;
-			Proc: PROCEDURE; s: ARRAY 256 OF SHORTCHAR;
+	PROCEDURE [2] ApplWinHandler (wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER): INTEGER;
+		TYPE PPS = POINTER TO WinApi.PAINTSTRUCT; PR = POINTER TO WinApi.RECT;
+		VAR res: INTEGER; w: WinApi.HANDLE; r: WinApi.RECT; hit: BOOLEAN;
+			Proc: PROCEDURE; s: ARRAY 256 OF CHAR;
 	BEGIN
 		Controllers.SetCurrentPath(Controllers.targetPath);
+		IF (hookApplWinHandler # NIL) & hookApplWinHandler(message, wParam, lParam, res) THEN
+			Controllers.ResetCurrentPath();
+			RETURN res
+		END;
 		CASE message OF
-		| USER32.WMClose, USER32.WMQueryEndSession:
+		| WinApi.WM_CLOSE, WinApi.WM_QUERYENDSESSION:
 			Kernel.Try(Quit, wnd, wParam, lParam);
 			IF HostCmds.quit THEN
 				HostWindows.SaveWindowState;
@@ -1066,7 +1073,7 @@ MODULE HostMenus;
 					Kernel.Try(Flush, wnd, 0, 0)
 				ELSE
 					state := hidden;
-					res := USER32.ShowWindow(HostWindows.main, USER32.SWHide);
+					res := WinApi.ShowWindow(HostWindows.main, WinApi.SW_HIDE);
 					Controllers.ResetCurrentPath();
 					RETURN 0
 				END
@@ -1074,105 +1081,104 @@ MODULE HostMenus;
 				Controllers.ResetCurrentPath();
 				RETURN 0
 			END
-		| USER32.WMDestroy:
-			USER32.PostQuitMessage(0);
+		| WinApi.WM_DESTROY:
+			WinApi.PostQuitMessage(0);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMActivate:
+		| WinApi.WM_ACTIVATE:
 			IF debug THEN Log.String("activate hack"); Log.Ln END;
-			res := USER32.GetUpdateRect(wnd, r, 1);	(* forces a WMEraseBkGnd msg (fixes bug in Win32s!) *)
 			IF wParam MOD 65536 # 0 THEN HostWindows.ActivateMain(TRUE) END
-		| USER32.WMNCActivate:
+		| WinApi.WM_NCACTIVATE:
 			IF wParam MOD 65536 = 0 THEN HostWindows.ActivateMain(FALSE) END
-		| USER32.WMCommand:
+		| WinApi.WM_COMMAND:
 			Controllers.SetCurrentPath(Controllers.frontPath);
 			(* prevent from parasitic anchors on stack *)
 			res := 0; w := 0; r.left := 0; r.top := 0; r.right := 0; r.bottom := 0; hit := FALSE; 
 			Kernel.Try(MenuCommand, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath()
-		| USER32.WMInitMenuPopup:
+		| WinApi.WM_INITMENUPOPUP:
 			Controllers.SetCurrentPath(Controllers.frontPath);
 			Kernel.Try(PrepareMenu, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath()
 (*
-		| USER32.WMRenderFormat:
+		| WinApi.WMRenderFormat:
 			Kernel.Try(Export, wnd, wParam, 0)
-		| USER32.WMRenderAllFormats:
+		| WinApi.WMRenderAllFormats:
 			Kernel.Try(Export, wnd, 0, 0)
-		| USER32.WMPaintClipboard:
-			pps := SYSTEM.VAL(PPS, KERNEL32.GlobalLock(lParam));
+		| WinApi.WMPaintClipboard:
+			pps := SYSTEM.VAL(PPS, WinApi.GlobalLock(lParam));
 			HostWindows.PaintClipboard(wParam, pps^);
-			res := KERNEL32.GlobalUnlock(lParam);
+			res := WinApi.GlobalUnlock(lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMSizeClipboard:
-			pr := SYSTEM.VAL(PR, KERNEL32.GlobalLock(lParam));
+		| WinApi.WMSizeClipboard:
+			pr := SYSTEM.VAL(PR, WinApi.GlobalLock(lParam));
 			HostWindows.SizeClipboard(wParam, pr.right, pr.bottom);
-			res := KERNEL32.GlobalUnlock(lParam);
+			res := WinApi.GlobalUnlock(lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMHScrollClipboard:
+		| WinApi.WMHScrollClipboard:
 			HostWindows.ScrollClipboard(wParam, lParam MOD 65536, lParam DIV 65536 MOD 65536, FALSE);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMVScrollClipboard:
+		| WinApi.WMVScrollClipboard:
 			HostWindows.ScrollClipboard(wParam, lParam MOD 65536, lParam DIV 65536 MOD 65536, TRUE);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMAskCBFormatName:
+		| WinApi.WMAskCBFormatName:
 			SYSTEM.MOVE(SYSTEM.ADR("BlackBox"), lParam, 9);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMDestroyClipboard:
+		| WinApi.WMDestroyClipboard:
 			HostClipboard.Destroy;
 			Controllers.ResetCurrentPath();
 			RETURN 0
 *)
-		| USER32.WMSysColorChange:
+		| WinApi.WM_SYSCOLORCHANGE:
 			IF HostWindows.ctl3d # 0 THEN
 				SYSTEM.PUT(
-					SYSTEM.ADR(Proc), KERNEL32.GetProcAddress(HostWindows.ctl3d, "Ctl3dColorChange"));
+					SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dColorChange"));
 				IF Proc # NIL THEN Proc() END
 			END;
 			HostPorts.ResetColors;
-			res := GDI32.DeleteObject(HostPorts.dialogBrush);
-			HostPorts.dialogBrush := GDI32.CreateSolidBrush(Ports.dialogBackground)
-		| USER32.WMDropFiles:
+			res := WinApi.DeleteObject(HostPorts.dialogBrush);
+			HostPorts.dialogBrush := WinApi.CreateSolidBrush(Ports.dialogBackground)
+		| WinApi.WM_DROPFILES:
 			Kernel.Try(DropFiles, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMTimer:
+		| WinApi.WM_TIMER:
 			Kernel.Try(TimerTick, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMSize:
+		| WinApi.WM_SIZE:
 			HostWindows.ResizeMainWindow(wParam, lParam MOD 65536, lParam DIV 65536);
 			Controllers.ResetCurrentPath();
 			IF HostWindows.mainHook # NIL THEN
 				HostWindows.mainHook.Resize(lParam MOD 65536, lParam DIV 65536)
 			END;
 			RETURN 0
-		| USER32.WMSetFocus:
+		| WinApi.WM_SETFOCUS:
 			IF HostWindows.mainHook # NIL THEN HostWindows.mainHook.Focus(TRUE) END
-		| USER32.WMKillFocus:
+		| WinApi.WM_KILLFOCUS:
 			IF HostWindows.mainHook # NIL THEN HostWindows.mainHook.Focus(FALSE) END
-		| USER32.WMActivateApp:
+		| WinApi.WM_ACTIVATEAPP:
 			IF HostWindows.mainHook # NIL THEN HostWindows.mainHook.Activate(wParam # 0) END
-		| USER32.WMCtlColorStatic:	(* status bar colors *)
-			res := GDI32.SetTextColor(wParam, HostPorts.dialogTextCol);
-			res := GDI32.SetBkColor(wParam, Ports.dialogBackground);
+		| WinApi.WM_CTLCOLORSTATIC:	(* status bar colors *)
+			res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol);
+			res := WinApi.SetBkColor(wParam, Ports.dialogBackground);
 			Controllers.ResetCurrentPath();
 			RETURN HostPorts.dialogBrush
 		ELSE
 			IF (message = msgId) & ~disablePipe THEN
 				IF (wParam >= 0FFFFC000H) & (wParam < 0) THEN
 					HostWindows.ShowMain; state := running;
-					IF USER32.IsIconic(HostWindows.main) # 0 THEN
-						res := USER32.ShowWindow(HostWindows.main, WinApi.SW_RESTORE)
+					IF WinApi.IsIconic(HostWindows.main) # 0 THEN
+						res := WinApi.ShowWindow(HostWindows.main, WinApi.SW_RESTORE)
 					END;
-					res := WinApi.GlobalGetAtomName(SHORT(wParam), s, LEN(s));
+					res := WinApi.GlobalGetAtomNameW(SHORT(wParam), s, LEN(s));
 					ReadCommandLine(s, TRUE);
-					res := WinApi.GlobalAddAtom("<file_opened>");
+					res := WinApi.GlobalAddAtomW("<file_opened>");
 					res := WinApi.GlobalDeleteAtom(SHORT(wParam))
 				END;
 				Controllers.ResetCurrentPath();
@@ -1180,7 +1186,7 @@ MODULE HostMenus;
 			END
 		END;
 		Controllers.ResetCurrentPath();
-		RETURN USER32.DefFrameProcA(wnd, HostWindows.client, message, wParam, lParam)
+		RETURN WinApi.DefFrameProcW(wnd, HostWindows.client, message, wParam, lParam)
 	END ApplWinHandler;
 
 
@@ -1189,26 +1195,26 @@ MODULE HostMenus;
 	PROCEDURE CreateDefaultMenu;
 		VAR res: INTEGER;
 	BEGIN
-		defMenu := USER32.CreatePopupMenu();
-		res := USER32.AppendMenuA(defMenu, {}, iOpen, "&Open");
-		res := USER32.AppendMenuA(defMenu, {}, iUpdateMenus, "&Menu");
-		res := USER32.AppendMenuA(defMenu, {USER32.MFSeparator}, 0, NIL);
-		res := USER32.AppendMenuA(defMenu, {}, iExit, "E&xit");
-		menuBar := USER32.CreateMenu(); winMenu := 0; popMenu := 0;
-		res := USER32.AppendMenuA(menuBar, {USER32.MFPopup}, defMenu, "&File")
+		defMenu := WinApi.CreatePopupMenu();
+		res := WinApi.AppendMenuW(defMenu, {}, iOpen, "&Open");
+		res := WinApi.AppendMenuW(defMenu, {}, iUpdateMenus, "&Menu");
+		res := WinApi.AppendMenuW(defMenu, WinApi.MF_SEPARATOR, 0, NIL);
+		res := WinApi.AppendMenuW(defMenu, {}, iExit, "E&xit");
+		menuBar := WinApi.CreateMenu(); winMenu := 0; popMenu := 0;
+		res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP, defMenu, "&File")
 	END CreateDefaultMenu;
 	
 	PROCEDURE DestroyMenus;	(* module terminator *)
-		VAR res: INTEGER; m: Menu; Proc: PROCEDURE(i: USER32.Handle);
+		VAR res: INTEGER; m: Menu; Proc: PROCEDURE(i: WinApi.HANDLE);
 	BEGIN
 		m := menus;
 		WHILE m # NIL DO
-			res := USER32.DestroyMenu(m.menuH);
+			res := WinApi.DestroyMenu(m.menuH);
 			m := m.next
 		END;
 		IF HostWindows.ctl3d # 0 THEN
-			SYSTEM.PUT(SYSTEM.ADR(Proc), KERNEL32.GetProcAddress(HostWindows.ctl3d, "Ctl3dUnregister"));
-			IF Proc # NIL THEN Proc(KERNEL32.GetModuleHandleA(NIL)) END
+			SYSTEM.PUT(SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dUnregister"));
+			IF Proc # NIL THEN Proc(WinApi.GetModuleHandleW(NIL)) END
 		END
 	END DestroyMenus;
 	
@@ -1216,20 +1222,20 @@ MODULE HostMenus;
 	(* main event loop *)
 	
 	PROCEDURE Loop;
-		VAR res, n: INTEGER; msg: USER32.Message; done: BOOLEAN; f: SET; w: HostWindows.Window;
+		VAR res, n: INTEGER; msg: WinApi.MSG; done: BOOLEAN; f: SET; w: HostWindows.Window;
 	BEGIN
 		HostWindows.dir.invisible := FALSE;
 		IF state = hidden THEN HostWindows.ShowMain; state := running END;
 		gc := 0; n := 0;
-		WHILE USER32.GetMessageA(msg, 0, 0, 0) # 0 DO
+		WHILE WinApi.GetMessageW(msg, 0, 0, 0) # 0 DO
 			CheckFpu;
-			IF USER32.IsWindowVisible(HostWindows.main) # 0 THEN state := running END;
+			IF WinApi.IsWindowVisible(HostWindows.main) # 0 THEN state := running END;
 			done := FALSE;
 			IF isCont & (TranslateOleKeys1 # NIL) THEN
 				TranslateOleKeys1(SYSTEM.VAL(WinApi.MSG, msg), done)
 			END;
 			IF ~done & ~isObj THEN
-				done := USER32.TranslateMDISysAccel(HostWindows.client, msg) # 0
+				done := WinApi.TranslateMDISysAccel(HostWindows.client, msg) # 0
 			END;
 			IF ~done THEN
 				IF isObj THEN f := {1, 3, 5} ELSIF isCont THEN f := {0, 2, 4} ELSE f := {0..5} END;
@@ -1239,18 +1245,18 @@ MODULE HostMenus;
 				ELSE done := FALSE
 				END;
 				IF ~done THEN
-					res := USER32.TranslateMessage(msg);
-					res := USER32.DispatchMessageA(msg)
+					res := WinApi.TranslateMessage(msg);
+					res := WinApi.DispatchMessageW(msg)
 				END;
 				Services.actionHook.Loop
 			END;
 			INC(n);
-			IF (n > num) OR (USER32.PeekMessageA(msg, 0, 0, 0, 0) = 0) THEN
+			IF (n > num) OR (WinApi.PeekMessageW(msg, 0, 0, 0, 0) = 0) THEN
 				Windows.dir.Update(NIL); n := 0
 			END;
 			IF state = hidden THEN DEC(gc) END;
 			IF ((gc <= 0) OR Kernel.WouldFinalize()) & ~HostCmds.quit THEN
-				msg.message := 0; msg.wnd := 0; msg.wParam := 0; msg.lParam := 0;
+				msg.message := 0; msg.hwnd := 0; msg.wParam := 0; msg.lParam := 0;
 				msg.time := 0; msg.pt.x := 0; msg.pt.y := 0; res := 0;
 				Kernel.Collect; gc := gcCycle
 			END;
@@ -1265,35 +1271,35 @@ MODULE HostMenus;
 	END Loop;
 	
 	PROCEDURE OpenApp*;
-		VAR res: INTEGER; Proc: PROCEDURE(i: USER32.Handle); atom: SHORTINT;
+		VAR res: INTEGER; Proc: PROCEDURE(i: WinApi.HANDLE); atom: SHORTINT;
 	BEGIN
 		IF HostWindows.ctl3d # 0 THEN
 			SYSTEM.PUT(
-				SYSTEM.ADR(Proc), KERNEL32.GetProcAddress(HostWindows.ctl3d, "Ctl3dAutoSubclass"));
-			IF Proc # NIL THEN Proc(KERNEL32.GetModuleHandleA(NIL)) END
+				SYSTEM.ADR(Proc), WinApi.GetProcAddress(HostWindows.ctl3d, "Ctl3dAutoSubclass"));
+			IF Proc # NIL THEN Proc(WinApi.GetModuleHandleW(NIL)) END
 		END;
-		ReadCommandLine(IncludingFileCommandLine(KERNEL32.GetCommandLineA()), FALSE);
+		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), FALSE);
 		IF openUsed THEN
-			atom := WinApi.GlobalAddAtom(openParam);
+			atom := WinApi.GlobalAddAtomW(openParam);
 			IF atom # 0 THEN
-				res := WinApi.SendMessage(-1, msgId, atom, 0);
-				KERNEL32.Sleep(100);
+				res := WinApi.SendMessageW(-1, msgId, atom, 0);
+				WinApi.Sleep(100);
 				res := WinApi.GlobalDeleteAtom(atom);
-				atom := WinApi.GlobalFindAtom("<file_opened>");
+				atom := WinApi.GlobalFindAtomW("<file_opened>");
 				IF atom # 0 THEN res := WinApi.GlobalDeleteAtom(atom) END;
 				IF (atom # 0) OR (res # 0) THEN Kernel.Quit(1) END
 			END
 		END;
 		HostWindows.CreateMainWindows(menuBar, winMenu, ApplWinHandler);
 		IF state = running THEN HostWindows.ShowMain END;
-		res := USER32.SetTimer(HostWindows.main, 1, idlePeriod, NIL);
-		SHELL32.DragAcceptFiles(HostWindows.main, 1);
+		res := WinApi.SetTimer(HostWindows.main, 1, idlePeriod, NIL);
+		WinApi.DragAcceptFiles(HostWindows.main, 1);
 		HostWindows.dir.invisible := TRUE
 	END OpenApp;
 	
 	PROCEDURE Run*;
 	BEGIN
-		ReadCommandLine(IncludingFileCommandLine(KERNEL32.GetCommandLineA()), TRUE);
+		ReadCommandLine(IncludingFileCommandLine(WinApi.GetCommandLineW()), TRUE);
 		Kernel.Start(Loop)
 	END Run;
 
@@ -1305,23 +1311,23 @@ MODULE HostMenus;
 
 
 	PROCEDURE Init;
-		VAR res: INTEGER; s: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; s: ARRAY 256 OF CHAR;
 	BEGIN
 		state := running;
 		HostCmds.quit := FALSE;
 		CreateDefaultMenu;
-		objMenu := USER32.CreatePopupMenu();
+		objMenu := WinApi.CreatePopupMenu();
 		lastId := firstId; menus := NIL;
 		type := "undef";
-		HostPorts.dialogBrush := GDI32.CreateSolidBrush(Ports.dialogBackground);
-		minusCode := USER32.VkKeyScanA("-");
+		HostPorts.dialogBrush := WinApi.CreateSolidBrush(Ports.dialogBackground);
+		minusCode := WinApi.VkKeyScanW("-");
 		IF minusCode # -1 THEN minusCode := minusCode MOD 256 END;
 		Dialog.MapString("#Host:Shift", shiftStr);
 		Dialog.MapString("#Host:Ctrl", ctrlStr);
 		Dialog.MapString("#Host:Space", spaceStr);
 		gc := 0; num := 10;
-		res := KERNEL32.GetModuleFileNameA(0, s, LEN(s));
-		msgId := WinApi.RegisterWindowMessage(s)
+		res := WinApi.GetModuleFileNameW(0, s, LEN(s));
+		msgId := WinApi.RegisterWindowMessageW(s)
 	END Init;
 
 BEGIN

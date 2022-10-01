@@ -195,7 +195,7 @@ Procedures
 Component Pascal procedure calls conform to the StdCall calling convention (parameters pushed from right to left, removed by called procedure). If the CCall convention (parameters removed by caller) is needed for some DLL procedures, the corresponding procedure declaration in the interface module must be decorated with the [ccall] system flag.
 No special handling is required for callback procedures.
 
-For parameters of type POINTER TO T it is often better to use a variable parameter of type T rather than to declare a corresponding pointer type. Declare the VAR parameter with sytem flag [nil] if NIL must be accepted as legal actual parameter.
+For parameters of type POINTER TO T it is often better to use a variable parameter of type T rather than to declare a corresponding pointer type. Declare the VAR parameter with system flag [nil] if NIL must be accepted as legal actual parameter.
 
 Example:
 
@@ -258,33 +258,33 @@ END Ddraw.
 
 MODULE Directone;
 
-IMPORT Type, Util, Out, Ddraw, KERNEL32, SYSTEM;
+IMPORT Out, Ddraw, SYSTEM;
 
 CONST
-  ModuleName  = "Directone";
   DDSCL_EXCLUSIVE = 00000010H;
   DDSCL_FULLSCREEN = 00000001H;
 
 PROCEDURE Initialize;
 VAR 
   Handle, Addr, Res: INTEGER;
-  PDD: PtrDirectDraw;
-  nul: GUID;
+  PDD: Ddraw.PtrDirectDraw;
+  nul: Ddraw.GUID;
 BEGIN
   PDD := NIL;
   nul[0] := 0; nul[1] := 0; nul[2] := 0; nul[3] := 0;
-  Res := Ddraw.DirectDrawCreate( nul, PDD, 0 );
-  Out.String( "Res" );  Out.Int( Res, 8 );  Out.Ln();
-  Res := SYSTEM.VAL( INTEGER, PDD );
-  Out.String( "Res" );  Out.Int( Res, 8 );  Out.Ln();
-  Res := PDD.vtbl.SetCooperativeLevel( PDD, 0, DDSCL_EXCLUSIVE + DDSCL_FULLSCREEN );
-  Out.String( "Res" );  Out.Int( Res, 8 );  Out.Ln();
-  Res := PDD.Release()
+  Res := Ddraw.DirectDrawCreate(nul, PDD, NIL);
+  Out.String("Res");  Out.Int(Res, 8);  Out.Ln();
+  Res := SYSTEM.VAL(INTEGER, PDD);
+  Out.String("Res");  Out.Int(Res, 8);  Out.Ln();
+  Res := PDD.vtbl.SetCooperativeLevel(PDD, 0, DDSCL_EXCLUSIVE + DDSCL_FULLSCREEN);
+  Out.String("Res");  Out.Int(Res, 8);  Out.Ln();
+  Res := PDD.vtbl.Release(PDD)
 END Initialize;
 
 BEGIN
   Initialize
 END Directone.
+
 
 Some important points:
 • COM GUIDs are 128 bit entities, not integers.
@@ -355,7 +355,7 @@ If the window handle is null, the port is a printer port.
 		
 Examples
 
-The following simple DLL definition is a subset of the Windows standard Library GDI32:
+The following simple DLL definition is a subset of the Windows standard library GDI32:
 
 MODULE GDI ["GDI32"];
 

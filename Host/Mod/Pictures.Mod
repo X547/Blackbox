@@ -12,7 +12,7 @@ MODULE HostPictures;
 **)
 
 	IMPORT
-		SYSTEM, KERNEL32, GDI32, USER32, COM, WinOle, WinApi,
+		SYSTEM, COM, WinApi, WinOle,
 		Files, Fonts, Ports, Stores, Models, Views, Controllers, Properties, Dialog, Converters,
 		HostPorts, HostWindows, HostClipboard;
 
@@ -25,7 +25,7 @@ MODULE HostPictures;
 		Model = POINTER TO RECORD
 			file: Files.File;
 			pos, len: INTEGER;
-			ref: GDI32.Handle;
+			ref: WinApi.HANDLE;
 			data: POINTER TO ARRAY OF BYTE
 		END;
 
@@ -60,10 +60,10 @@ MODULE HostPictures;
 	
 	PROCEDURE DrawMacPicture (v: StdView; f: Views.Frame; w, h: INTEGER);
 		VAR rd: Files.Reader; res, end, len, x, y, z, l, t, r, b, u: INTEGER; op: INTEGER; v2, clipped: BOOLEAN;
-			fgnd, bgnd: Ports.Color; str: ARRAY 256 OF SHORTCHAR; size, style: INTEGER;
-			p: HostPorts.Port; dc: GDI32.Handle; poly: ARRAY 512 OF GDI32.Point; bt: BYTE;
+			fgnd, bgnd: Ports.Color; str: ARRAY 256 OF CHAR; size, style: INTEGER;
+			p: HostPorts.Port; dc: WinApi.HANDLE; poly: ARRAY 512 OF WinApi.POINT; bt: BYTE;
 			rl, rt, rr, rb, dl, dt, dr, db, ol, ot, or, ob, al, at, ar, ab, as, aa, gl, gt, gr, gb, ow, oh, lx, ly, tx, ty, plen: INTEGER;
-			actPen, actBrush, nullPen, nullBrush, fillBrush, bgndBrush, bitmap, font: GDI32.Handle;
+			actPen, actBrush, nullPen, nullBrush, fillBrush, bgndBrush, bitmap, font: WinApi.HANDLE;
 		
 		PROCEDURE Point (VAR x, y: INTEGER);
 		BEGIN
@@ -84,7 +84,7 @@ MODULE HostPictures;
 			ReadWord(rd, b); ReadWord(rd, r); Data(len - 10)
 		END Region;
 		
-		PROCEDURE Poly (VAR poly: ARRAY OF GDI32.Point; VAR len: INTEGER);
+		PROCEDURE Poly (VAR poly: ARRAY OF WinApi.POINT; VAR len: INTEGER);
 			VAR i: INTEGER;
 		BEGIN
 			ReadWord(rd, len); len := (len - 10) DIV 4;
@@ -93,34 +93,34 @@ MODULE HostPictures;
 			WHILE i < len DO Point(poly[i].x, poly[i].y); INC(i) END
 		END Poly;
 		
-		PROCEDURE Pattern (VAR brush: GDI32.Handle);
+		PROCEDURE Pattern (VAR brush: WinApi.HANDLE);
 			VAR pat: ARRAY 8 OF SHORTINT; i: INTEGER; b: BYTE;
 		BEGIN
-			res := GDI32.SelectObject(dc, nullBrush);
-			res := GDI32.DeleteObject(brush);
-			res := GDI32.DeleteObject(bitmap);
+			res := WinApi.SelectObject(dc, nullBrush);
+			res := WinApi.DeleteObject(brush);
+			res := WinApi.DeleteObject(bitmap);
 			i := 0;
 			WHILE i < 8 DO rd.ReadByte(b); pat[i] := SHORT(255 - b MOD 256); INC(i) END;
-			bitmap := GDI32.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
-			brush := GDI32.CreatePatternBrush(bitmap)
+			bitmap := WinApi.CreateBitmap(8, 8, 1, 1, SYSTEM.ADR(pat));
+			brush := WinApi.CreatePatternBrush(bitmap)
 		END Pattern;
 		
 		PROCEDURE Pen (x, y: INTEGER);
 		BEGIN
 			IF x < y THEN x := y END;
-			res := GDI32.SelectObject(dc, nullPen);
-			res := GDI32.DeleteObject(actPen);
-			IF x = 0 THEN actPen := nullPen ELSE actPen := GDI32.CreatePen(6, x, Ports.black) END
+			res := WinApi.SelectObject(dc, nullPen);
+			res := WinApi.DeleteObject(actPen);
+			IF x = 0 THEN actPen := nullPen ELSE actPen := WinApi.CreatePen(6, x, Ports.black) END
 		END Pen;
 		
-		PROCEDURE String (VAR s: ARRAY OF SHORTCHAR; VAR len: INTEGER);
+		PROCEDURE String (VAR s: ARRAY OF CHAR; VAR len: INTEGER);
 			VAR b: BYTE; i: INTEGER;
 		BEGIN
 			rd.ReadByte(b); len := b MOD 256; i := 0;
 			WHILE i < len DO
 				rd.ReadByte(b);
 				(* mac to windows *)
-				IF b >= ORD(" ") THEN s[i] := SHORT(CHR(b)); INC(i) ELSE DEC(len) END
+				IF b >= ORD(" ") THEN s[i] := CHR(b MOD 256); INC(i) ELSE DEC(len) END
 			END;
 			s[i] := 0X;
 		END String;
@@ -209,73 +209,73 @@ MODULE HostPictures;
 		PROCEDURE Setup;
 		BEGIN
 			CASE op MOD 8 OF
-			| 0: res := GDI32.SelectObject(dc, nullBrush); res := GDI32.SelectObject(dc, actPen)
-			| 1: res := GDI32.SelectObject(dc, actBrush); res := GDI32.SelectObject(dc, nullPen)
-			| 2: res := GDI32.SelectObject(dc, bgndBrush); res := GDI32.SelectObject(dc, nullPen)
-			| 4: res := GDI32.SelectObject(dc, fillBrush); res := GDI32.SelectObject(dc, nullPen)
-			| 3, 5..7: res := GDI32.SelectObject(dc, nullBrush); res := GDI32.SelectObject(dc, nullPen)
+			| 0: res := WinApi.SelectObject(dc, nullBrush); res := WinApi.SelectObject(dc, actPen)
+			| 1: res := WinApi.SelectObject(dc, actBrush); res := WinApi.SelectObject(dc, nullPen)
+			| 2: res := WinApi.SelectObject(dc, bgndBrush); res := WinApi.SelectObject(dc, nullPen)
+			| 4: res := WinApi.SelectObject(dc, fillBrush); res := WinApi.SelectObject(dc, nullPen)
+			| 3, 5..7: res := WinApi.SelectObject(dc, nullBrush); res := WinApi.SelectObject(dc, nullPen)
 			END
 		END Setup;
 		
 		PROCEDURE SetLn;
 		BEGIN
-			res := GDI32.SelectObject(dc, actPen)
+			res := WinApi.SelectObject(dc, actPen)
 		END SetLn;
 		
 		PROCEDURE NewFont;
-			VAR res, weight: INTEGER; old: GDI32.Handle;
+			VAR res, weight: INTEGER; old: WinApi.HANDLE;
 		BEGIN
 			IF ODD(style) THEN weight := 700 ELSE weight := 400 END;
 			old := font;
-			font := GDI32.CreateFontA(
+			font := WinApi.CreateFontW(
 				-size, 0, 0, 0, weight, style DIV 2 MOD 2, style DIV 4 MOD 2, 0, 0, 3, 2, 1, 6, "Arial");
-			res := GDI32.SelectObject(dc, font);
-			res := GDI32.DeleteObject(old)
+			res := WinApi.SelectObject(dc, font);
+			res := WinApi.DeleteObject(old)
 		END NewFont;
 		
 		PROCEDURE LineTo (x, y: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.LineTo(dc, lx, ly)
-			ELSE res := GDI32.MoveToEx(dc, lx, ly, NIL)
+			IF ~clipped THEN res := WinApi.LineTo(dc, lx, ly)
+			ELSE res := WinApi.MoveToEx(dc, lx, ly, NIL)
 			END
 		END LineTo;
 		
 		PROCEDURE Text (x, y: INTEGER);
-			VAR res, len: INTEGER; str: ARRAY 256 OF SHORTCHAR;
+			VAR res, len: INTEGER; str: ARRAY 256 OF CHAR;
 		BEGIN
 			String(str, len);
-			IF ~clipped THEN res := GDI32.TextOutA(dc, x, y, str, len) END
+			IF ~clipped THEN res := WinApi.TextOutW(dc, x, y, str, len) END
 		END Text;
 		
 		PROCEDURE Rectangle (l, t, r, b: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.Rectangle(dc, l, t, r, b) END
+			IF ~clipped THEN res := WinApi.Rectangle(dc, l, t, r, b) END
 		END Rectangle;
 		
 		PROCEDURE RoundRect (l, t, r, b, w, h: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.RoundRect(dc, l, t, r, b, w, h) END
+			IF ~clipped THEN res := WinApi.RoundRect(dc, l, t, r, b, w, h) END
 		END RoundRect;
 		
 		PROCEDURE Ellipse (l, t, r, b: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.Ellipse(dc, l, t, r, b) END
+			IF ~clipped THEN res := WinApi.Ellipse(dc, l, t, r, b) END
 		END Ellipse;
 		
-		PROCEDURE Polyline (VAR poly: ARRAY OF GDI32.Point; len: INTEGER);
+		PROCEDURE Polyline (VAR poly: ARRAY OF WinApi.POINT; len: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.Polyline(dc, poly, len) END
+			IF ~clipped THEN res := WinApi.Polyline(dc, poly[0], len) END
 		END Polyline;
 		
-		PROCEDURE Polygon (VAR poly: ARRAY OF GDI32.Point; len: INTEGER);
+		PROCEDURE Polygon (VAR poly: ARRAY OF WinApi.POINT; len: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := GDI32.Polygon(dc, poly, len) END
+			IF ~clipped THEN res := WinApi.Polygon(dc, poly[0], len) END
 		END Polygon;
 		
 	BEGIN
@@ -285,24 +285,24 @@ MODULE HostPictures;
 		p := f.rider(HostPorts.Rider).port;
 		p.CloseBuffer;
 		dc := p.dc; u := p.unit;
-		res := GDI32.SaveDC(dc);
-		res := GDI32.SelectClipRgn(dc, 0);
+		res := WinApi.SaveDC(dc);
+		res := WinApi.SelectClipRgn(dc, 0);
 		f.rider.GetRect(rl, rt, rr, rb);
-		res := GDI32.IntersectClipRect(dc, rl, rt, rr, rb);
-		res := GDI32.SetMapMode(dc, 8);	(* anisotropic *)
-		res := GDI32.SetViewportOrgEx(dc, f.gx DIV u, f.gy DIV u, NIL);
-		res := GDI32.SetViewportExtEx(dc, w DIV u, h DIV u, NIL);
-		res := GDI32.SetWindowOrgEx(dc, l, t, NIL);
-		res := GDI32.SetWindowExtEx(dc, r - l, b - t, NIL);
-		res := GDI32.SetBkColor(dc, Ports.white);
-		res := GDI32.SetTextColor(dc, Ports.black);
+		res := WinApi.IntersectClipRect(dc, rl, rt, rr, rb);
+		res := WinApi.SetMapMode(dc, 8);	(* anisotropic *)
+		res := WinApi.SetViewportOrgEx(dc, f.gx DIV u, f.gy DIV u, NIL);
+		res := WinApi.SetViewportExtEx(dc, w DIV u, h DIV u, NIL);
+		res := WinApi.SetWindowOrgEx(dc, l, t, NIL);
+		res := WinApi.SetWindowExtEx(dc, r - l, b - t, NIL);
+		res := WinApi.SetBkColor(dc, Ports.white);
+		res := WinApi.SetTextColor(dc, Ports.black);
 		f.rider(HostPorts.Rider).FixOrigin;
-		nullPen := GDI32.GetStockObject(GDI32.NullPen);
-		nullBrush := GDI32.GetStockObject(GDI32.NullBrush);
-		actPen := GDI32.CreatePen(6, 1, Ports.black);
-		actBrush := GDI32.GetStockObject(GDI32.BlackBrush);
-		fillBrush := GDI32.GetStockObject(GDI32.BlackBrush);
-		bgndBrush := GDI32.GetStockObject(GDI32.WhiteBrush);
+		nullPen := WinApi.GetStockObject(WinApi.NULL_PEN);
+		nullBrush := WinApi.GetStockObject(WinApi.NULL_BRUSH);
+		actPen := WinApi.CreatePen(6, 1, Ports.black);
+		actBrush := WinApi.GetStockObject(WinApi.BLACK_BRUSH);
+		fillBrush := WinApi.GetStockObject(WinApi.BLACK_BRUSH);
+		bgndBrush := WinApi.GetStockObject(WinApi.WHITE_BRUSH);
 		bitmap := 0; font := 0;
 		tx := 0; ty := 0; lx := 0; ly := 0; size := 10; style := 0; NewFont;
 		clipped := FALSE;
@@ -340,9 +340,9 @@ MODULE HostPictures;
 			| 1DH: (* rgb hl col *) ReadWord(rd, x); ReadWord(rd, y); ReadWord(rd, z)
 			| 1EH: (* def hilite *)
 			| 1FH: (* rgb op col *) ReadWord(rd, x); ReadWord(rd, y); ReadWord(rd, z)
-			| 20H: (* line *) Point(lx, ly); res := GDI32.MoveToEx(dc, lx, ly, NIL); Point(lx, ly); SetLn; LineTo(lx, ly)
+			| 20H: (* line *) Point(lx, ly); res := WinApi.MoveToEx(dc, lx, ly, NIL); Point(lx, ly); SetLn; LineTo(lx, ly)
 			| 21H: (* line from *) Point(lx, ly); SetLn; LineTo(lx, ly)
-			| 22H: (* short line *) Point(lx, ly); res := GDI32.MoveToEx(dc, lx, ly, NIL);
+			| 22H: (* short line *) Point(lx, ly); res := WinApi.MoveToEx(dc, lx, ly, NIL);
 						ReadByte(rd, z); INC(lx, z); ReadByte(rd, z); INC(ly, z); SetLn; LineTo(lx, ly)
 			| 23H: (* short line from *) ReadByte(rd, z); INC(lx, z); ReadByte(rd, z); INC(ly, z); SetLn; LineTo(lx, ly)
 			| 24H..27H: (* ??? *) ReadWord(rd, len); Data(len)
@@ -386,13 +386,13 @@ MODULE HostPictures;
 			END;
 			IF v2 & ODD(rd.Pos() - v.model.pos) THEN rd.ReadByte(bt) END;
 		UNTIL (op = 0FFH) OR (rd.Pos() >= end);
-		res := GDI32.RestoreDC(dc, -1);
-		res := GDI32.DeleteObject(actPen);
-		res := GDI32.DeleteObject(actBrush);
-		res := GDI32.DeleteObject(fillBrush);
-		res := GDI32.DeleteObject(bgndBrush);
-		res := GDI32.DeleteObject(bitmap);
-		res := GDI32.DeleteObject(font)
+		res := WinApi.RestoreDC(dc, -1);
+		res := WinApi.DeleteObject(actPen);
+		res := WinApi.DeleteObject(actBrush);
+		res := WinApi.DeleteObject(fillBrush);
+		res := WinApi.DeleteObject(bgndBrush);
+		res := WinApi.DeleteObject(bitmap);
+		res := WinApi.DeleteObject(font)
 	END DrawMacPicture;
 	
 (*
@@ -609,7 +609,7 @@ MODULE HostPictures;
 *)	
 	
 	PROCEDURE Evaluate (v: StdView);
-		VAR len, adr: INTEGER; rd: Files.Reader; ch: SHORTCHAR;
+		VAR len, adr: INTEGER; rd: Files.Reader;
 	BEGIN
 		len := v.model.len;
 		IF v.model.data = NIL THEN
@@ -618,7 +618,7 @@ MODULE HostPictures;
 			NEW(v.model.data, len);
 			rd.ReadBytes(v.model.data^, 0, len)
 		END;
-		v.model.ref := GDI32.SetMetaFileBitsEx(len, v.model.data^);
+		v.model.ref := WinApi.SetMetaFileBitsEx(len, v.model.data);
 		ASSERT(v.model.ref # 0, 100);
 	END Evaluate;
 
@@ -629,7 +629,7 @@ MODULE HostPictures;
 		VAR res: INTEGER;
 	BEGIN
 		IF m.ref # 0 THEN
-			res := GDI32.DeleteMetaFile(m.ref);
+			res := WinApi.DeleteMetaFile(m.ref);
 			m.ref := 0
 		END
 	END FINALIZE;
@@ -678,7 +678,7 @@ MODULE HostPictures;
 		ELSE
 			ASSERT(v.model.ref # 0, 100);
 			NEW(v.model.data, len);
-			res := GDI32.GetMetaFileBitsEx(v.model.ref, len, v.model.data^);
+			res := WinApi.GetMetaFileBitsEx(v.model.ref, len, v.model.data);
 			wr.rider.WriteBytes(v.model.data^, 0, len)
 		END
 	END Externalize;
@@ -791,11 +791,11 @@ MODULE HostPictures;
 		sv.w := sw * u; sv.h := sh * u; sv.unit := u;
 		sv.mode := SHORT(CHR(mode));
 		NEW(sv.model);
-		len := GDI32.GetMetaFileBitsEx(mf, 0, NIL);
+		len := WinApi.GetMetaFileBitsEx(mf, 0, NIL);
 		NEW(sv.model.data, len);
-		res := GDI32.GetMetaFileBitsEx(mf, len, sv.model.data^);
+		res := WinApi.GetMetaFileBitsEx(mf, len, sv.model.data^);
 		sv.model.len := len;
-		res := KERNEL32.GlobalUnlock(hm);
+		res := WinApi.GlobalUnlock(hm);
 		v := sv; w := ABS(sv.w); h := ABS(sv.h); isSingle := FALSE
 	END ImportDPict;
 
@@ -809,7 +809,7 @@ MODULE HostPictures;
 		WITH v: StdView DO
 			IF v.type = winPict THEN
 				IF v.model.ref = 0 THEN Evaluate(v) END;
-				hm := KERNEL32.GlobalAlloc({1, 13}, SIZE(WinApi.METAFILEPICT));	(* movable, sharable *)
+				hm := WinApi.GlobalAlloc({1, 13}, SIZE(WinApi.METAFILEPICT));	(* movable, sharable *)
 				IF hm # 0 THEN
 					mp := SYSTEM.VAL(WinApi.PtrMETAFILEPICT, WinApi.GlobalLock(hm));
 					CASE ORD(v.mode) OF
@@ -825,8 +825,8 @@ MODULE HostPictures;
 					mp.mm := ORD(v.mode);
 					mp.xExt := v.w DIV u;
 					mp.yExt := v.h DIV u;
-					mp.hMF := GDI32.SetMetaFileBitsEx(v.model.len, v.model.data^);
-					res := KERNEL32.GlobalUnlock(hm);
+					mp.hMF := WinApi.SetMetaFileBitsEx(v.model.len, v.model.data^);
+					res := WinApi.GlobalUnlock(hm);
 					GenMetafileMedium(hm, NIL, med)
 				END
 			END
@@ -836,11 +836,11 @@ MODULE HostPictures;
 
 (*
 	PROCEDURE ImportCBPict*;
-		VAR v: StdView; res, len, adr, w, h, u, mode: LONGINT; ref, hnd: KERNEL32.Handle;
+		VAR v: StdView; res, len, adr, w, h, u, mode: LONGINT; ref, hnd: WinApi.Handle;
 	BEGIN
-		hnd := USER32.GetClipboardData(HostClipboard.metafile);
+		hnd := WinApi.GetClipboardData(HostClipboard.metafile);
 		ASSERT(hnd # 0, 20);
-		adr := KERNEL32.GlobalLock(hnd);
+		adr := WinApi.GlobalLock(hnd);
 		NEW(v); v.type := winPict;
 		SYSTEM.GET(adr, mode); INC(adr, 4);
 		SYSTEM.GET(adr, w); INC(adr, 4);
@@ -859,11 +859,11 @@ MODULE HostPictures;
 		v.w := w * u; v.h := h * u;
 		v.mode := CHR(mode);
 		NEW(v.model);
-		len := GDI32.GetMetaFileBitsEx(ref, 0, NIL);
+		len := WinApi.GetMetaFileBitsEx(ref, 0, NIL);
 		NEW(v.model.data, len);
-		res := GDI32.GetMetaFileBitsEx(ref, len, v.model.data^);
+		res := WinApi.GetMetaFileBitsEx(ref, len, v.model.data^);
 		v.model.len := len;
-		res := KERNEL32.GlobalUnlock(hnd);
+		res := WinApi.GlobalUnlock(hnd);
 		HostClipboard.RegisterImp(v)
 	END ImportCBPict;
 

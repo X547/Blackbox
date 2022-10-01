@@ -662,7 +662,7 @@ Pre
 20	wr.rider # NIL
 21	x # NIL  =>  writer must have no domain, or the same one as x (and as all previously written stores)
 
-PROCEDURE WriteVersion (version: INTEGER)
+PROCEDURE (VAR wr: Writer) WriteVersion (version: INTEGER)
 NEW
 Writes a version byte.
 

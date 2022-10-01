@@ -53,7 +53,7 @@ MODULE ComObject;
 		VAR dc: WinApi.HDC; mf: WinApi.HMETAFILE; mp: WinApi.PtrMETAFILEPICT;
 			rc: WinApi.RECT; res: INTEGER; h: WinApi.HMETAFILEPICT; oldb, oldp: WinApi.HGDIOBJ;
 	BEGIN
-		dc := WinApi.CreateMetaFileA(NIL);
+		dc := WinApi.CreateMetaFileW(NIL);
 		IF dc # 0 THEN
 			res := WinApi.SetMapMode(dc, WinApi.MM_ANISOTROPIC);
 			res := WinApi.SetWindowOrgEx(dc, 0, 0, NIL);

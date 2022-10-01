@@ -313,7 +313,7 @@ MODULE OleClient;
 		RETURN sm.u.pstg
 	END MediumStorage;
 
-	PROCEDURE DoVerb (obj: Model; f: Views.Frame; verb: SHORTINT);
+	PROCEDURE DoVerb (obj: Model; f: Views.Frame; verb: INTEGER);
 		VAR res: COM.RESULT; w, h: INTEGER; rect: WinApi.RECT;
 	BEGIN
 		obj.site.frame := f;
@@ -411,7 +411,7 @@ MODULE OleClient;
 				END;
 				m := m.next
 			END;
-			hAccel := WinApi.CreateAcceleratorTable(data[0], nAccel);
+			hAccel := WinApi.CreateAcceleratorTableW(data[0], nAccel);
 			IF debug THEN Log.String("new accel table"); Log.Int(nAccel); Log.Int(hAccel); Log.Ln END;
 			IF hAccel = 0 THEN nAccel := 0 END;
 			menuBar := HostMenus.menuBar
@@ -563,8 +563,8 @@ MODULE OleClient;
 		res := this.obj.objUnk.QueryInterface(COM.ID(this.obj.objIPObj), this.obj.objIPObj);
 		IF this.site.frame # NIL THEN
 			this.site.wnd := this.site.frame.rider(HostPorts.Rider).port.wnd;
-			style := SYSTEM.VAL(SET, WinApi.GetWindowLong(this.site.wnd, -16));
-			res := WinApi.SetWindowLong(this.site.wnd, -16, SYSTEM.VAL(INTEGER, style + {25}));
+			style := SYSTEM.VAL(SET, WinApi.GetWindowLongW(this.site.wnd, -16));
+			res := WinApi.SetWindowLongW(this.site.wnd, -16, SYSTEM.VAL(INTEGER, style + {25}));
 			host := Views.HostOf(this.site.frame);
 			IF (host # NIL) & (host.view IS Containers.View) THEN
 				c := host.view(Containers.View).ThisController();
@@ -581,7 +581,7 @@ MODULE OleClient;
 		IF debug THEN Log.String("ip site: on ui activate"); Log.Ln END;
 		(* remove user interface *)
 		f := this.site.frame; p := f.rider(HostPorts.Rider).port;
-		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLong(p.wnd, 0));
+		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLongW(p.wnd, 0));
 		OleServer.RemoveUI(win);
 		RETURN WinApi.S_OK
 	END OnUIActivate;
@@ -602,7 +602,7 @@ MODULE OleClient;
 *)
 		pos.right := pos.left + this.obj.rw; pos.bottom := pos.top + this.obj.rh;
 		clip.left := 0; clip.top := 0; clip.right := p.w; clip.bottom := p.h;
-		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLong(p.wnd, 0));
+		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLongW(p.wnd, 0));
 		outerSite := OleServer.ContextOf(win);
 		IF outerSite # NIL THEN
 			RETURN outerSite.GetWindowContext(frame, doc, r1, r2, info)
@@ -641,7 +641,7 @@ MODULE OleClient;
 	BEGIN
 		IF debug THEN Log.String("ip site: ui deactivate"); Log.Ln END;
 		(* restore user interface *)
-		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLong(this.site.wnd, 0));
+		win := SYSTEM.VAL(HostWindows.Window, WinApi.GetWindowLongW(this.site.wnd, 0));
 		OleServer.ResetUI(win, done);
 		IF ~done & (appFrame # NIL) THEN
 			IF debug THEN Log.String("reset oberon/f user interface"); Log.Ln END;
@@ -668,8 +668,8 @@ MODULE OleClient;
 					c.SetSingleton(this.site.frame.view)
 				END
 			END;
-			style := SYSTEM.VAL(SET, WinApi.GetWindowLong(this.site.wnd, -16));
-			res := WinApi.SetWindowLong(this.site.wnd, -16, SYSTEM.VAL(INTEGER, style - {25}))
+			style := SYSTEM.VAL(SET, WinApi.GetWindowLongW(this.site.wnd, -16));
+			res := WinApi.SetWindowLongW(this.site.wnd, -16, SYSTEM.VAL(INTEGER, style - {25}))
 		END;
 		(* minimal undo support *)
 		DoVerb(this.obj, NIL, WinOle.OLEIVERB_DISCARDUNDOSTATE);
@@ -828,7 +828,7 @@ MODULE OleClient;
 			IF do THEN res := hk.iipw.iipao.OnDocWindowActivate(1)
 			ELSE
 				res := hk.iipw.iipao.OnDocWindowActivate(0);
-				res := WinApi.SendMessage(HostWindows.client, 560, HostMenus.menuBar, winMenu);
+				res := WinApi.SendMessageW(HostWindows.client, 560, HostMenus.menuBar, winMenu);
 				res := WinApi.DrawMenuBar(HostWindows.main);
 				HostWindows.SetMainBorderWidth(0, 0, 0, 0);
 				HostMenus.isCont := FALSE
@@ -924,7 +924,7 @@ MODULE OleClient;
 
 	PROCEDURE (this: IOleInPlaceFrame) InsertMenus (menu: WinApi.HMENU;
 																	VAR widths: WinOle.OLEMENUGROUPWIDTHS): COM.RESULT;
-		VAR res, n, p: INTEGER; m: HostMenus.Menu; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, n, p: INTEGER; m: HostMenus.Menu;
 	BEGIN
 		IF debug THEN Log.String("ip frame: insert menus"); Log.Ln END;
 		m := HostMenus.menus; p := 0;
@@ -932,8 +932,7 @@ MODULE OleClient;
 			WHILE (m # NIL) & (m.class < p) DO m := m.next END;
 			n := 0;
 			WHILE (m # NIL) & (m.class = p) DO
-				ss := SHORT(m.menu$);
-				res := WinApi.AppendMenu(menu, WinApi.MF_POPUP, m.menuH, ss);
+				res := WinApi.AppendMenuW(menu, WinApi.MF_POPUP, m.menuH, m.menu);
 				m := m.next; INC(n)
 			END;
 			widths.width[p] := n;
@@ -952,11 +951,11 @@ MODULE OleClient;
 		IF debug THEN Log.String("ip frame: set menu"); Log.Int(menu); Log.Ln END;
 		IF menu # 0 THEN
 			this.objWnd := activeObj;
-			res := WinApi.SendMessage(HostWindows.client, 560, menu, winMenu);
+			res := WinApi.SendMessageW(HostWindows.client, 560, menu, winMenu);
 			HostMenus.isCont := TRUE
 		ELSIF this.objWnd # 0 THEN
 			this.objWnd := 0;
-			res := WinApi.SendMessage(HostWindows.client, 560, HostMenus.menuBar, winMenu);
+			res := WinApi.SendMessageW(HostWindows.client, 560, HostMenus.menuBar, winMenu);
 			HostMenus.isCont := FALSE
 		END;
 		res := WinApi.DrawMenuBar(HostWindows.main);
@@ -978,15 +977,15 @@ MODULE OleClient;
 	END RemoveMenus;
 
 	PROCEDURE (this: IOleInPlaceFrame) SetStatusText (text: WinApi.PtrWSTR): COM.RESULT;
-		VAR res, i: INTEGER; str: ARRAY 256 OF SHORTCHAR;
+		VAR res, i: INTEGER; str: ARRAY 256 OF CHAR;
 	BEGIN
 		IF debug THEN Log.String("ip frame: set status"); Log.Ln END;
 		IF Dialog.showsStatus THEN
 			IF text # NIL THEN
 				i := 0;
-				WHILE (i < LEN(str) - 1) & (text[i] # 0X) DO str[i] := SHORT(text[i]); INC(i) END;
+				WHILE (i < LEN(str) - 1) & (text[i] # 0X) DO str[i] := text[i]; INC(i) END;
 				str[i] := 0X;
-				res := WinApi.SetWindowText(HostWindows.status, str);
+				res := WinApi.SetWindowTextW(HostWindows.status, str);
 				res := WinApi.UpdateWindow(HostWindows.status)
 			END;
 			RETURN WinApi.S_OK
@@ -1008,7 +1007,7 @@ MODULE OleClient;
 		IF debug THEN Log.String("ip frame: translate accelerator"); Log.Int(id); Log.Ln END;
 		res := WinApi.S_OK;
 		IF (id >= 100) & (id < HostMenus.lastId) THEN
-			r := WinApi.SendMessage(HostWindows.main, 273, id + 65536, 0)
+			r := WinApi.SendMessageW(HostWindows.main, 273, id + 65536, 0)
 		ELSE
 			m := msg;
 			r := WinApi.TranslateMDISysAccel(HostWindows.client, m);
@@ -1254,7 +1253,7 @@ MODULE OleClient;
 				IF res = WinApi.S_OK THEN
 					i := 0;
 					IF ov[0].lpszVerbName # NIL THEN
-						WHILE ov[0].lpszVerbName[i] # 0X DO msg.label[i] := SHORT(ov[0].lpszVerbName[i]); INC(i) END
+						WHILE ov[0].lpszVerbName[i] # 0X DO msg.label[i] := ov[0].lpszVerbName[i]; INC(i) END
 					END;
 					msg.label[i] := 0X;
 					msg.disabled := 0 IN ov[0].fuFlags;
@@ -1262,12 +1261,12 @@ MODULE OleClient;
 				END
 			END
 		| msg: Properties.DoVerbMsg DO
-			DoVerb(v.model, msg.frame, SHORT(msg.verb))
+			DoVerb(v.model, msg.frame, msg.verb)
 		| msg: HostMenus.TypeMsg DO
 			res := v.model.objObj.GetUserType(WinOle.USERCLASSTYPE_SHORT, pstr);
 			IF res >= 0 THEN
 				i := 0;
-				WHILE pstr[i] # 0X DO msg.type[i] := SHORT(pstr[i]); INC(i) END;
+				WHILE pstr[i] # 0X DO msg.type[i] := pstr[i]; INC(i) END;
 				msg.type[i] := 0X;
 				WinOle.CoTaskMemFree(SYSTEM.VAL(WinApi.PtrVoid, pstr))
 			END
@@ -1577,14 +1576,14 @@ MODULE OleClient;
 
 	PROCEDURE InsertObject*;
 		VAR v: View; model: Model; res: COM.RESULT; pmfp: WinApi.PtrMETAFILEPICT;
-			p: WinOleDlg.OLEUIINSERTOBJECT; w: HostWindows.Window;
-			fname: ARRAY 260 OF SHORTCHAR; guids: ARRAY 1 OF COM.GUID; object: COM.IUnknown;
+			p: WinOleDlg.OLEUIINSERTOBJECTW; w: HostWindows.Window;
+			fname: ARRAY 260 OF CHAR; guids: ARRAY 1 OF COM.GUID; object: COM.IUnknown;
 			c: Containers.Controller; f: Views.Frame; v1: Views.View;
 	BEGIN
 		NEW(model); Init(model);
 		w := HostWindows.dir.First();
 		guids[0] := ObjectID;
-		p.cbStruct := SIZE(WinOleDlg.OLEUIINSERTOBJECT);
+		p.cbStruct := SIZE(WinOleDlg.OLEUIINSERTOBJECTW);
 		p.dwFlags := WinOleDlg.IOF_DISABLELINK + WinOleDlg.IOF_SELECTCREATENEW
 						+ WinOleDlg.IOF_CREATENEWOBJECT + WinOleDlg.IOF_CREATEFILEOBJECT
 						+ WinOleDlg.IOF_DISABLEDISPLAYASICON;
@@ -1610,7 +1609,7 @@ MODULE OleClient;
 		p.ppvObj := SYSTEM.ADR(object);
 		p.sc := WinApi.S_OK;
 		p.hMetaPict := 0;
-		res := WinOleDlg.OleUIInsertObject(p);
+		res := WinOleDlg.OleUIInsertObjectW(p);
 		IF res = WinOleDlg.OLEUI_OK THEN
 			IF p.hMetaPict # 0 THEN
 				pmfp := SYSTEM.VAL(WinApi.PtrMETAFILEPICT, WinApi.GlobalLock(p.hMetaPict));
@@ -1648,10 +1647,10 @@ MODULE OleClient;
 	END InsertObject;
 
 	PROCEDURE PasteSpecial*;
-		VAR res: INTEGER; p: WinOleDlg.OLEUIPASTESPECIAL; win: HostWindows.Window;
+		VAR res: INTEGER; p: WinOleDlg.OLEUIPASTESPECIALW; win: HostWindows.Window;
 			guids: ARRAY 1 OF COM.GUID; pmfp: WinApi.PtrMETAFILEPICT;
-			entries: ARRAY 16 OF WinOleDlg.OLEUIPASTEENTRY; key: Dialog.String;
-			conv: ARRAY 16 OF OleData.Converter; str: ARRAY 16, 2, 64 OF SHORTCHAR;
+			entries: ARRAY 16 OF WinOleDlg.OLEUIPASTEENTRYW; key: Dialog.String;
+			conv: ARRAY 16 OF OleData.Converter; str: ARRAY 16, 2, 64 OF CHAR;
 			c: OleData.Converter; n: INTEGER; msg: Controllers.EditMsg;
 	BEGIN
 		win := HostWindows.dir.First();
@@ -1661,8 +1660,8 @@ MODULE OleClient;
 			IF (c.imp # "") & ~(OleData.info IN c.opts) THEN
 				entries[n].fmtetc := c.format;
 				IF c.type # "" THEN
-					key := "#Host:" + c.imp; Dialog.MapString(key, key); str[n, 0] := SHORT(key$);
-					key := "#Host:" + c.type; Dialog.MapString(key, key); str[n, 1] := SHORT(key$);
+					key := "#Host:" + c.imp; Dialog.MapString(key, key); str[n, 0] := key$;
+					key := "#Host:" + c.type; Dialog.MapString(key, key); str[n, 1] := key$;
 					entries[n].lpstrFormatName := str[n, 0];
 					entries[n].lpstrResultText := str[n, 1]
 				ELSE
@@ -1674,7 +1673,7 @@ MODULE OleClient;
 			END;
 			c := c.next
 		END;
-		p.cbStruct := SIZE(WinOleDlg.OLEUIPASTESPECIAL);
+		p.cbStruct := SIZE(WinOleDlg.OLEUIPASTESPECIALW);
 		p.dwFlags := WinOleDlg.PSF_DISABLEDISPLAYASICON;
 		p.hWndOwner := win.wnd;
 		p.lpszCaption := NIL;
@@ -1691,7 +1690,7 @@ MODULE OleClient;
 		p.cClsidExclude := LEN(guids);
 		p.lpClsidExclude := guids;
 		p.hMetaPict := 0;
-		res := WinOleDlg.OleUIPasteSpecial(p);
+		res := WinOleDlg.OleUIPasteSpecialW(p);
 		IF res # WinOleDlg.OLEUI_CANCEL THEN
 			ASSERT(res = WinOleDlg.OLEUI_OK, 100);
 			ASSERT((p.nSelectedIndex >= 0) & (p.nSelectedIndex < n), 101);

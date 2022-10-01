@@ -400,8 +400,7 @@ NEW, ABSTRACT
 Allocates and returns a new group.
 
 
-TYPE Prop
-ABSTRACT
+TYPE Prop (Properties.Property)
 A property object describes various attributes of a control. There are messages which allow to poll or set the control properties of a control (-> Properties, -> Controllers).
 
 opt: ARRAY 5 OF BOOLEAN;

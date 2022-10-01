@@ -14,6 +14,7 @@ MODULE WinNet ["MPR.dll"];
 	IMPORT WinApi;
 
 	CONST (* macros *)
+		INVALID_SOCKET* = -1;
 		WNNC_NET_MSNET* = 65536;
 		WNNC_NET_LANMAN* = 131072;
 		WNNC_NET_NETWARE* = 196608;
@@ -774,7 +775,7 @@ MODULE WinNet ["MPR.dll"];
 			h_aliases*: POINTER TO (*?*) ARRAY [untagged] OF WinApi.PtrSTR;
 			h_addrtype*: SHORTINT;
 			h_length*: SHORTINT;
-			h_addr_list*: POINTER TO (*?*) ARRAY [untagged] OF WinApi.PtrSTR;
+			h_addr_list*: POINTER TO (*?*) ARRAY [untagged] OF POINTER TO ARRAY [untagged] OF in_addr;
 		END;
 		Ptrhostent* = POINTER TO hostent;
 		netent* = RECORD [untagged]

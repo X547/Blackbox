@@ -250,8 +250,6 @@ d # NIL	20
 
 Post
 dir = d
-stdDir' = NIL
-	stdDir = d
 
 
 PROCEDURE Install

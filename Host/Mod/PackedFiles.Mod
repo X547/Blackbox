@@ -398,7 +398,10 @@ MODULE HostPackedFiles;
 		f := NIL;
 		IF shared THEN
 			WITH loc: HostFiles.Locator DO
-				f := Get(loc.path, name)
+				f := Get(loc.path, name);
+				IF f # NIL THEN
+					loc.res := 0
+				END
 			ELSE
 				DebugPrint("HostPackedFiles: Directory.Old - This operation requires HostFiles. ")
 			END

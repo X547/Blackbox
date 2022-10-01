@@ -13,7 +13,7 @@ MODULE HostDialog;
 
 
 	IMPORT
-		WinApi, KERNEL32, GDI32, USER32, COMDLG32, SYSTEM,
+		WinApi, WinDlg,  SYSTEM,
 		Kernel, Strings, Dates, Fonts, Ports, Files, Stores, Views, Controllers, Properties,
 		Printers, Dialog, Windows, Converters, Services,
 		HostFonts, HostFiles, HostRegistry, HostPorts, HostWindows, HostPrinters,
@@ -54,6 +54,7 @@ MODULE HostDialog;
 
 		setup*: RECORD
 			decorate*: BOOLEAN;
+			landscape*: BOOLEAN;
 			left*, right*, top*, bottom*: REAL;
 			w, h: INTEGER;
 			hs, vs: REAL
@@ -69,16 +70,16 @@ MODULE HostDialog;
 
 		ShowOleStatus*: PROCEDURE (w: Windows.Window; s: ARRAY OF CHAR);
 
-		actualPath*: ARRAY 256 OF SHORTCHAR;
+		actualPath*: ARRAY 256 OF CHAR;
 
-		fn: COMDLG32.FileNameData;
-		ftype: ARRAY 16 OF SHORTCHAR;
-		filter: ARRAY 2048 OF SHORTCHAR;
-		fname: ARRAY 260 OF SHORTCHAR;
-		prt: COMDLG32.PrintDlgData;
-		font: COMDLG32.ChooseFontData;
-		logFont: GDI32.LogFont;
-		col: COMDLG32.ChooseColorData;
+		fn: WinDlg.OPENFILENAMEW;
+		ftype: ARRAY 16 OF CHAR;
+		filter: ARRAY 2048 OF CHAR;
+		fname: ARRAY 260 OF CHAR;
+		prt: WinDlg.PRINTDLGW;
+		font: WinDlg.CHOOSEFONTW;
+		logFont: WinApi.LOGFONTW;
+		col: WinDlg.CHOOSECOLORW;
 		customColors: ARRAY 16 OF Ports.Color;
 		prefFName, prefDName: Fonts.Typeface;
 		prefFSize, prefDSize, prefDWght: INTEGER;
@@ -98,21 +99,13 @@ MODULE HostDialog;
 		s[idx] := 0X
 	END Append;
 
-	PROCEDURE SAppend (VAR s: ARRAY OF SHORTCHAR; VAR idx: INTEGER; IN t: ARRAY OF CHAR);
-		VAR len, i: INTEGER; ch: SHORTCHAR;
-	BEGIN
-		i := 0; ch := SHORT(t[0]); len := LEN(s) - 1;
-		WHILE (idx < len) & (ch # 0X) DO s[idx] := ch; INC(idx); INC(i); ch := SHORT(t[i]) END;
-		s[idx] := 0X
-	END SAppend;
-
-	PROCEDURE SSAppend (VAR s: ARRAY OF SHORTCHAR; VAR idx: INTEGER; IN t: ARRAY OF SHORTCHAR);
-		VAR len, i: INTEGER; ch: SHORTCHAR;
+	PROCEDURE SAppend (VAR s: ARRAY OF CHAR; VAR idx: INTEGER; IN t: ARRAY OF CHAR);
+		VAR len, i: INTEGER; ch: CHAR;
 	BEGIN
 		i := 0; ch := t[0]; len := LEN(s) - 1;
 		WHILE (idx < len) & (ch # 0X) DO s[idx] := ch; INC(idx); INC(i); ch := t[i] END;
 		s[idx] := 0X
-	END SSAppend;
+	END SAppend;
 
 	PROCEDURE MapConv (cmd: ARRAY OF CHAR; VAR name: ARRAY OF CHAR);
 		VAR i: INTEGER; sub, str: Dialog.String;
@@ -131,36 +124,35 @@ MODULE HostDialog;
 
 	PROCEDURE WaitDialogClose;
 	(* simulates modal dialog *)
-		VAR res: INTEGER; w: HostWindows.Window; msg: USER32.Message;
+		VAR res: INTEGER; w: HostWindows.Window; msg: WinApi.MSG;
 	BEGIN
 		w := HostWindows.dir.First();
 		REPEAT
-			IF USER32.PeekMessageA(msg, 0, 0, 0, 1) # 0 THEN
-				IF (msg.wnd = w.wnd) OR (msg.message = USER32.WMPaint) THEN
-					res := USER32.TranslateMessage(msg);
-					res := USER32.DispatchMessageA(msg)
+			IF WinApi.PeekMessageW(msg, 0, 0, 0, 1) # 0 THEN
+				IF (msg.hwnd = w.wnd) OR (msg.message = WinApi.WM_PAINT) THEN
+					res := WinApi.TranslateMessage(msg);
+					res := WinApi.DispatchMessageW(msg)
 				END
 			END
 		UNTIL w.wnd = 0
 	END WaitDialogClose;
 
 	PROCEDURE ShowParamStatus* (IN str, p0, p1, p2: ARRAY OF CHAR);
-		VAR res: INTEGER; st: ARRAY 512 OF CHAR; sst: ARRAY 513 OF SHORTCHAR; w: Windows.Window;
+		VAR res: INTEGER; st: ARRAY 513 OF CHAR; w: Windows.Window;
 	BEGIN
 		Dialog.MapParamString(str, p0, p1, p2, st);
 		w := Windows.dir.Focus(Controllers.targetPath);
 		IF (w # NIL) & (HostWindows.inPlace IN w.flags) & (ShowOleStatus # NIL) THEN
 			ShowOleStatus(w, " " + st)
 		ELSE
-			sst := SHORT(" " + st$);
-			res := USER32.SetWindowTextA(HostWindows.status, sst);
-			res := USER32.UpdateWindow(HostWindows.status)
+			st := " " + st;
+			res := WinApi.SetWindowTextW(HostWindows.status, st);
+			res := WinApi.UpdateWindow(HostWindows.status)
 		END
 	END ShowParamStatus;
 
 	PROCEDURE ShowParamMsg* (IN str, p0, p1, p2: ARRAY OF CHAR);
-		VAR res: INTEGER; st: ARRAY 512 OF CHAR; sst: ARRAY 512 OF SHORTCHAR;
-			an: ARRAY 32 OF SHORTCHAR;
+		VAR res: INTEGER; st: ARRAY 512 OF CHAR;
 	BEGIN
 		ASSERT(str # "", 20);
 (*
@@ -168,8 +160,8 @@ MODULE HostDialog;
 			ShowParamStatus(str, p0, p1, p2)
 		ELSE
 *)
-			Dialog.MapParamString(str, p0, p1, p2, st); sst := SHORT(st$); an := SHORT(Dialog.appName$);
-			res := USER32.MessageBoxA(HostWindows.ActualWnd(), sst, an, {4, 5})
+			Dialog.MapParamString(str, p0, p1, p2, st);
+			res := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, {4, 5})
 (*
 		END
 *)
@@ -188,11 +180,10 @@ MODULE HostDialog;
 	(** general OK dialog **)
 
 	PROCEDURE (hook: DialogHook) GetOK (IN str, p0, p1, p2: ARRAY OF CHAR; form: SET; OUT res: INTEGER);
-		VAR r: INTEGER; st: ARRAY 512 OF CHAR; sst: ARRAY 512 OF SHORTCHAR;
-			an: ARRAY 32 OF SHORTCHAR; type: SET;
+		VAR r: INTEGER; st: ARRAY 512 OF CHAR; type: SET;
 	BEGIN
 		ASSERT(str # "", 20);
-		Dialog.MapParamString(str, p0, p1, p2, st); sst := SHORT(st$); an := SHORT(Dialog.appName$);
+		Dialog.MapParamString(str, p0, p1, p2, st);
 		IF Dialog.yes IN form THEN
 			IF Dialog.cancel IN form THEN type := WinApi.MB_YESNOCANCEL + WinApi.MB_ICONQUESTION
 			ELSE type := WinApi.MB_YESNO + WinApi.MB_ICONQUESTION
@@ -202,7 +193,7 @@ MODULE HostDialog;
 			ELSE type := WinApi.MB_OK + WinApi.MB_ICONWARNING
 			END
 		END;
-		r := USER32.MessageBoxA(HostWindows.ActualWnd(), sst, an, type);
+		r := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, type);
 		IF r = WinApi.IDOK THEN res := Dialog.ok
 		ELSIF r = WinApi.IDCANCEL THEN res := Dialog.cancel
 		ELSIF r = WinApi.IDYES THEN res := Dialog.yes
@@ -261,40 +252,40 @@ MODULE HostDialog;
 		VAR res, i, j: INTEGER; lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
-		ftype := SHORT(defType$); i := 0;
+		ftype := defType$; i := 0;
 		IF ftype = "" THEN ftype := "odc" END;
 		IF ftype # "*" THEN
-			SAppend(filter, i, "*."); SSAppend(filter, i, ftype); INC(i);
-			SAppend(filter, i, "*."); SSAppend(filter, i, ftype); INC(i)
+			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i);
+			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i)
 		ELSE ftype := ""
 		END;
 		SAppend(filter, i, "*.*"); INC(i);
 		SAppend(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
 		(* open dialog *)
-		fn.filterIndex := 1;
+		fn.nFilterIndex := 1;
 		fname := "";
 		IF loc # NIL THEN	(* set old dir *)
-			actualPath := SHORT(loc(HostFiles.Locator).path$); i := 0
+			actualPath := loc(HostFiles.Locator).path$; i := 0
 (*
 			WHILE actualPath[i] # 0X DO INC(i) END;
 			actualPath[i] := "\"; actualPath[i+1] := 0X
 *)
 		END;
-		fn.flags := {2, 3, 11, 12, 19};	(* hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look *)
-		fn.owner := HostWindows.ActualWnd();
-		IF COMDLG32.GetOpenFileNameA(fn) # 0 THEN
-			i := 0; j := fn.fileOffset;
+		fn.Flags := {2, 3, 11, 12, 19};	(* hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look *)
+		fn.hwndOwner := HostWindows.ActualWnd();
+		IF WinDlg.GetOpenFileNameW(fn) # 0 THEN
+			i := 0; j := fn.nFileOffset;
 			WHILE fname[j] # 0X DO name[i] := fname[j]; INC(i); INC(j) END;
-			name[i] := 0X; fname[fn.fileOffset - 1] := 0X;
+			name[i] := 0X; fname[fn.nFileOffset - 1] := 0X;
 			actualPath := fname$; lfn := fname$;
 			loc := HostFiles.NewLocator(lfn)
 		ELSE
 			loc := NIL;
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetIntSpec;
 
 	PROCEDURE GetIntSpec* (VAR loc: Files.Locator; VAR name: Files.Name; VAR conv: Converters.Converter);
@@ -305,13 +296,13 @@ MODULE HostDialog;
 		ftype := "odc";
 		IF loc # NIL THEN
 			defConv := conv;
-			IF conv # NIL THEN ftype := SHORT(conv.fileType$) END
+			IF conv # NIL THEN ftype := conv.fileType$ END
 		END;
 		typeList[0] := Converters.list;	(* document converter *)
 		Dialog.MapString("#Host:Document", t);
 		i := 0; SAppend(filter, i, t); SAppend(filter, i, " (*.odc)"); INC(i);
 		SAppend(filter, i, "*.odc"); INC(i); n := 1;
-		fn.filterIndex := 1;
+		fn.nFilterIndex := 1;
 		c := Converters.list;
 		WHILE c # NIL DO
 			IF (c.imp # "") & (c.fileType # "odc") THEN
@@ -320,7 +311,7 @@ MODULE HostDialog;
 				SAppend(filter, i, " (*."); SAppend(filter, i, c.fileType);
 				SAppend(filter, i, ")"); INC(i);
 				SAppend(filter, i, "*."); SAppend(filter, i, c.fileType); INC(i);
-				IF defConv = c THEN fn.filterIndex := n + 1 END;
+				IF defConv = c THEN fn.nFilterIndex := n + 1 END;
 				INC(n)
 			END;
 			c := c.next
@@ -329,26 +320,26 @@ MODULE HostDialog;
 		SAppend(filter, i, t); SAppend(filter, i, " (*.*)"); INC(i);
 		SAppend(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
-		IF defConv = all THEN fn.filterIndex := n + 1 END;
+		IF defConv = all THEN fn.nFilterIndex := n + 1 END;
 		(* open dialog *)
-		IF loc # NIL THEN fname := SHORT(name$)
+		IF loc # NIL THEN fname := name$
 		ELSE fname := ""
 		END;
 		IF loc # NIL THEN	(* set old dir *)
-			actualPath := SHORT(loc(HostFiles.Locator).path$); i := 0;
+			actualPath := loc(HostFiles.Locator).path$; i := 0;
 			WHILE actualPath[i] # 0X DO INC(i) END;
 			actualPath[i] := "\"; actualPath[i+1] := 0X
 		END;
-		fn.flags := {2, 3, 11, 12, 19};	(* hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look *)
-		fn.owner := HostWindows.ActualWnd();
-		IF COMDLG32.GetOpenFileNameA(fn) # 0 THEN
-			i := 0; j := fn.fileOffset;
+		fn.Flags := {2, 3, 11, 12, 19};	(* hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look *)
+		fn.hwndOwner := HostWindows.ActualWnd();
+		IF WinDlg.GetOpenFileNameW(fn) # 0 THEN
+			i := 0; j := fn.nFileOffset;
 			WHILE fname[j] # 0X DO name[i] := fname[j]; INC(i); INC(j) END;
-			name[i] := 0X; fname[fn.fileOffset - 1] := 0X;
+			name[i] := 0X; fname[fn.nFileOffset - 1] := 0X;
 			actualPath := fname$; lfn := fname$;
 			loc := HostFiles.NewLocator(lfn);
-			IF fn.filterIndex <= n THEN
-				conv := typeList[fn.filterIndex - 1];
+			IF fn.nFilterIndex <= n THEN
+				conv := typeList[fn.nFilterIndex - 1];
 				defConv := conv
 			ELSE	(* ask for desired file type *)
 				impType.list.SetLen(n);
@@ -371,10 +362,10 @@ MODULE HostDialog;
 			END
 		ELSE
 			loc := NIL; conv := NIL;
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetIntSpec;
 
 	PROCEDURE (h: GetSpecHook) GetIntSpec (VAR loc: Files.Locator; VAR name: Files.Name;
@@ -383,25 +374,25 @@ MODULE HostDialog;
 		GetIntSpec(loc, name, conv)
 	END GetIntSpec;
 
-	PROCEDURE [2] HookProc (wnd: USER32.Handle; msg, wParam, lParam: INTEGER): INTEGER;
+	PROCEDURE [2] HookProc (wnd: WinApi.HANDLE; msg, wParam, lParam: INTEGER): INTEGER;
 	(* 06.11.02. not needed anymore.  *)
-		VAR i, j: INTEGER; s: ARRAY 256 OF SHORTCHAR; t: ARRAY 8 OF SHORTCHAR; edit: USER32.Handle;
+		VAR i, j: INTEGER; s: ARRAY 256 OF CHAR; t: ARRAY 8 OF CHAR; edit: WinApi.HANDLE;
 	BEGIN
-		IF (msg = USER32.WMCommand) & (lParam # 0) & (wParam = 10470H) THEN
-			i := USER32.GetWindowTextA(lParam, s, LEN(s));
+		IF (msg = WinApi.WM_COMMAND) & (lParam # 0) & (wParam = 10470H) THEN
+			i := WinApi.GetWindowTextW(lParam, s, LEN(s));
 			DEC(i);
 			IF s[i] = ")" THEN DEC(i) END;
 			j := i;
 			WHILE (j >= 0) & (s[j] # ".") DO DEC(j) END;
 			IF (j > 0) & (s[j-1] = "*") & (j >= i - 3) & (j < i) THEN
 				t[0] := s[j+1]; t[1] := s[j+2]; t[2] := s[j+3]; t[i-j] := 0X;
-				edit := USER32.GetDlgItem(USER32.GetParent(lParam), 480H);
+				edit := WinApi.GetDlgItem(WinApi.GetParent(lParam), 480H);
 				IF edit # 0 THEN
-					i := USER32.GetWindowTextA(edit, s, LEN(s)); j := i - 1;
+					i := WinApi.GetWindowTextW(edit, s, LEN(s)); j := i - 1;
 					WHILE (j >= 0) & (s[j] # ".") DO DEC(j) END;
 					IF j < 0 THEN j := i END;
 					s[j] := "."; s[j+1] := t[0]; s[j+2] := t[1]; s[j+3] := t[2]; s[j+4] := 0X;
-					i := USER32.SetWindowTextA(edit, s)
+					i := WinApi.SetWindowTextW(edit, s)
 				END
 			END
 		END;
@@ -415,45 +406,45 @@ MODULE HostDialog;
 		VAR res, i, j: INTEGER; lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
-		ftype := SHORT(defType$); i := 0;
+		ftype := defType$; i := 0;
 		IF ftype = "" THEN ftype := "odc" END;
 		IF ftype # "*" THEN
-			SAppend(filter, i, "*."); SSAppend(filter, i, ftype); INC(i);
-			SAppend(filter, i, "*."); SSAppend(filter, i, ftype); INC(i)
+			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i);
+			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i)
 		ELSE ftype := ""
 		END;
 		SAppend(filter, i, "*.*"); INC(i);
 		SAppend(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
 		(* open dialog *)
-		fn.filterIndex := 1;
-		fname := SHORT(default$);
+		fn.nFilterIndex := 1;
+		fname := default$;
 		IF loc # NIL THEN	(* set old dir *)
-			actualPath := SHORT(loc(HostFiles.Locator).path$); i := 0
+			actualPath := loc(HostFiles.Locator).path$; i := 0
 (*
 			WHILE actualPath[i] # 0X DO INC(i) END;
 			actualPath[i] := "\"; actualPath[i+1] := 0X
 *)
 		END;
-		fn.flags := {1, 2, 3, 11, 19};	(* overwritePrompt, hideReadOnly, noChangeDir, pathMustExist, new look *)
-		fn.owner := HostWindows.ActualWnd();
-		res := COMDLG32.GetSaveFileNameA(fn);
-		IF (res = 0) & (COMDLG32.CommDlgExtendedError() = 3002H) THEN
+		fn.Flags := {1, 2, 3, 11, 19};	(* overwritePrompt, hideReadOnly, noChangeDir, pathMustExist, new look *)
+		fn.hwndOwner := HostWindows.ActualWnd();
+		res := WinDlg.GetSaveFileNameW(fn);
+		IF (res = 0) & (WinDlg.CommDlgExtendedError() = 3002H) THEN
 			fname := "";
-			res := COMDLG32.GetSaveFileNameA(fn)
+			res := WinDlg.GetSaveFileNameW(fn)
 		END;
 		IF res # 0 THEN
-			i := 0; j := fn.fileOffset;
+			i := 0; j := fn.nFileOffset;
 			WHILE fname[j] # 0X DO name[i] := fname[j]; INC(i); INC(j) END;
-			name[i] := 0X; fname[fn.fileOffset - 1] := 0X;
+			name[i] := 0X; fname[fn.nFileOffset - 1] := 0X;
 			actualPath := fname$; lfn := fname$;
 			loc := HostFiles.NewLocator(lfn)
 		ELSE
 			loc := NIL;
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetExtSpec;
 
 	PROCEDURE GetExtSpec* (
@@ -464,9 +455,9 @@ MODULE HostDialog;
 			lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
-		IF conv # NIL THEN ftype := SHORT(conv.fileType$) ELSE ftype := "odc" END;
+		IF conv # NIL THEN ftype := conv.fileType$ ELSE ftype := "odc" END;
 		typeList[0] := Converters.list;	(* document converter *)
-		c := Converters.list; fn.filterIndex := 1;
+		c := Converters.list; fn.nFilterIndex := 1;
 		Dialog.MapString("#Host:Document", t);
 		i := 0; SAppend(filter, i, t); SAppend(filter, i, " (*.odc)"); INC(i);
 		SAppend(filter, i, "*.odc"); INC(i); n := 1;
@@ -477,52 +468,51 @@ MODULE HostDialog;
 				SAppend(filter, i, " (*."); SAppend(filter, i, c.fileType);
 				SAppend(filter, i, ")"); INC(i);
 				SAppend(filter, i, "*."); SAppend(filter, i, c.fileType); INC(i);
-				IF c = conv THEN fn.filterIndex := n + 1 END;
+				IF c = conv THEN fn.nFilterIndex := n + 1 END;
 				INC(n)
 			END;
 			c := c.next
 		END;
 		filter[i] := 0X;
 		(* open dialog *)
-		fname := SHORT(name$); i := 0;
+		fname := name$; i := 0;
 		(* overwritePrompt, hideReadOnly, noChangeDir, (* en hook, *) pathMustExist *)
-		fn.flags := {1, 2, 3, (* 5 ,*) 11};
-		IF osVersion >= 400 THEN INCL(fn.flags, 19) END;	(* new look *)
+		fn.Flags := {1, 2, 3, (* 5 ,*) 11, 19};
 		WHILE fname[i] # 0X DO INC(i) END;
 		WHILE (i > 0) & (fname[i] # ".") DO DEC(i) END;
 		IF i > 0 THEN
 			IF (conv # NIL) & (conv.exp = "") THEN
 				ftype := "odc"; fname[i] := 0X
-			ELSIF osVersion >= 400 THEN
+			ELSE
 				j := 0;
 				WHILE (ftype[j] # 0X) & (CAP(fname[i+j+1]) = CAP(ftype[j])) DO INC(j) END;
 				IF fname[i+j+1] = ftype[j] THEN fname[i] := 0X END
 			END
 		END;
 		IF loc # NIL THEN	(* set old dir *)
-			actualPath := SHORT(loc(HostFiles.Locator).path$); i := 0;
+			actualPath := loc(HostFiles.Locator).path$; i := 0;
 			WHILE actualPath[i] # 0X DO INC(i) END;
 			actualPath[i] := "\"; actualPath[i+1] := 0X
 		END;
-		fn.owner := HostWindows.ActualWnd();
-		res := COMDLG32.GetSaveFileNameA(fn);
-		IF (res = 0) & (COMDLG32.CommDlgExtendedError() = 3002H) THEN
+		fn.hwndOwner := HostWindows.ActualWnd();
+		res := WinDlg.GetSaveFileNameW(fn);
+		IF (res = 0) & (WinDlg.CommDlgExtendedError() = 3002H) THEN
 			fname := "";
-			res := COMDLG32.GetSaveFileNameA(fn)
+			res := WinDlg.GetSaveFileNameW(fn)
 		END;
 		IF res # 0 THEN
-			i := 0; j := fn.fileOffset;
+			i := 0; j := fn.nFileOffset;
 			WHILE fname[j] # 0X DO name[i] := fname[j]; INC(i); INC(j) END;
-			name[i] := 0X; fname[fn.fileOffset - 1] := 0X;
+			name[i] := 0X; fname[fn.nFileOffset - 1] := 0X;
 			actualPath := fname$; lfn := fname$;
 			loc := HostFiles.NewLocator(lfn);
-			conv := typeList[fn.filterIndex - 1]
+			conv := typeList[fn.nFilterIndex - 1]
 		ELSE
 			loc := NIL;
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetExtSpec;
 
 	PROCEDURE (h: GetSpecHook) GetExtSpec (
@@ -579,10 +569,14 @@ MODULE HostDialog;
 	(* page setup dialog *)
 
 	PROCEDURE SetupNotify* (op, from, to: INTEGER);
-		VAR msg: UpdateMsg;
+		VAR msg: UpdateMsg; t: INTEGER;
 	BEGIN
 		IF op = Dialog.changed THEN
-			Views.Omnicast(msg)
+			IF setup.landscape # (setup.w > setup.h) THEN
+				t := setup.w; setup.w := setup.h; setup.h := t
+			END;
+			Views.Omnicast(msg);
+			Dialog.Update(setup)
 		END
 	END SetupNotify;
 
@@ -607,15 +601,16 @@ MODULE HostDialog;
 	END SetupOk;
 
 	PROCEDURE InitPageSetup*;
-		VAR win: Windows.Window; w, h, l, t, r, b, uu: INTEGER; p: Printers.Printer;
+		VAR win: Windows.Window; w, h, pw, ph, l, t, r, b, uu: INTEGER; p: Printers.Printer;
 	BEGIN
 		win := Windows.dir.Focus(Controllers.targetPath);
 		IF win # NIL THEN
 			IF Dialog.metricSystem THEN uu := Ports.mm DIV 10 ELSE uu := Ports.inch DIV 100 END;
 			win.doc.PollPage(w, h, l, t, r, b, setup.decorate);
 			p := Printers.dir.Current();
-			IF p # NIL THEN HostPrinters.GetPage(p, w, h) END;
-			(* resolve doc - printer page size conflict !!! *)
+			IF p # NIL THEN HostPrinters.GetPage(p, pw, ph);
+				IF (pw > ph) = (w > h) THEN w := pw; h := ph ELSE w := ph; h := pw END
+			END;
 			r := w - r; b := h - b;
 			setup.left := l DIV uu / 100;
 			setup.right := r DIV uu / 100;
@@ -623,10 +618,8 @@ MODULE HostDialog;
 			setup.bottom := b DIV uu / 100;
 			setup.w := w; setup.h := h;
 			setup.hs := setup.right + setup.left;
-			setup.vs := setup.bottom + setup.top
-(*
-			Dialog.Call("OpenToolDialog('HostDialog.setup', 'Page Setup')", " ", res)
-*)
+			setup.vs := setup.bottom + setup.top;
+			setup.landscape := w > h
 		END
 	END InitPageSetup;
 
@@ -636,30 +629,30 @@ MODULE HostDialog;
 	);
 		VAR res: INTEGER;
 	BEGIN
-		prt.flags := {18 (*, 20 *)};	(* use dev mode copies, hide print to file *)
-		IF ~hasSelection THEN INCL(prt.flags, 2) END;	(* no selection *)
-		prt.copies := 1;
-		prt.owner := HostWindows.ActualWnd();
-		prt.fromPage := 1; prt.toPage := 1;
-		res := COMDLG32.PrintDlgA(prt);
-		IF (res = 0) & (COMDLG32.CommDlgExtendedError() = 4106) THEN
-			prt.devMode := 0;
-			res := COMDLG32.PrintDlgA(prt)
+		prt.Flags := {18 (*, 20 *)};	(* use dev mode copies, hide print to file *)
+		IF ~hasSelection THEN INCL(prt.Flags, 2) END;	(* no selection *)
+		prt.nCopies := 1;
+		prt.hwndOwner := HostWindows.ActualWnd();
+		prt.nFromPage := 1; prt.nToPage := 1;
+		res := WinDlg.PrintDlgW(prt);
+		IF (res = 0) & (WinDlg.CommDlgExtendedError() = 4106) THEN
+			prt.hDevMode := 0;
+			res := WinDlg.PrintDlgW(prt)
 		END;
-		IF (res = 0) & (COMDLG32.CommDlgExtendedError() = 4108) THEN
-			prt.devMode := 0; prt.devNames := 0;
-			res := COMDLG32.PrintDlgA(prt)
+		IF (res = 0) & (WinDlg.CommDlgExtendedError() = 4108) THEN
+			prt.hDevMode := 0; prt.hDevNames := 0;
+			res := WinDlg.PrintDlgW(prt)
 		END;
-		HostPrinters.SetCurrent(prt.devNames, prt.devMode);
+		HostPrinters.SetCurrent(prt.hDevNames, prt.hDevMode);
 		IF res # 0 THEN
-			IF 0 IN prt.flags THEN selection := TRUE; from := 0; to := 0	(* print selection *)
-			ELSIF 1 IN prt.flags THEN selection := FALSE; from := prt.fromPage - 1; to := prt.toPage - 1 (* print pages *)
+			IF 0 IN prt.Flags THEN selection := TRUE; from := 0; to := 0	(* print selection *)
+			ELSIF 1 IN prt.Flags THEN selection := FALSE; from := prt.nFromPage - 1; to := prt.nToPage - 1 (* print pages *)
 			ELSE selection := FALSE; from := 0; to := 32767	(* print all *)
 			END;
-			copies := prt.copies
+			copies := prt.nCopies
 		ELSE
 			copies := 0;
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END
 	END PrintDialog;
@@ -667,54 +660,54 @@ MODULE HostDialog;
 	PROCEDURE PrintSetup*;
 		VAR res: INTEGER; pt: Printers.Printer;
 	BEGIN
-		prt.flags := {6};	(* PrintSetup *)
-		prt.owner := HostWindows.ActualWnd();
-		res := COMDLG32.PrintDlgA(prt);
-		IF (res = 0) & (COMDLG32.CommDlgExtendedError() = 4108) THEN
-			prt.devMode := 0; prt.devNames := 0;
-			res := COMDLG32.PrintDlgA(prt)
-		END;
-(*
-		IF res = 0 THEN
-			res := COMDLG32.CommDlgExtendedError();
-			ASSERT(res = 0, 100)
-		END;
-*)
-		HostPrinters.SetCurrent(prt.devNames, prt.devMode);
 		pt := Printers.dir.Current();
-		IF pt # NIL THEN HostPrinters.GetPage(pt, setup.w, setup.h) END;
+		IF pt # NIL THEN
+			pt.SetOrientation(setup.landscape);
+			HostPrinters.GetCurrent(prt.hDevNames, prt.hDevMode)
+		END;
+		prt.Flags := {6};	(* PrintSetup *)
+		prt.hwndOwner := HostWindows.ActualWnd();
+		res := WinDlg.PrintDlgW(prt);
+		IF (res = 0) & (WinDlg.CommDlgExtendedError() = 4108) THEN
+			prt.hDevMode := 0; prt.hDevNames := 0;
+			res := WinDlg.PrintDlgW(prt)
+		END;
+		HostPrinters.SetCurrent(prt.hDevNames, prt.hDevMode);
+		pt := Printers.dir.Current();
+		IF pt # NIL THEN
+			HostPrinters.GetPage(pt, setup.w, setup.h);
+			setup.landscape := setup.w > setup.h
+		END;
 		SetupNotify(Dialog.changed, 0, 0)
 	END PrintSetup;
 
 
 	PROCEDURE CloseDialog* (w: Windows.Window; quit: BOOLEAN; VAR res: INTEGER);
 		VAR r: INTEGER; title: Views.Title; text: ARRAY 256 OF CHAR;
-			stext: ARRAY 256 OF SHORTCHAR; an: ARRAY 32 OF SHORTCHAR;
 	BEGIN
 		w.GetTitle(title);
 		Dialog.MapParamString(dirtyString, title, 0DX, 0DX, text);
-		stext := SHORT(text$); an := SHORT(Dialog.appName$);
-		r := USER32.MessageBoxA(w(HostWindows.Window).wnd, stext, an, {0, 1, 5});
+		r := WinApi.MessageBoxW(w(HostWindows.Window).wnd, text, Dialog.appName, {0, 1, 5});
 		IF r = 6 THEN res := save
 		ELSIF r = 2 THEN res := cancel
 		ELSE res := 0
 		END;
-		r := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		r := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END CloseDialog;
 
 	PROCEDURE (hook: DialogHook) GetColor (in: Ports.Color; OUT out: Ports.Color; OUT set: BOOLEAN);
 		VAR res: INTEGER;
 	BEGIN
-		col.rgb := in;
-		IF col.rgb = Ports.defaultColor THEN col.rgb := HostPorts.textCol END;
-		col.owner := HostWindows.ActualWnd();
-		set := COMDLG32.ChooseColorA(col) # 0;
-		out := col.rgb;
+		col.rgbResult := in;
+		IF col.rgbResult = Ports.defaultColor THEN col.rgbResult := HostPorts.textCol END;
+		col.hwndOwner := HostWindows.ActualWnd();
+		set := WinDlg.ChooseColorW(col) # 0;
+		out := col.rgbResult;
 		IF ~set THEN
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetColor;
 
 	PROCEDURE ColorDialog*;
@@ -733,35 +726,35 @@ MODULE HostDialog;
 	);
 		VAR res: INTEGER;
 	BEGIN
-		logFont.height := -((size + HostWindows.unit DIV 2) DIV HostWindows.unit);
-		logFont.weight := weight;
-		logFont.italic := Fonts.italic IN style;
-		logFont.underlined := Fonts.underline IN style;
-		logFont.strikeOut := Fonts.strikeout IN style;
-		logFont.faceName := SHORT(typeface$);
-		font.owner := HostWindows.ActualWnd();
+		logFont.lfHeight := -((size + HostWindows.unit DIV 2) DIV HostWindows.unit);
+		logFont.lfWeight := weight;
+		IF Fonts.italic IN style THEN logFont.lfItalic := 1X ELSE logFont.lfItalic := 0X END;
+		IF Fonts.underline IN style THEN logFont.lfUnderline := 1X ELSE logFont.lfUnderline := 0X END;
+		IF Fonts.strikeout IN style THEN logFont.lfStrikeOut := 1X ELSE logFont.lfStrikeOut := 0X END;
+		logFont.lfFaceName := typeface$;
+		font.hwndOwner := HostWindows.ActualWnd();
 		IF full THEN
-			font.flags := {0, 6, 8, 11, 16}	(* screenFonts, initToLogFont, effects, noVectorFonts, forceFontExist *)
+			font.Flags := {0, 6, 8, 11, 16}	(* screenFonts, initToLogFont, effects, noVectorFonts, forceFontExist *)
 		ELSE
-			font.flags := {0, 6, 11, 20, 21}	(* screenFonts, initToLogFont, noVectorFonts, no style, no size *)
+			font.Flags := {0, 6, 11, 20, 21}	(* screenFonts, initToLogFont, noVectorFonts, no style, no size *)
 		END;
-		IF color = Ports.defaultColor THEN font.rgb := HostPorts.textCol ELSE font.rgb := color END;
-		set := COMDLG32.ChooseFontA(font) # 0;
+		IF color = Ports.defaultColor THEN font.rgbColors := HostPorts.textCol ELSE font.rgbColors := color END;
+		set := WinDlg.ChooseFontW(font) # 0;
 		IF set THEN
-			typeface := logFont.faceName$;
-			size := font.pointSize * Ports.point DIV 10;
-			ASSERT((size + HostWindows.unit DIV 2) DIV HostWindows.unit = ABS(logFont.height), 120);
-			weight := SHORT(logFont.weight);
+			typeface := logFont.lfFaceName$;
+			size := font.iPointSize * Ports.point DIV 10;
+			ASSERT((size + HostWindows.unit DIV 2) DIV HostWindows.unit = ABS(logFont.lfHeight), 120);
+			weight := logFont.lfWeight;
 			style := {};
-			IF logFont.italic THEN INCL(style, Fonts.italic) END;
-			IF logFont.underlined THEN INCL(style, Fonts.underline) END;
-			IF logFont.strikeOut THEN INCL(style, Fonts.strikeout) END;
-			IF font.rgb = HostPorts.textCol THEN color := Ports.defaultColor ELSE color := font.rgb END
+			IF logFont.lfItalic # 0X THEN INCL(style, Fonts.italic) END;
+			IF logFont.lfUnderline # 0X THEN INCL(style, Fonts.underline) END;
+			IF logFont.lfStrikeOut # 0X THEN INCL(style, Fonts.strikeout) END;
+			IF font.rgbColors = HostPorts.textCol THEN color := Ports.defaultColor ELSE color := font.rgbColors END
 		ELSE
-			res := COMDLG32.CommDlgExtendedError();
+			res := WinDlg.CommDlgExtendedError();
 			ASSERT(res = 0, 100)
 		END;
-		res := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
+		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END FontDialog0;
 
 	PROCEDURE FontDialog*;
@@ -829,7 +822,7 @@ MODULE HostDialog;
 	END DlgFont;
 
 	PROCEDURE PrefOk*;
-		VAR res: INTEGER; rect: USER32.Rect;
+		VAR res: INTEGER; rect: WinApi.RECT;
 	BEGIN
 		HostFonts.SetDefaultFont(prefFName, prefFSize);
 		HostFonts.SetDialogFont(prefDName, prefDSize, prefDStyle, prefDWght);
@@ -845,7 +838,7 @@ MODULE HostDialog;
 		HostCFrames.SetDefFonts;
 		HostRegistry.WriteBool("noStatus", ~Dialog.showsStatus);
 		HostRegistry.WriteBool("memStatus", HostWindows.memInStatus);
-		res := USER32.GetClientRect(HostWindows.main, rect);
+		res := WinApi.GetClientRect(HostWindows.main, rect);
 		HostWindows.ResizeMainWindow(0, rect.right, rect.bottom);
 		Dialog.thickCaret := prefs.thickCaret;
 		Dialog.caretPeriod := prefs.caretPeriod;
@@ -876,27 +869,15 @@ MODULE HostDialog;
 
 	PROCEDURE (hook: DatesHook) DateToString (d: Dates.Date; format: INTEGER; OUT str: ARRAY OF CHAR);
 		VAR res, pos, i: INTEGER; time: WinApi.SYSTEMTIME; fmt: ARRAY 64 OF CHAR;
-			sfmt, sstr: ARRAY 64 OF SHORTCHAR;
 	BEGIN
 		time.wYear := SHORT(d.year); time.wMonth := SHORT(d.month); time.wDay := SHORT(d.day);
 		IF format = Dates.short THEN
-			res := WinApi.GetDateFormat(
-				HostRegistry.localeId, WinApi.DATE_SHORTDATE, time, NIL, sstr, LEN(sstr))
-(*
-			IF weekday THEN
-				res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_SSHORTDATE, sfmt, LEN(sfmt));
-				sfmt := "ddd, " + sfmt;
-				res := WinApi.GetDateFormat(HostRegistry.localeId, {}, time, sfmt, sstr, LEN(sstr));
-			ELSE
-				res := WinApi.GetDateFormat(
-					HostRegistry.localeId, WinApi.DATE_SHORTDATE, time, NIL, sstr, LEN(sstr))
-			END
-*)
+			res := WinApi.GetDateFormatW(
+				HostRegistry.localeId, WinApi.DATE_SHORTDATE, time, NIL, str, LEN(str))
 		ELSIF format = Dates.long THEN
-			res := WinApi.GetDateFormat(HostRegistry.localeId, WinApi.DATE_LONGDATE, time, NIL, sstr, LEN(sstr))
+			res := WinApi.GetDateFormatW(HostRegistry.localeId, WinApi.DATE_LONGDATE, time, NIL, str, LEN(str))
 		ELSE
-			res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, sfmt, LEN(sfmt));
-			fmt := sfmt$;
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, fmt, LEN(fmt));
 			IF format # Dates.abbreviated THEN	(* remove weekday *)
 				Strings.Find(fmt, "dddd", 0, pos); i := pos + 4;
 				IF pos < 0 THEN Strings.Find(fmt, "ddd", 0, pos); i := pos + 3 END;
@@ -911,63 +892,18 @@ MODULE HostDialog;
 				Strings.Find(fmt, "MMMM", 0, pos);
 				IF pos >= 0 THEN Strings.Replace(fmt, pos, 4, "MMM") END
 			END;
-			sfmt := SHORT(fmt$);
-			res := WinApi.GetDateFormat(HostRegistry.localeId, {}, time, sfmt, sstr, LEN(sstr))
+			res := WinApi.GetDateFormatW(HostRegistry.localeId, {}, time, fmt, str, LEN(str))
 		END;
-(*
-		ELSE
-			IF (format = Dates.abbreviated) OR ~weekday THEN
-				res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, sfmt, LEN(sfmt));
-				fmt := sfmt$;
-				IF format = Dates.abbreviated THEN
-					Strings.Find(fmt, "dddd", 0, pos);
-					IF pos >= 0 THEN Strings.Replace(fmt, pos, 4, "ddd") END;
-					Strings.Find(fmt, "MMMM", 0, pos);
-					IF pos >= 0 THEN Strings.Replace(fmt, pos, 4, "MMM") END
-				END;
-				IF ~weekday THEN
-					Strings.Find(fmt, "dddd", 0, pos); i := pos + 4;
-					IF pos < 0 THEN Strings.Find(fmt, "ddd", 0, pos); i := pos + 3 END;
-					IF pos >= 0 THEN
-						WHILE (fmt[i] # 0X) & (CAP(fmt[i]) < "A") OR (CAP(fmt[i]) > "Z") DO INC(i) END;
-						Strings.Replace(fmt, pos, i - pos, "")
-					END
-				END;
-				sfmt := SHORT(fmt$);
-				res := WinApi.GetDateFormat(HostRegistry.localeId, {}, time, sfmt, sstr, LEN(sstr));
-			ELSE
-				res := WinApi.GetDateFormat(
-					HostRegistry.localeId, WinApi.DATE_LONGDATE, time, NIL, sstr, LEN(sstr))
-			END
-		END;
-*)
-(*
-		IF format = Dates.abbreviated THEN
-			res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_SLONGDATE, sfmt, LEN(sfmt));
-			fmt := sfmt$;
-			Strings.Find(fmt, "dddd", 0, pos);
-			IF pos >= 0 THEN Strings.Replace(fmt, pos, 4, "ddd") END;
-			Strings.Find(fmt, "MMMM", 0, pos);
-			IF pos >= 0 THEN Strings.Replace(fmt, pos, 4, "MMM") END;
-			sfmt := SHORT(fmt$);
-			res := WinApi.GetDateFormat(HostRegistry.localeId, {}, time, sfmt, sstr, LEN(sstr));
-		ELSE
-			IF format = Dates.long THEN flags := WinApi.DATE_LONGDATE
-			ELSE flags := WinApi.DATE_SHORTDATE
-			END;
-			res := WinApi.GetDateFormat(HostRegistry.localeId, flags, time, NIL, sstr, LEN(sstr));
-		END;
-*)
-		IF res # 0 THEN str := sstr$ ELSE str := "?" END
+		IF res = 0 THEN str := "?" END
 	END DateToString;
 
 	PROCEDURE (hook: DatesHook) TimeToString (t: Dates.Time; OUT str: ARRAY OF CHAR);
-		VAR res: INTEGER; time: WinApi.SYSTEMTIME; sstr: ARRAY 64 OF SHORTCHAR;
+		VAR res: INTEGER; time: WinApi.SYSTEMTIME;
 	BEGIN
 		time.wHour := SHORT(t.hour); time.wMinute := SHORT(t.minute);
 		time.wSecond := SHORT(t.second); time.wMilliseconds := 0;
-		res := WinApi.GetTimeFormat(HostRegistry.localeId, {}, time, NIL, sstr, LEN(sstr));
-		IF res # 0 THEN str := sstr$ ELSE str := "?" END
+		res := WinApi.GetTimeFormatW(HostRegistry.localeId, {}, time, NIL, str, LEN(str));
+		IF res = 0 THEN str := "?" END
 	END TimeToString;
 
 	PROCEDURE (hook: LanguageHook) SetLanguage (
@@ -975,11 +911,11 @@ MODULE HostDialog;
 	);
 	BEGIN
 		ok := (lang = "") OR (LEN(lang$) = 2);
-		IF ok & persistent THEN HostRegistry.WriteString("language", SHORT(lang)) END
+		IF ok & persistent THEN HostRegistry.WriteString("language", lang) END
 	END SetLanguage;
 
 	PROCEDURE (hook: LanguageHook) GetPersistentLanguage (OUT lang: Dialog.Language);
-		VAR res: INTEGER; s: ARRAY 32 OF SHORTCHAR;
+		VAR res: INTEGER; s: ARRAY 32 OF CHAR;
 	BEGIN
 		HostRegistry.ReadString("language", s, res);
 		IF res = 0 THEN
@@ -990,10 +926,12 @@ MODULE HostDialog;
 	END GetPersistentLanguage;
 
 	PROCEDURE Start* (name: ARRAY OF CHAR);
-		VAR res: INTEGER; str: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
 	BEGIN
-		str := SHORT(name$);
-		res := KERNEL32.WinExec(str, 1)
+		(* res := WinApi.WinExec(name, WinApi.SW_NORMAL) *)
+		WinApi.GetStartupInfoW(info);
+		info.wShowWindow := WinApi.SW_NORMAL;
+		res := WinApi.CreateProcessW(NIL, name, NIL, NIL, WinApi.FALSE, {}, 0, NIL, info, process)
 	END Start;
 
 
@@ -1003,42 +941,42 @@ MODULE HostDialog;
 		VAR i: INTEGER;
 	BEGIN
 		(* file dialog data structure *)
-		fn.size := SIZE(COMDLG32.FileNameData);
-		fn.instance := 0;
-		fn.customFilter := NIL;
-		fn.filter := filter; fn.filterIndex := 1;
-		i := KERNEL32.GetCurrentDirectoryA(LEN(actualPath), actualPath);
-		fn.initialDir := actualPath;
-		fn.title := NIL; fn.fileTitle := NIL;
-		fn.file := fname; fn.maxFile := LEN(fname);
-		fn.defExt := ftype; ftype := "$";
-		fn.hook := HookProc;
+		fn.lStructSize := SIZE(WinDlg.OPENFILENAMEW);
+		fn.hInstance := 0;
+		fn.lpstrCustomFilter := NIL;
+		fn.lpstrFilter := filter; fn.nFilterIndex := 1;
+		i := WinApi.GetCurrentDirectoryW(LEN(actualPath), actualPath);
+		fn.lpstrInitialDir := actualPath;
+		fn.lpstrTitle := NIL; fn.lpstrFileTitle := NIL;
+		fn.lpstrFile := fname; fn.nMaxFile := LEN(fname);
+		fn.lpstrDefExt := ftype; ftype := "$";
+		fn.lpfnHook := HookProc;
 		(* print dialog data structure *)
-		prt.size := SIZE(COMDLG32.PrintDlgData);
-		prt.devMode := 0;
-		prt.devNames := 0;
-		prt.minPage := 1;
-		prt.maxPage := -1;
+		prt.lStructSize := SIZE(WinDlg.PRINTDLGW);
+		prt.hDevMode := 0;
+		prt.hDevNames := 0;
+		prt.nMinPage := 1;
+		prt.nMaxPage := -1;
 		(* font dialog data structure *)
-		font.size := SIZE(COMDLG32.ChooseFontData);
-		font.dc := 0;
-		font.logFont := SYSTEM.VAL(GDI32.LogFontPtr, SYSTEM.ADR(logFont));
-		font.rgb := 0;
-		font.instance := 0;
-		font.style := NIL;
-		font.fontType := 2000H;	(* screenFontType *)
-		logFont.width := 0;
-		logFont.escapement := 0;
-		logFont.orientation := 0;
-		logFont.charSet := 0;
-		logFont.outPrecision := 0;
-		logFont.clipPrecision := 0;
-		logFont.quality := 0;
-		logFont.pitchAndFamily := 0;
+		font.lStructSize := SIZE(WinDlg.CHOOSEFONTW);
+		font.hDC := 0;
+		font.lpLogFont := SYSTEM.VAL(WinApi.PtrLOGFONTW, SYSTEM.ADR(logFont));
+		font.rgbColors := 0;
+		font.hInstance := 0;
+		font.lpszStyle := NIL;
+		font.nFontType := 2000H;	(* screenFontType *)
+		logFont.lfWidth := 0;
+		logFont.lfEscapement := 0;
+		logFont.lfOrientation := 0;
+		logFont.lfCharSet := 0X;
+		logFont.lfOutPrecision := 0X;
+		logFont.lfClipPrecision := 0X;
+		logFont.lfQuality := 0X;
+		logFont.lfPitchAndFamily := 0X;
 		(* color dialog data structure *)
-		col.size := SIZE(COMDLG32.ChooseColorData);
-		col.custColors := customColors;
-		col.flags := {0};	(* rgbInit *)
+		col.lStructSize := SIZE(WinDlg.CHOOSECOLORW);
+		col.lpCustColors := customColors;
+		col.Flags := {0};	(* rgbInit *)
 		i := 0;
 		WHILE i < 16 DO customColors[i] := 0FFFFFFH; INC(i) END
 	END InitDialogs;
@@ -1051,15 +989,15 @@ MODULE HostDialog;
 			languageHook: LanguageHook;
 	BEGIN
 		NEW(all);
-		v := KERNEL32.GetVersion();
+		v := WinApi.GetVersion();
 		osVersion := v MOD 256 * 100 + v DIV 256 MOD 256;
 		IF v >= 0 THEN
 			IF osVersion < 400 THEN Dialog.platform := Dialog.windowsNT3
 			ELSIF osVersion < 500 THEN Dialog.platform := Dialog.windowsNT4
-			ELSE Dialog.platform := Dialog.windows2000
+			ELSIF osVersion = 500 THEN Dialog.platform := Dialog.windows2000
+			ELSIF osVersion < 600 THEN Dialog.platform := Dialog.windowsXP
+			ELSE Dialog.platform := Dialog.windowsVista
 			END
-		ELSIF osVersion < 400 THEN Dialog.platform := Dialog.windows32s
-		ELSIF osVersion < 410 THEN Dialog.platform := Dialog.windows95
 		ELSE Dialog.platform := Dialog.windows98
 		END;
 

@@ -46,7 +46,7 @@ MODULE ObxStores;
 	PROCEDURE (n: Node) CopyFrom (source: Stores.Store);
 	BEGIN
 		WITH source: Node DO
-			IF source.a # NIL THEN n.a := Stores.CopyOf(source.a)(Node) ELSE n.b := NIL END;
+			IF source.a # NIL THEN n.a := Stores.CopyOf(source.a)(Node) ELSE n.a := NIL END;
 			IF source.b # NIL THEN n.b := Stores.CopyOf(source.b)(Node) ELSE n.b := NIL END
 		END
 	END CopyFrom;

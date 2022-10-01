@@ -13,7 +13,7 @@ MODULE Kernel;
 
 	(* green color means COM-specific code *)
 
-	IMPORT KERNEL32, USER32, S := SYSTEM, COM, WinApi, WinOle;	
+	IMPORT S := SYSTEM, COM, WinApi, WinOle;
 
 	CONST
 		strictStackSweep = TRUE;
@@ -86,7 +86,7 @@ MODULE Kernel;
 			size-: INTEGER;	(* record: size, array: #elem, dyn array: 0, proc: sigfp *)
 			mod-: Module;
 			id-: INTEGER;	(* name idx * 256 + lev * 16 + attr * 4 + form *)
-			base-: ARRAY 16 OF Type;
+			base-: ARRAY 16 OF Type;	(* signature if form = ProcTyp *)
 			fields-: Directory;	(* new fields (declaration order) *)
 			ptroffs-: ARRAY any OF INTEGER	(* array of any length *)
 		END;
@@ -97,12 +97,21 @@ MODULE Kernel;
 			fprint-: INTEGER;
 			offs-: INTEGER;	(* pvfprint for record types *)
 			id-: INTEGER;	(* name idx * 256 + vis * 16 + mode *)
-			struct-: Type	(* id of basic type or pointer to typedesc *)
+			struct-: Type	(* id of basic type or pointer to typedesc/signature *)
 		END;
 
 		Directory* = POINTER TO RECORD [untagged]
 			num-: INTEGER;	(* number of entries *)
 			obj-: ARRAY any OF ObjDesc	(* array of any length *)
+		END;
+
+		Signature* = POINTER TO RECORD [untagged]
+			retStruct-: Type;	(* id of basic type or pointer to typedesc or 0 *)
+			num-: INTEGER;	(* number of parameters *)
+			par-: ARRAY any OF RECORD [untagged]	(* parameters *)
+				id-: INTEGER;	(* name idx * 256 + kind *)
+				struct-: Type	(* id of basic type or pointer to typedesc *)
+			END
 		END;
 
 		Handler* = PROCEDURE;
@@ -137,7 +146,7 @@ MODULE Kernel;
 
 		Hook* = POINTER TO ABSTRACT RECORD END;
 
-		LoaderHook* = POINTER TO ABSTRACT RECORD (Hook) 
+		LoaderHook* = POINTER TO ABSTRACT RECORD (Hook)
 			res*: INTEGER;
 			importing*, imported*, object*: ARRAY 256 OF CHAR
 		END;
@@ -160,7 +169,7 @@ MODULE Kernel;
 		Cluster = POINTER TO RECORD [untagged]
 			size: INTEGER;	(* total size *)
 			next: Cluster;
-			max: INTEGER
+			max: INTEGER	(* exe: reserved size, dll: original address *)
 			(* start of first block *)
 		END;
 
@@ -196,14 +205,25 @@ MODULE Kernel;
 
 		IntPtr = POINTER TO RECORD [untagged] p: COM.IUnknown END;
 
-		ExcpFramePtr = POINTER TO RECORD (KERNEL32.ExcpFrm)
-			par: INTEGER
-		END;
-
 		Interface = POINTER TO RECORD	(* COMPILER DEPENDENT *)
 			vtab: INTEGER;
 			ref: INTEGER;	(* must correspond to Block.actual *)
 			unk: COM.IUnknown
+		END;
+
+
+		(* Exception handling *)
+
+		ExcpFramePtr* = POINTER TO ExcpFrame;
+		ExcpFrame* = EXTENSIBLE RECORD [untagged]
+			link*: ExcpFramePtr;
+			handler*: PROCEDURE(excpRec: WinApi.PtrEXCEPTION_RECORD;
+										estFrame: ExcpFramePtr;
+										context: WinApi.PtrCONTEXT;
+										dispCont: INTEGER): INTEGER;
+		END;
+		ComExcpFramePtr = POINTER TO RECORD (ExcpFrame)
+			par: INTEGER
 		END;
 
 
@@ -213,7 +233,7 @@ MODULE Kernel;
 		modList-: Module;	(* root of module list *)
 		trapCount-: INTEGER;
 		err-, pc-, sp-, fp-, stack-, val-: INTEGER;
-		comSig-: INTEGER;	(* command signature *)
+		mainWnd*: INTEGER;
 
 		free: ARRAY N OF FreeBlock;	(* free list *)
 		sentinelBlock: FreeDesc;
@@ -231,7 +251,7 @@ MODULE Kernel;
 		actual: Module;	(* valid during module initialization *)
 
 		res: INTEGER;	(* auxiliary global variables used for trap handling *)
-		old: SET;
+		old: INTEGER;
 
 		trapViewer, trapChecker: Handler;
 		trapped, guarded, secondTrap: BOOLEAN;
@@ -240,9 +260,9 @@ MODULE Kernel;
 		retAd: INTEGER;
 		restart: Command;
 
-		heap: KERNEL32.Handle;
-		excpPtr: KERNEL32.ExcpFrmPtr;
-		mainThread: KERNEL32.Handle;
+		heap: WinApi.HANDLE;
+		excpPtr: ExcpFramePtr;
+		mainThread: WinApi.HANDLE;
 
 		told, shift: INTEGER;	(* used in Time() *)
 
@@ -269,6 +289,8 @@ MODULE Kernel;
 	PROCEDURE [1] ReturnCX (ret: INTEGER) 05AH, 001H, 0CCH, 0FFH, 0E2H;
 		(* POP DX; ADD SP,CX; JP DX *)
 	PROCEDURE [1] FPageWord (offs: INTEGER): INTEGER 64H, 8BH, 0H;	(* MOV EAX,FS:[EAX] *)
+	PROCEDURE [1] InstallExcp* (VAR e: ExcpFrame) 64H, 8BH, 0DH, 0, 0, 0, 0, 89H, 8, 64H, 0A3H, 0, 0, 0, 0;
+	PROCEDURE [1] RemoveExcp* (VAR e: ExcpFrame) 8BH, 0, 64H, 0A3H, 0, 0, 0, 0;
 
 	(* code procedures for fpu *)
 
@@ -278,7 +300,7 @@ MODULE Kernel;
 
 	(* code procedure for memory erase *)
 
-	PROCEDURE [code] Erase (adr, words: INTEGER)	
+	PROCEDURE [code] Erase (adr, words: INTEGER)
 		089H, 0C7H,	(* MOV EDI, EAX *)
 		031H, 0C0H,	(* XOR EAX, EAX *)
 		059H,			(* POP ECX *)
@@ -340,7 +362,7 @@ MODULE Kernel;
 		0C2H, 004H, 000H;
 
 	PROCEDURE [code] RELEASE
-	(*	
+	(*
 		MOV	ECX,[ESP,4]
 		MOV	EAX,[ECX,8]
 		OR	EAX,EAX
@@ -367,16 +389,16 @@ MODULE Kernel;
 
 	PROCEDURE [code] CALLREL
 	(*
-		MOV     EAX,[ESP,4]
-		CMP     [EAX,4],1
-		JNE     L1
-		PUSH    ESI
-		PUSH    EDI
-		PUSH    EAX
+		MOV	EAX,[ESP,4]
+		CMP	[EAX,4],1
+		JNE	L1
+		PUSH	ESI
+		PUSH	EDI
+		PUSH	EAX
 		MOV	EAX,[EAX,-4]
-		CALL    [EAX,-8]
-		POP     EDI
-		POP     ESI
+		CALL	[EAX,-8]
+		POP	EDI
+		POP	ESI
 	L1:
 	*)
 		08BH, 044H, 024H, 004H,
@@ -473,15 +495,16 @@ MODULE Kernel;
 	PROCEDURE Time* (): LONGINT;
 		VAR t: INTEGER;
 	BEGIN
-		t := KERNEL32.GetTickCount();
+		t := WinApi.GetTickCount();
 		IF t < told THEN INC(shift) END;
 		told := t;
 		RETURN shift * 100000000L + t
 	END Time;
 
 	PROCEDURE Beep* ();
+		VAR res: INTEGER;
 	BEGIN
-		KERNEL32.Beep(500, 200)
+		res := WinApi.MessageBeep(BITS(-1))
 	END Beep;
 
 	PROCEDURE SearchProcVar* (var: INTEGER; VAR m: Module; VAR adr: INTEGER);
@@ -502,10 +525,10 @@ MODULE Kernel;
 		CONST N = 262144;
 		VAR adr, s: INTEGER;
 	BEGIN
-		ASSERT(size >= c.size, 100); 
+		ASSERT(size >= c.size, 100);
 		IF size <= c.max THEN
 			s := (size + (N - 1)) DIV N * N;
-			adr := KERNEL32.VirtualAlloc(S.VAL(INTEGER, c), s, {12}, {6});	(* commit; exec, read, write *)
+			adr := WinApi.VirtualAlloc(S.VAL(INTEGER, c), s, {12}, {6});	(* commit; exec, read, write *)
 			IF adr # 0 THEN
 				INC(used, s - c.size); INC(total, s - c.size); c.size := s
 			END
@@ -522,26 +545,26 @@ MODULE Kernel;
 		IF dllMem THEN
 			INC(size, 16);
 			ASSERT(size > 0, 100); adr := 0;
-			IF size < N THEN adr := KERNEL32.HeapAlloc(heap, {0}, N) END;
-			IF adr = 0 THEN adr := KERNEL32.HeapAlloc(heap, {0}, size) END;
+			IF size < N THEN adr := WinApi.HeapAlloc(heap, {0}, N) END;
+			IF adr = 0 THEN adr := WinApi.HeapAlloc(heap, {0}, size) END;
 			IF adr = 0 THEN c := NIL
 			ELSE
 				c := S.VAL(Cluster, (adr + 15) DIV 16 * 16); c.max := adr;
-				c.size := KERNEL32.HeapSize(heap, {0}, adr) - (S.VAL(INTEGER, c) - adr);
+				c.size := WinApi.HeapSize(heap, {0}, adr) - (S.VAL(INTEGER, c) - adr);
 				INC(used, c.size); INC(total, c.size)
 			END
 		ELSE
 			adr := 0; s := M;
 			REPEAT
-				adr := KERNEL32.VirtualAlloc(01000000H, s, {13}, {6});	(* reserve; exec, read, write *)
+				adr := WinApi.VirtualAlloc(01000000H, s, {13}, {6});	(* reserve; exec, read, write *)
 				IF adr = 0 THEN
-					adr := KERNEL32.VirtualAlloc(0, s, {13}, {6})	(* reserve; exec, read, write *)
+					adr := WinApi.VirtualAlloc(0, s, {13}, {6})	(* reserve; exec, read, write *)
 				END;
 				s := s DIV 2
 			UNTIL adr # 0;
 			IF adr = 0 THEN c := NIL
 			ELSE
-				adr := KERNEL32.VirtualAlloc(adr, 1024, {12}, {6});	(* commit; exec, read, write *)
+				adr := WinApi.VirtualAlloc(adr, 1024, {12}, {6});	(* commit; exec, read, write *)
 				c := S.VAL(Cluster, adr);
 				c.max := s * 2; c.size := 0; c.next := NIL;
 				GrowHeapMem(size, c);
@@ -556,31 +579,27 @@ MODULE Kernel;
 	BEGIN
 		DEC(used, c.size); DEC(total, c.size);
 		IF dllMem THEN
-			res := KERNEL32.HeapFree(heap, {0}, c.max)
+			res := WinApi.HeapFree(heap, {0}, c.max)
 		END
 	END FreeHeapMem;
 
 	PROCEDURE HeapFull (size: INTEGER): BOOLEAN;
-		VAR ms: KERNEL32.MemStatus;
+		VAR ms: WinApi.MEMORYSTATUS;
 	BEGIN
-		ms.size := SIZE(KERNEL32.MemStatus);
-		ms.memLoad := -1;
-		KERNEL32.GlobalMemoryStatus(ms);
-		IF ms.memLoad >= 0 THEN
-			RETURN used + size > ms.totPhys
-		ELSE	(* old win32s *)
-			RETURN used + size > 4000000
-		END
+		ms.dwLength := SIZE(WinApi.MEMORYSTATUS);
+		ms.dwMemoryLoad := -1;
+		WinApi.GlobalMemoryStatus(ms);
+		RETURN used + size > ms.dwTotalPhys
 	END HeapFull;
 
 	PROCEDURE AllocModMem* (descSize, modSize: INTEGER; VAR descAdr, modAdr: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
-		descAdr := KERNEL32.VirtualAlloc(0, descSize, {12, 13}, {6});	(* reserve & commit; exec, read, write *)
+		descAdr := WinApi.VirtualAlloc(0, descSize, {12, 13}, {6});	(* reserve & commit; exec, read, write *)
 		IF descAdr # 0 THEN
-			modAdr := KERNEL32.VirtualAlloc(0, modSize, {12, 13}, {6});	(* reserve & commit; exec, read, write *)
+			modAdr := WinApi.VirtualAlloc(0, modSize, {12, 13}, {6});	(* reserve & commit; exec, read, write *)
 			IF modAdr # 0 THEN INC(used, descSize + modSize)
-			ELSE res := KERNEL32.VirtualFree(descAdr, 0, {15}); descAdr := 0
+			ELSE res := WinApi.VirtualFree(descAdr, 0, {15}); descAdr := 0
 			END
 		ELSE modAdr := 0
 		END
@@ -590,21 +609,21 @@ MODULE Kernel;
 		VAR res: INTEGER;
 	BEGIN
 		DEC(used, descSize + modSize);
-		res := KERNEL32.VirtualFree(descAdr, 0, {15});	(* release *)
-		res := KERNEL32.VirtualFree(modAdr, 0, {15})	(* release *)
+		res := WinApi.VirtualFree(descAdr, 0, {15});	(* release *)
+		res := WinApi.VirtualFree(modAdr, 0, {15})	(* release *)
 	END DeallocModMem;
 
 	PROCEDURE InvalModMem (modSize, modAdr: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
 		DEC(used, modSize);
-		res := KERNEL32.VirtualFree(modAdr, modSize, {14})	(* decommit *)
+		res := WinApi.VirtualFree(modAdr, modSize, {14})	(* decommit *)
 	END InvalModMem;
 
 	PROCEDURE IsReadable* (from, to: INTEGER): BOOLEAN;
 		(* check wether memory between from (incl.) and to (excl.) may be read *)
 	BEGIN
-		RETURN KERNEL32.IsBadReadPtr(from, to - from) = 0
+		RETURN WinApi.IsBadReadPtr(from, to - from) = 0
 	END IsReadable;
 
 
@@ -701,6 +720,7 @@ MODULE Kernel;
 			b := NewBlock(tag.size);
 			IF b = NIL THEN RETURN 0 END;
 			b.tag := tag;
+			l := S.VAL(FList, S.ADR(b.last));	(* anchor new object! *)
 			l := S.VAL(FList, NewRec(S.TYP(FList)));	(* NEW(l) *)
 			l.blk := b; l.iptr := TRUE; l.next := finalizers; finalizers := l;
 			RETURN S.ADR(b.last)
@@ -710,6 +730,7 @@ MODULE Kernel;
 			IF b = NIL THEN RETURN 0 END;
 			b.tag := tag; S.GET(typ - 4, size);
 			IF size # 0 THEN	(* record uses a finalizer *)
+				l := S.VAL(FList, S.ADR(b.last));	(* anchor new object! *)
 				l := S.VAL(FList, NewRec(S.TYP(FList)));	(* NEW(l) *)
 				l.blk := b; l.next := finalizers; finalizers := l
 			END;
@@ -720,7 +741,9 @@ MODULE Kernel;
 	PROCEDURE NewArr* (eltyp, nofelem, nofdim: INTEGER): INTEGER;	(* impl. of NEW(ptr, dim0, dim1, ...) *)
 		VAR b: Block; size, headSize: INTEGER; t: Type; fin: BOOLEAN; l: FList;
 	BEGIN
-		headSize := 4 * nofdim + 12; fin := FALSE;
+		IF (nofdim < 0) OR (nofdim > (MAX(INTEGER) - 12) DIV 4) THEN RETURN 0 END;
+		headSize := 4 * nofdim + 12;
+		fin := FALSE;
 		CASE eltyp OF
 		| -1: eltyp := S.ADR(IntPtrType); fin := TRUE
 		| 0: eltyp := S.ADR(PtrType)
@@ -740,6 +763,8 @@ MODULE Kernel;
 			IF ODD(eltyp) THEN DEC(eltyp); fin := TRUE END
 		END;
 		t := S.VAL(Type, eltyp);
+		ASSERT(t.size > 0, 100);
+		IF (nofelem < 0) OR (nofelem > (MAX(INTEGER) - headSize) DIV t.size) THEN RETURN 0 END;
 		size := headSize + nofelem * t.size;
 		b := NewBlock(size);
 		IF b = NIL THEN RETURN 0 END;
@@ -747,6 +772,7 @@ MODULE Kernel;
 		b.last := S.ADR(b.last) + size - t.size;	(* pointer to last elem *)
 		b.first := S.ADR(b.last) + headSize;	(* pointer to first elem *)
 		IF fin THEN
+			l := S.VAL(FList, S.ADR(b.last));	(* anchor new object! *)
 			l := S.VAL(FList, NewRec(S.TYP(FList)));	(* NEW(l) *)
 			l.blk := b; l.aiptr := TRUE; l.next := finalizers; finalizers := l
 		END;
@@ -917,7 +943,7 @@ MODULE Kernel;
 		VAR i, n: INTEGER;
 	BEGIN
 		i := 0; n := mod.export.num;
-		WHILE (i < n) & (mod.export.obj[i].id DIV 256 = 0) DO 
+		WHILE (i < n) & (mod.export.obj[i].id DIV 256 = 0) DO
 			IF mod.export.obj[i].offs = fprint THEN RETURN S.VAL(Object, S.ADR(mod.export.obj[i])) END;
 			INC(i)
 		END;
@@ -938,14 +964,14 @@ MODULE Kernel;
 	END ThisField;
 
 	PROCEDURE ThisCommand* (mod: Module; name: ARRAY OF SHORTCHAR): Command;
-		VAR x: Object;
+		VAR x: Object; sig: Signature;
 	BEGIN
 		x := ThisObject(mod, name);
-		IF (x # NIL) & (x.id MOD 16 = mProc) & (x.fprint = comSig) THEN
-			RETURN S.VAL(Command, mod.procBase + x.offs)
-		ELSE
-			RETURN NIL
-		END
+		IF (x # NIL) & (x.id MOD 16 = mProc) THEN
+			sig := S.VAL(Signature, x.struct);
+			IF (sig.retStruct = NIL) & (sig.num = 0) THEN RETURN S.VAL(Command, mod.procBase + x.offs) END
+		END;
+		RETURN NIL
 	END ThisCommand;
 
 	PROCEDURE ThisType* (mod: Module; name: ARRAY OF SHORTCHAR): Type;
@@ -995,20 +1021,20 @@ MODULE Kernel;
 	END GetTypeName;
 
 	PROCEDURE RegisterMod* (mod: Module);
-		VAR i: INTEGER; t: KERNEL32.SystemTime;
+		VAR i: INTEGER; t: WinApi.SYSTEMTIME;
 	BEGIN
 		mod.next := modList; modList := mod; mod.refcnt := 0; INCL(mod.opts, dyn); i := 0;
 		WHILE i < mod.nofimps DO
 			IF mod.imports[i] # NIL THEN INC(mod.imports[i].refcnt) END;
 			INC(i)
 		END;
-		KERNEL32.GetLocalTime(t);
-		mod.loadTime[0] := t.year;
-		mod.loadTime[1] := t.month;
-		mod.loadTime[2] := t.day;
-		mod.loadTime[3] := t.hour;
-		mod.loadTime[4] := t.minute;
-		mod.loadTime[5] := t.second;
+		WinApi.GetLocalTime(t);
+		mod.loadTime[0] := t.wYear;
+		mod.loadTime[1] := t.wMonth;
+		mod.loadTime[2] := t.wDay;
+		mod.loadTime[3] := t.wHour;
+		mod.loadTime[4] := t.wMinute;
+		mod.loadTime[5] := t.wSecond;
 		IF ~(init IN mod.opts) THEN InitModule(mod) END
 	END RegisterMod;
 
@@ -1037,6 +1063,74 @@ MODULE Kernel;
 			END
 		END
 	END UnloadMod;
+
+	(* -------------------- dynamic procedure call --------------------- *)	(* COMPILER DEPENDENT *)
+
+	PROCEDURE [1] PUSH (p: INTEGER) 050H;	(* push AX *)
+	PROCEDURE [1] CALL (a: INTEGER) 0FFH, 0D0H;	(* call AX *)
+	PROCEDURE [1] RETI (): LONGINT;
+	PROCEDURE [1] RETR (): REAL;
+
+	(*
+		type				par
+		32 bit scalar	value
+		64 bit scalar	low hi
+		var scalar		address
+		record			address tag
+		array			address size
+		open array	address length .. length
+	*)
+
+	PROCEDURE Call* (adr: INTEGER; sig: Signature; IN par: ARRAY OF INTEGER; n: INTEGER): LONGINT;
+		VAR p, kind, sp, size: INTEGER; typ: Type; r: REAL;
+	BEGIN
+		p := sig.num;
+		WHILE p > 0 DO	(* push parameters from right to left *)
+			DEC(p);
+			typ := sig.par[p].struct;
+			kind := sig.par[p].id MOD 16;
+			IF (S.VAL(INTEGER, typ) DIV 256 = 0) OR (typ.id MOD 4 IN {0, 3}) THEN	(* scalar *)
+				IF (kind = 10) & ((S.VAL(INTEGER, typ) = 8) OR (S.VAL(INTEGER, typ) = 10)) THEN	(* 64 bit *)
+					DEC(n); PUSH(par[n])	(* push hi word *)
+				END;
+				DEC(n); PUSH(par[n])	(* push value/address *)
+			ELSIF typ.id MOD 4 = 1 THEN	(* record *)
+				IF kind # 10 THEN	(* var par *)
+					DEC(n); PUSH(par[n]);	(* push tag *)
+					DEC(n); PUSH(par[n])	(* push address *)
+				ELSE
+					DEC(n, 2);	(* skip tag *)
+					S.GETREG(SP, sp); sp := (sp - typ.size) DIV 4 * 4; S.PUTREG(SP, sp);	(* allocate space *)
+					S.MOVE(par[n], sp, typ.size)	(* copy to stack *)
+				END
+			ELSIF typ.size = 0 THEN	(* open array *)
+				size := typ.id DIV 16 MOD 16;	(* number of open dimensions *)
+				WHILE size > 0 DO
+					DEC(size); DEC(n); PUSH(par[n])	(* push length *)
+				END;
+				DEC(n); PUSH(par[n])	(* push address *)
+			ELSE	(* fix array *)
+				IF kind # 10 THEN	(* var par *)
+					DEC(n, 2); PUSH(par[n])	(* push address *)
+				ELSE
+					DEC(n); size := par[n]; DEC(n);
+					S.GETREG(SP, sp); sp := (sp - size) DIV 4 * 4; S.PUTREG(SP, sp);	(* allocate space *)
+					S.MOVE(par[n], sp, size)	(* copy to stack *)
+				END
+			END
+		END;
+		ASSERT(n = 0);
+		IF S.VAL(INTEGER, sig.retStruct) = 7 THEN	(* shortreal *)
+			CALL(adr);
+			RETURN S.VAL(INTEGER, SHORT(RETR()))	(* return value in fpu register *)
+		ELSIF S.VAL(INTEGER, sig.retStruct) = 8 THEN	(* real *)
+			CALL(adr); r := RETR();
+			RETURN S.VAL(LONGINT, r)	(* return value in fpu register *)
+		ELSE
+			CALL(adr);
+			RETURN RETI()	(* return value in integer registers *)
+		END
+	END Call;
 
 	(* -------------------- reference information (portable) --------------------- *)
 
@@ -1102,7 +1196,7 @@ MODULE Kernel;
 			WHILE (ch > 0X) & (ch < 0FCX) DO
 				INC(ad, ORD(ch)); INC(ref); RefNum(ref, d);
 				IF ad > codePos THEN RETURN pos END;
-				INC(pos, d); S.GET(ref, ch) 
+				INC(pos, d); S.GET(ref, ch)
 			END;
 			IF ch = 0FCX THEN INC(ref); RefNum(ref, d); RefName(ref, name); S.GET(ref, ch) END;
 			WHILE ch >= 0FDX DO	(* skip variables *)
@@ -1117,22 +1211,22 @@ MODULE Kernel;
 	(* -------------------- dynamic link libraries --------------------- *)
 
 	PROCEDURE LoadDll* (IN name: ARRAY OF SHORTCHAR; VAR ok: BOOLEAN);
-		VAR h: KERNEL32.Handle;
+		VAR h: WinApi.HANDLE;
 	BEGIN
 		ok := FALSE;
-		h := KERNEL32.LoadLibraryA(name);
+		h := WinApi.LoadLibraryA(name);
 		IF h # 0 THEN ok := TRUE END
 	END LoadDll;
 
 	PROCEDURE ThisDllObj* (mode, fprint: INTEGER; IN dll, name: ARRAY OF SHORTCHAR): INTEGER;
-		VAR ad: INTEGER; h: KERNEL32.Handle;
+		VAR ad: WinApi.FARPROC; h: WinApi.HANDLE;
 	BEGIN
-		ad := 0;
+		ad := NIL;
 		IF mode = mProc THEN
-			h := KERNEL32.GetModuleHandleA(dll);
-			IF h # 0 THEN ad := KERNEL32.GetProcAddress(h, name) END
+			h := WinApi.GetModuleHandleA(dll);
+			IF h # 0 THEN ad := WinApi.GetProcAddress(h, name) END
 		END;
-		RETURN ad
+		RETURN S.VAL(INTEGER, ad)
 	END ThisDllObj;
 
 	(* -------------------- garbage collector (portable) --------------------- *)
@@ -1199,7 +1293,7 @@ MODULE Kernel;
 		END
 	END MarkGlobals;
 
-(*  This is the specification for the code procedure following below:
+(* This is the specification for the code procedure following below:
 
 	PROCEDURE Next (b: Block): Block;	(* next block in same cluster *)
 		VAR size: INTEGER;
@@ -1346,7 +1440,7 @@ MODULE Kernel;
 		IF f.aiptr THEN ArrFinalizer(S.VAL(ANYPTR, S.ADR(f.blk.last)))
 		ELSE
 			S.GET(S.VAL(INTEGER, f.blk.tag) - 4, fin);	(* method 0 *)
-			IF fin # NIL THEN fin(S.VAL(ANYPTR, S.ADR(f.blk.last))) END;
+			IF (fin # NIL) & (f.blk.tag.mod.refcnt >= 0) THEN fin(S.VAL(ANYPTR, S.ADR(f.blk.last))) END;
 			IF f.iptr THEN RecFinalizer(S.VAL(ANYPTR, S.ADR(f.blk.last))) END
 		END
 	END ExecFinalizer;
@@ -1395,7 +1489,8 @@ MODULE Kernel;
 				END;
 				blk := next
 			END;
-			IF dealloc & (S.VAL(INTEGER, fblk) = S.VAL(INTEGER, cluster) + 12) THEN	(* deallocate cluster *)
+			IF dealloc & dllMem
+					& (S.VAL(INTEGER, fblk) = S.VAL(INTEGER, cluster) + 12) THEN	(* deallocate cluster *)
 				c := cluster; cluster := cluster.next;
 				IF last = NIL THEN root := cluster ELSE last.next := cluster END;
 				FreeHeapMem(c)
@@ -1426,7 +1521,7 @@ MODULE Kernel;
 			CallFinalizers
 		END
 	END Collect;
-	
+
 	PROCEDURE FastCollect*;
 	BEGIN
 		IF root # NIL THEN
@@ -1481,11 +1576,16 @@ MODULE Kernel;
 	PROCEDURE NewBlock (size: INTEGER): Block;
 		VAR tsize, a, s: INTEGER; b: FreeBlock; new, c: Cluster; r: Reducer;
 	BEGIN
+		ASSERT(size >= 0, 20);
+		IF size > MAX(INTEGER) - 19 THEN RETURN NIL END;
 		tsize := (size + 19) DIV 16 * 16;
 		b := OldBlock(tsize);	(* 1) search for free block *)
 		IF b = NIL THEN
 			IF dllMem THEN
 				FastCollect; b := OldBlock(tsize);	(* 2) collect *)
+				IF b = NIL THEN
+					Collect; b := OldBlock(tsize);	(* 2a) fully collect *)
+				END;
 				IF b = NIL THEN
 					AllocHeapMem(tsize + 12, new);	(* 3) allocate new cluster *)
 					IF new # NIL THEN
@@ -1503,34 +1603,45 @@ MODULE Kernel;
 					END
 				END
 			ELSE
-				FastCollect;	(* 2) collect *)
-				IF (b = NIL) & (HeapFull(tsize)) & (reducers # NIL) THEN	(* 3) little space => reduce once *)
+				FastCollect; b := OldBlock(tsize);	(* 2) collect *)
+				IF b = NIL THEN
+					Collect; b := OldBlock(tsize);	(* 2a) fully collect *)
+				END;
+				IF (b = NIL) & HeapFull(tsize) & (reducers # NIL) THEN	(* 3) little space => reduce once *)
 					r := reducers; reducers := NIL;
 					WHILE r # NIL DO r.Reduce(FALSE); r := r.next END;
 					Collect
 				END;
-				s := 3 * (allocated + tsize) DIV 2;
-				a := 12 + (root.size - 12) DIV 16 * 16;
-				IF s <= total THEN
-					b := OldBlock(tsize);
-					IF b = NIL THEN s := a + tsize END
-				ELSIF s < a + tsize THEN
-					s := a + tsize
-				END;
-				IF total < s THEN	(* 4) enlarge heap *)
-					GrowHeapMem(s, root);
-					IF root.size >= s THEN
-						b := LastBlock(S.VAL(INTEGER, root) + a);
-						IF b # NIL THEN
-							b.size := (root.size - a + b.size + 4) DIV 16 * 16 - 4
-						ELSE
-							b := S.VAL(FreeBlock, S.VAL(INTEGER, root) + a);
-							b.size := (root.size - a) DIV 16 * 16 - 4
+				IF b = NIL THEN
+					IF tsize <= MAX(INTEGER) DIV 3 * 2 - allocated THEN
+						s := (tsize + allocated) DIV 2 * 3
+					ELSIF tsize <= root.max - allocated THEN
+						s := root.max
+					ELSE
+						RETURN NIL
+					END;
+					a := 12 + (root.size - 12) DIV 16 * 16;
+					IF s <= total THEN
+						b := OldBlock(tsize);
+						IF b = NIL THEN s := a + tsize END
+					ELSIF s < a + tsize THEN
+						s := a + tsize
+					END;
+					IF (b = NIL) & (total < s) THEN	(* 4) enlarge heap *)
+						GrowHeapMem(s, root);
+						IF root.size >= s THEN
+							b := LastBlock(S.VAL(INTEGER, root) + a);
+							IF b # NIL THEN
+								b.size := (root.size - a + b.size + 4) DIV 16 * 16 - 4
+							ELSE
+								b := S.VAL(FreeBlock, S.VAL(INTEGER, root) + a);
+								b.size := (root.size - a) DIV 16 * 16 - 4
+							END
+						ELSIF reducers # NIL THEN	(* 5) no space => fully reduce *)
+							r := reducers; reducers := NIL;
+							WHILE r # NIL DO r.Reduce(TRUE); r := r.next END;
+							Collect
 						END
-					ELSIF reducers # NIL THEN	(* 5) no space => fully reduce *)
-						r := reducers; reducers := NIL;
-						WHILE r # NIL DO r.Reduce(TRUE); r := r.next END;
-						Collect
 					END
 				END;
 				IF b = NIL THEN
@@ -1592,22 +1703,21 @@ MODULE Kernel;
 		CallFinalizers;
 		WinOle.OleUninitialize();
 		IF ~inDll THEN
-			KERNEL32.RemoveExcp(excpPtr^);
-			KERNEL32.ExitProcess(exitCode)	(* never returns *)
+			RemoveExcp(excpPtr^);
+			WinApi.ExitProcess(exitCode)	(* never returns *)
 		END
 	END Quit;
 
 	PROCEDURE FatalError* (id: INTEGER; str: ARRAY OF CHAR);
-		VAR res: INTEGER; title: ARRAY 16 OF SHORTCHAR; text: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; title: ARRAY 16 OF CHAR;
 	BEGIN
 		title := "Error xy";
-		title[6] := SHORT(CHR(id DIV 10 + ORD("0")));
-		title[7] := SHORT(CHR(id MOD 10 + ORD("0")));
-		text := SHORT(str$);
-		res := USER32.MessageBoxA(0, text, title, {});
+		title[6] := CHR(id DIV 10 + ORD("0"));
+		title[7] := CHR(id MOD 10 + ORD("0"));
+		res := WinApi.MessageBoxW(0, str, title, {});
 		WinOle.OleUninitialize();
-		IF ~inDll THEN KERNEL32.RemoveExcp(excpPtr^) END;
-		KERNEL32.ExitProcess(1)
+		IF ~inDll THEN RemoveExcp(excpPtr^) END;
+		WinApi.ExitProcess(1)
 		(* never returns *)
 	END FatalError;
 
@@ -1699,7 +1809,7 @@ MODULE Kernel;
 			END
 		UNTIL c = 0;
 		out[len] := 0X;
-		x := USER32.MessageBoxA(0, out, "BlackBox", {})
+		x := WinApi.MessageBoxA(0, out, "BlackBox", {})
 	END DefaultTrapViewer;
 
 	PROCEDURE TrapCleanup;
@@ -1711,46 +1821,46 @@ MODULE Kernel;
 		IF (trapChecker # NIL) & (err # 128) THEN trapChecker END
 	END TrapCleanup;
 
-	PROCEDURE Unwind(f: KERNEL32.ExcpFrmPtr);	(* COMPILER DEPENDENT *)
+	PROCEDURE Unwind(f: ExcpFramePtr);	(* COMPILER DEPENDENT *)
 		CONST Label = 27;	(* offset of Label: from proc start *)
 	BEGIN
 		PushFP;
-		KERNEL32.RtlUnwind(f, S.ADR(Unwind) + Label, NIL, 0);
+		WinApi.RtlUnwind(S.VAL(WinApi.PtrVoid, f), S.ADR(Unwind) + Label, NIL, 0);
 		(* Label: *)
 		PopFP
 	END Unwind;
-	
-	PROCEDURE TrapHandler (excpRec: KERNEL32.ExcpRecPtr; estFrame: KERNEL32.ExcpFrmPtr;
-											context: KERNEL32.ContextPtr; dispCont: INTEGER): INTEGER;
+
+	PROCEDURE TrapHandler (excpRec: WinApi.PtrEXCEPTION_RECORD; estFrame: ExcpFramePtr;
+											context: WinApi.PtrCONTEXT; dispCont: INTEGER): INTEGER;
 		(* same parameter size as Try *)
 	BEGIN
-		IF excpRec^.flags * {1, 2} = {} THEN
-			IF (excpRec.code MOD 256 = 4) & ~interrupted THEN	(* wrong trace trap *)
-				context.debug[5] := 0;	(* disable all debug traps *)
+		IF excpRec^.ExceptionFlags * {1, 2} = {} THEN
+			IF (excpRec.ExceptionCode MOD 256 = 4) & ~interrupted THEN	(* wrong trace trap *)
+				context.Dr7 := 0;	(* disable all debug traps *)
 				LdSP8; PopSI; PopDI; PopFP;	(* COMPILER DEPENDENT *)
 				Return0(0)	(* return continueExecution without parameter remove *)
 			END;
 			Unwind(estFrame);
-			IF trapped & (excpRec.code MOD 256 # 1) & (excpRec.code MOD 256 # 253) THEN
+			IF trapped & (excpRec.ExceptionCode MOD 256 # 1) & (excpRec.ExceptionCode MOD 256 # 253) THEN
 				DefaultTrapViewer;
 				IF ~secondTrap THEN trapped := FALSE; secondTrap := TRUE END
 			END;
-			err := -(excpRec.code MOD 256);
-			pc := context.ip; sp := context.sp; fp := context.bp; stack := baseStack;
+			err := -(excpRec.ExceptionCode MOD 256);
+			pc := context.Eip; sp := context.Esp; fp := context.Ebp; stack := baseStack;
 			IF err = -4 THEN err := 200	(* keyboard interrupt *)
 			ELSIF err = -5 THEN
-				val := excpRec.info[1];
+				val := excpRec.ExceptionInformation[1];
 				IF val = pc THEN	(* call to undef adr *)
 					err := 205; S.GET(sp, pc); INC(sp, 4); DEC(pc)
-				ELSIF excpRec.info[0] = 0 THEN	(* illegal read *)
+				ELSIF excpRec.ExceptionInformation[0] = 0 THEN	(* illegal read *)
 					err := 203
 				ELSE	(* illegal write *)
 					err := 204
 				END
 			ELSIF (err = -29) OR (err = -30) THEN	(* illegal instruction *)
 				err := 202; val := 0;
-				IF IsReadable(excpRec.adr, excpRec.adr + 4) THEN
-					S.GET(excpRec.adr, val);
+				IF IsReadable(excpRec.ExceptionAddress, excpRec.ExceptionAddress + 4) THEN
+					S.GET(excpRec.ExceptionAddress, val);
 					IF val MOD 100H = 8DH THEN	(* lea reg,reg *)
 						IF val DIV 100H MOD 100H = 0F0H THEN err := val DIV 10000H MOD 100H	(* trap *)
 						ELSIF val DIV 1000H MOD 10H = 0EH THEN
@@ -1760,7 +1870,7 @@ MODULE Kernel;
 				END
 			ELSIF err = -142 THEN DEC(pc); err := 140	(* fpu: div by zero *)
 			ELSIF (err = -144) OR (err = -146) THEN DEC(pc); err := 143	;	(* fpu: invalid op *)
-				val := context.float[0] MOD 4096 * 65536 + context.float[1] MOD 65536
+				val := context.FloatSave.ControlWord MOD 4096 * 65536 + context.FloatSave.StatusWord MOD 65536
 			ELSIF err = -145 THEN DEC(pc); err := 142	(* fpu: overflow *)
 			ELSIF err = -147 THEN DEC(pc); err := 141	(* fpu: underflow *)
 			ELSIF err = -148 THEN err := 139	(* division by zero *)
@@ -1779,25 +1889,25 @@ MODULE Kernel;
 			END;
 			trapped := FALSE; secondTrap := FALSE;
 			IF dispCont = 0 THEN	(* InterfaceTrapHandler *)	(* COMPILER DEPENDENT *)
-				KERNEL32.RemoveExcp(estFrame^);
-				S.PUTREG(CX, estFrame(ExcpFramePtr).par);
+				RemoveExcp(estFrame^);
+				S.PUTREG(CX, estFrame(ComExcpFramePtr).par);
 				S.PUTREG(SP, S.VAL(INTEGER, estFrame) + 12);
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
+					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
 				END;
 				PopSI; PopDI; PopBX; PopFP;
 				ReturnCX(WinApi.E_UNEXPECTED)
 			ELSIF estFrame # excpPtr THEN	(* Try failed *)	(* COMPILER DEPENDENT *)
-				KERNEL32.RemoveExcp(estFrame^);
+				RemoveExcp(estFrame^);
 				res := S.VAL(INTEGER, estFrame);
-				S.PUTREG(FP, res + (SIZE(KERNEL32.ExcpFrm) + 8));	(* restore fp *)
+				S.PUTREG(FP, res + (SIZE(ExcpFrame) + 8));	(* restore fp *)
 				S.PUTREG(SP, res - 4);	(* restore stack *)
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
+					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
 				END;
 				PopBX;
 				RETURN 0	(* return from Try *)
@@ -1806,8 +1916,8 @@ MODULE Kernel;
 				S.PUTREG(SP, baseStack);	(* restore stack *)
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := KERNEL32.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
+					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
 				END;
 				restart();
 				Quit(1)
@@ -1828,13 +1938,13 @@ MODULE Kernel;
 
 	PROCEDURE Try* (h: TryHandler; a, b, c: INTEGER);	(* COMPILER DEPENDENT *)
 		(* same parameter size as TrapHandler *)
-		VAR excp: KERNEL32.ExcpFrm;	(* no other local variables! *)
+		VAR excp: ExcpFrame;	(* no other local variables! *)
 	BEGIN
 		PushBX;
 		excp.handler := TrapHandler;
-		KERNEL32.InstallExcp(excp);
+		InstallExcp(excp);
 		h(a, b, c);
-		KERNEL32.RemoveExcp(excp);
+		RemoveExcp(excp);
 		PopBX
 	END Try;
 
@@ -1842,9 +1952,9 @@ MODULE Kernel;
 																dispCont: INTEGER): INTEGER;	(* known to compiler *)
 		VAR res: INTEGER;
 	BEGIN
-		res := TrapHandler(S.VAL(KERNEL32.ExcpRecPtr, excpRec),
-								S.VAL(KERNEL32.ExcpFrmPtr, estFrame),
-								S.VAL(KERNEL32.ContextPtr, context),
+		res := TrapHandler(S.VAL(WinApi.PtrEXCEPTION_RECORD, excpRec),
+								S.VAL(ExcpFramePtr, estFrame),
+								S.VAL(WinApi.PtrCONTEXT, context),
 								0);
 		(* LdSP8 removes parameters of TrapHandler *)
 		LdSP8; PopSI; PopDI; PopFP;	(* COMPILER DEPENDENT *)
@@ -1855,39 +1965,50 @@ MODULE Kernel;
 	(* -------------------- keyboard interrupt handling --------------------- *)
 
 	PROCEDURE KeyboardWatcher (main: INTEGER): INTEGER;	(* runs in a thread *)
-		VAR res, id, a, to: INTEGER; msg: USER32.Message; wnd: USER32.Handle;
-			context: KERNEL32.Context; mod: Module;
+		TYPE P = PROCEDURE(w: INTEGER): INTEGER;
+		VAR res, a: INTEGER; top, h: WinApi.HANDLE; done: BOOLEAN;
+			context: WinApi.CONTEXT; mod: Module; isHungAppWindow: P;
 	BEGIN
-		wnd := USER32.CreateWindowExA({}, "Edit", "", {}, 0, 0, 0, 0, 0, 0, KERNEL32.GetModuleHandleA(NIL), 0);
-		res := USER32.RegisterHotKey(wnd, 13, {1}, 3);	(* ctrl break *)
-		IF res = 0 THEN
-			res := USER32.RegisterHotKey(wnd, 14, {1, 2}, 3)	(* shift ctrl break *)
+		done := FALSE;
+		isHungAppWindow := NIL;
+		h := WinApi.LoadLibraryA("user32.dll");
+		IF h # 0 THEN
+			isHungAppWindow := S.VAL(P, WinApi.GetProcAddress(h, "IsHungAppWindow"))
 		END;
 		LOOP
-			res := USER32.GetMessageA(msg, 0, 0, 0);
-			IF msg.message = USER32.WMHotKey THEN
-				wnd := USER32.GetForegroundWindow();
-				res := USER32.GetWindowThreadProcessId(wnd, id);
-				IF (msg.wParam = 14) OR (id = KERNEL32.GetCurrentProcessId()) THEN
-					to := KERNEL32.GetTickCount() + 1000;	(* 1 sec timeout *)
+			res := WinApi.GetAsyncKeyState(WinApi.VK_CANCEL);
+			IF res >= 0 THEN	(* key released *)
+				done := FALSE;
+				WinApi.Sleep(10);
+			ELSIF ~done THEN	(* key pressed *)
+				top := WinApi.GetForegroundWindow();
+				IF (mainWnd # top) & (isHungAppWindow # NIL)
+						& (top # 0) & (isHungAppWindow(top) # 0)
+						& (mainWnd # 0) & (isHungAppWindow(mainWnd) # 0) THEN
+					(* main window replaced by ghost window *)
+					(* check if application window is topmost nonresponding window *)
 					REPEAT
-						res := KERNEL32.SuspendThread(main);
-						context.flags := {0, 16};
-						res := KERNEL32.GetThreadContext(main, context);
-						mod := modList; a := context.ip;
-						WHILE (mod # NIL) & ((a < mod.code) OR (a >= mod.code + mod.csize)) DO
-							mod := mod.next
-						END;
-						IF (mod # NIL) & (mod.name = "Kernel") THEN mod := NIL END;
-						IF mod # NIL THEN
-							interrupted := TRUE;
-							INCL(S.VAL(SET, context.pf), 8);	(* set trap flag *)
-							res := KERNEL32.SetThreadContext(main, context)
-						END;
-						res := KERNEL32.ResumeThread(main);
-						KERNEL32.Sleep(0);
-						interrupted := FALSE
-					UNTIL (mod # NIL) OR (KERNEL32.GetTickCount() > to)
+						top := WinApi.GetWindow(top, WinApi.GW_HWNDNEXT)
+					UNTIL (top = 0) OR (isHungAppWindow(top) # 0) & (WinApi.IsWindowVisible(top) # 0)
+				END;
+				IF mainWnd = top THEN
+					res := WinApi.SuspendThread(main);
+					context.ContextFlags := {0, 16};
+					res := WinApi.GetThreadContext(main, context);
+					mod := modList; a := context.Eip;
+					WHILE (mod # NIL) & ((a < mod.code) OR (a >= mod.code + mod.csize)) DO
+						mod := mod.next
+					END;
+					IF (mod # NIL) & (mod.name = "Kernel") THEN mod := NIL END;
+					IF mod # NIL THEN
+						interrupted := TRUE;
+						INCL(S.VAL(SET, context.EFlags), 8);	(* set trap flag *)
+						res := WinApi.SetThreadContext(main, context);
+						done := TRUE
+					END;
+					res := WinApi.ResumeThread(main);
+					WinApi.Sleep(1);
+					interrupted := FALSE
 				END
 			END
 		END;
@@ -1895,11 +2016,11 @@ MODULE Kernel;
 	END KeyboardWatcher;
 
 	PROCEDURE InstallKeyboardInt;
-		VAR res, id: INTEGER; t, main: KERNEL32.Handle;
+		VAR res, id: INTEGER; t, main: WinApi.HANDLE;
 	BEGIN
-		res := KERNEL32.DuplicateHandle(KERNEL32.GetCurrentProcess(), KERNEL32.GetCurrentThread(),
-					KERNEL32.GetCurrentProcess(), main, {1, 3, 4, 16..19}, 0, {});
-		t := KERNEL32.CreateThread(NIL, 4096, KeyboardWatcher, main, {}, id)
+		res := WinApi.DuplicateHandle(WinApi.GetCurrentProcess(), WinApi.GetCurrentThread(),
+					WinApi.GetCurrentProcess(), main, {1, 3, 4, 16..19}, 0, {});
+		t := WinApi.CreateThread(NIL, 4096, KeyboardWatcher, main, {}, id);
 	END InstallKeyboardInt;
 
 	(* -------------------- Initialization --------------------- *)
@@ -1918,30 +2039,28 @@ MODULE Kernel;
 	END InitFpu;
 
 	PROCEDURE Init;
-		VAR excp: KERNEL32.ExcpFrm; t: Type; res: COM.RESULT; i: INTEGER;
+		VAR excp: ExcpFrame; res: COM.RESULT; i: INTEGER;
 	BEGIN
 		IF ~inDll THEN
-			excpPtr := S.VAL(KERNEL32.ExcpFrmPtr, S.ADR(excp));
+			excpPtr := S.VAL(ExcpFramePtr, S.ADR(excp));
 			IF static THEN
 				(* use exception desc area provided by the linker *)
 				INC(S.VAL(INTEGER, excpPtr), 32)	(* COMPILER DEPENDENT *)
 			END;
 			excpPtr.handler := TrapHandler;	(* init exception handling *)
-			KERNEL32.InstallExcp(excpPtr^)
+			InstallExcp(excpPtr^)
 		END;
-		t := S.VAL(Type, S.ADR(Command));	(* type desc of Command *)
-		comSig := t.size;	(* size = signature fprint for proc types *)
 		allocated := 0; total := 0; used := 0;
 		sentinelBlock.size := MAX(INTEGER);
 		sentinel := S.ADR(sentinelBlock);
 
 		S.PUTREG(ML, S.ADR(modList));
-		WinApi.OutputDebugString("BlackBox started");
+		WinApi.OutputDebugStringW("BlackBox started");
 
 		IF dllMem THEN
 			i := N;
 			REPEAT DEC(i); free[i] := sentinel UNTIL i = 0;
-			heap := KERNEL32.GetProcessHeap()
+			heap := WinApi.GetProcessHeap()
 		ELSE
 			i := N;
 			REPEAT DEC(i); free[i] := sentinel UNTIL i = 0;
@@ -1949,7 +2068,8 @@ MODULE Kernel;
 			i := MIN(N - 1, (root.size - 12) DIV 16 - 1);
 			free[i] := S.VAL(FreeBlock, S.VAL(INTEGER, root) + 12);
 			free[i].next := sentinel;
-			free[i].size := (root.size - 12) DIV 16 * 16 - 4
+			free[i].size := (root.size - 12) DIV 16 * 16 - 4;
+			free[i].tag:=S.VAL(Type, S.ADR(free[i].size))
 		END;
 
 		res := WinOle.OleInitialize(0);

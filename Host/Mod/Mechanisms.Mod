@@ -12,8 +12,8 @@ MODULE HostMechanisms;
 **)
 
 	IMPORT COM,
-		USER32, WinOle, WinApi, OleData, 
-		Services, Ports, Stores, Models, Sequencers, Views, Controllers, Properties,
+		WinApi, WinOle, OleData, 
+		Services, Ports, Stores, Views, Controllers, Properties,
 		Dialog, Mechanisms, Containers, Documents, Windows,
 		HostPorts;
 
@@ -21,13 +21,8 @@ MODULE HostMechanisms;
 	CONST
 		handleSize = Ports.point * 11 DIV 2;
 		clipMiddleHandle = handleSize DIV 2 + 2 * Ports.point;
-		infiniteMiddleHandle = 48 * Ports.point;
-		targetBorderSize = 2;
 
-		outside = 0; left = 1; top = 2; right = 3; bottom = 4;
-
-		pick = -1; escape = -2;
-		both = 31; iclick = 30;
+		escape = -2;
 		
 		fixed = 31;	(* controller option *)
 
@@ -46,7 +41,7 @@ MODULE HostMechanisms;
 			srcX, srcY: INTEGER;
 			type: Stores.TypeName;
 			isSingle: BOOLEAN;
-			w, h, rx, ry: INTEGER;
+			w, h, rx, ry: INTEGER
 		END;
 		
 		Hook = POINTER TO RECORD (Mechanisms.Hook) END;
@@ -124,7 +119,7 @@ MODULE HostMechanisms;
 
 	PROCEDURE (hook: Hook) FocusBorderCursor* (f: Views.Frame; view: Views.View; l, t, r, b: INTEGER;
 									x, y: INTEGER): INTEGER;
-		VAR s, u, w, h, mx, my: INTEGER; cursor: INTEGER;
+		VAR s, u, w, h, mx, my, cursor: INTEGER;
 		
 		PROCEDURE CheckHandle (x0, y0: INTEGER; c: INTEGER);
 		BEGIN
@@ -162,7 +157,7 @@ MODULE HostMechanisms;
 
 	PROCEDURE RestoreBorderArea (f: Views.Frame; l, t, r, b: INTEGER);
 	(* restore area under destructive border mark *)
-		VAR g: Views.RootFrame; res, s, dx, dy: INTEGER;
+		VAR g: Views.RootFrame; s, dx, dy: INTEGER;
 	BEGIN
 		g := Views.RootOf(f);
 		dx := f.gx - g.gx; dy := f.gy - g.gy;
@@ -198,7 +193,7 @@ MODULE HostMechanisms;
 	(** selection borders **)
 
 	PROCEDURE PaintSelBorder (f: Views.Frame; view: Views.View; l, t, r, b: INTEGER);
-		VAR res, u, d, w, h,  mx, my: INTEGER; sizeable: BOOLEAN; l0, t0, r0, b0: INTEGER;
+		VAR u, d, w, h,  mx, my, l0, t0, r0, b0: INTEGER; sizeable: BOOLEAN;
 		
 		PROCEDURE PaintHandle (x, y: INTEGER);
 			VAR s: INTEGER; ci, co: Ports.Color;
@@ -252,7 +247,7 @@ MODULE HostMechanisms;
 
 	PROCEDURE (hook: Hook) SelBorderCursor* (f: Views.Frame; view: Views.View; l, t, r, b: INTEGER;
 									x, y: INTEGER): INTEGER;
-		VAR d, u, w, h, mx, my: INTEGER; cursor: INTEGER;
+		VAR d, u, w, h, mx, my, cursor: INTEGER;
 		
 		PROCEDURE CheckHandle (x0, y0: INTEGER; c: INTEGER);
 		BEGIN
@@ -293,7 +288,7 @@ MODULE HostMechanisms;
 
 	PROCEDURE RestoreViewArea (f: Views.Frame; l, t, r, b: INTEGER);
 	(* restore area under destructive selection mark *)
-		VAR g: Views.RootFrame; res, d, u, dx, dy: INTEGER;
+		VAR g: Views.RootFrame; d, dx, dy: INTEGER;
 	BEGIN
 (*
 		d := (handleSize - f.dot) DIV f.unit DIV 2 * f.unit + f.dot;
@@ -339,7 +334,7 @@ MODULE HostMechanisms;
 										minW, maxW, minH, maxH: INTEGER;
 										VAR l, t, r, b: INTEGER; VAR op: INTEGER;
 										VAR x, y: INTEGER; VAR buttons: SET);
-		VAR area: SET; isDown: BOOLEAN; c: INTEGER; m: SET; p: Properties.SizePref;
+		VAR isDown: BOOLEAN; m: SET; p: Properties.SizePref;
 			x1, y1,  dx, dy,  dl, dt, dr, db,  l0, t0, r0, b0,  l1, t1, r1, b1,  w, h,  dw, dh: INTEGER;
 	BEGIN
 		l0 := l; t0 := t; r0 := r; b0 := b;  dl := 0; dt := 0; dr := 0; db := 0;
@@ -411,13 +406,13 @@ MODULE HostMechanisms;
 		VAR drop: IDropTarget; res: COM.RESULT;
 	BEGIN
 		NEW(drop); drop.win := win; drop.wnd := wnd;
-		res := WinOle.RegisterDragDrop(wnd, drop);
+		res := WinOle.RegisterDragDrop(wnd, drop)
 	END InstallDropTarget;
 	
 	PROCEDURE RemoveDropTarget* (wnd: WinApi.HWND);
 		VAR res: COM.RESULT;
 	BEGIN
-		res := WinOle.RevokeDragDrop(wnd);
+		res := WinOle.RevokeDragDrop(wnd)
 	END RemoveDropTarget;
 	
 	PROCEDURE PollDrop (d: IDropTarget; show: BOOLEAN);
@@ -452,39 +447,38 @@ MODULE HostMechanisms;
 		d.win.ForwardCtrlMsg(msg)
 	END Drop;
 
-	PROCEDURE AppendMenu (menu: USER32.Handle; id: INTEGER; name: Dialog.String);
-		VAR res: INTEGER; sn: ARRAY 256 OF SHORTCHAR;
+	PROCEDURE AppendMenu (menu: WinApi.HANDLE; id: INTEGER; name: Dialog.String);
+		VAR res: INTEGER;
 	BEGIN
-		Dialog.MapString(name, name); sn := SHORT(name$);
-		res := USER32.AppendMenuA(menu, {}, id, sn);
+		Dialog.MapString(name, name);
+		res := WinApi.AppendMenuW(menu, {}, id, name)
 	END AppendMenu;
 
 	PROCEDURE ShowPopup (f: Views.Frame; x, y: INTEGER; VAR effect: SET);
-		VAR menu: USER32.Handle; res: INTEGER;
-			wnd: USER32.Handle; msg: USER32.Message; pt: USER32.Point;
+		VAR res: INTEGER; menu, wnd: WinApi.HANDLE; msg: WinApi.MSG; pt: WinApi.POINT;
 	BEGIN
-		menu := USER32.CreatePopupMenu();
+		menu := WinApi.CreatePopupMenu();
 		AppendMenu(menu, 32000, "#Host:MoveHere");
 		AppendMenu(menu, 32001, "#Host:CopyHere");
 		AppendMenu(menu, 32002, "#Host:LinkHere");
 		IF effect * WinOle.DROPEFFECT_MOVE = {} THEN
-			res := USER32.EnableMenuItem(menu, 32000, {USER32.MFGrayed})
+			res := WinApi.EnableMenuItem(menu, 32000, WinApi.MF_GRAYED)
 		END;
 		IF effect * WinOle.DROPEFFECT_COPY = {} THEN
-			res := USER32.EnableMenuItem(menu, 32001, {USER32.MFGrayed})
+			res := WinApi.EnableMenuItem(menu, 32001, WinApi.MF_GRAYED)
 		END;
 		IF effect * WinOle.DROPEFFECT_LINK = {} THEN
-			res := USER32.EnableMenuItem(menu, 32002, {USER32.MFGrayed})
+			res := WinApi.EnableMenuItem(menu, 32002, WinApi.MF_GRAYED)
 		END;
-		res := USER32.AppendMenuA(menu, {USER32.MFSeparator}, 0, NIL);
+		res := WinApi.AppendMenuW(menu, WinApi.MF_SEPARATOR, 0, NIL);
 		AppendMenu(menu, 32003, "#System:Cancel");
 		wnd := f.rider(HostPorts.Rider).port.wnd;
 		pt.x := (x + f.gx) DIV f.unit; pt.y := (y + f.gy) DIV f.unit;
-		res := USER32.ClientToScreen(wnd, pt);
-		res := USER32.TrackPopupMenu(menu, {1}, pt.x, pt.y, 0, wnd, NIL);
-		res := USER32.DestroyMenu(menu);
+		res := WinApi.ClientToScreen(wnd, pt);
+		res := WinApi.TrackPopupMenu(menu, {1}, pt.x, pt.y, 0, wnd, NIL);
+		res := WinApi.DestroyMenu(menu);
 		effect := WinOle.DROPEFFECT_NONE;
-		IF USER32.PeekMessageA(msg, wnd, USER32.WMCommand, USER32.WMCommand, 1) # 0 THEN
+		IF WinApi.PeekMessageW(msg, wnd, WinApi.WM_COMMAND, WinApi.WM_COMMAND, 1) # 0 THEN
 			IF msg.wParam = 32000 THEN effect := WinOle.DROPEFFECT_MOVE
 			ELSIF msg.wParam = 32001 THEN effect := WinOle.DROPEFFECT_COPY
 			ELSIF msg.wParam = 32002 THEN effect := WinOle.DROPEFFECT_LINK
@@ -511,7 +505,7 @@ MODULE HostMechanisms;
 	
 	PROCEDURE (this: IDropTarget) DragEnter (dataObj: WinOle.IDataObject; keyState: SET; pt: WinApi.POINT;
 																VAR effect: SET): COM.RESULT;
-		VAR res, w, h, x, y: INTEGER; s: BOOLEAN;
+		VAR res: INTEGER; s: BOOLEAN;
 	BEGIN
 		IF sourceFrame # NIL THEN
 			this.source := sourceFrame;
@@ -549,7 +543,7 @@ MODULE HostMechanisms;
 			END
 		END;
 		IF (this.type # "") & (this.win = NIL) OR (targetFrame # NIL) THEN
-			effect := Effect(effect, keyState);
+			effect := Effect(effect, keyState)
 		ELSE effect := WinOle.DROPEFFECT_NONE
 		END;
 		this.effect := effect;
@@ -559,7 +553,7 @@ MODULE HostMechanisms;
 	PROCEDURE (this: IDropTarget) DragLeave (): COM.RESULT;
 	BEGIN
 		IF (this.type # "") & (this.win # NIL) THEN
-			PollDrop(this, Controllers.hide);
+			PollDrop(this, Controllers.hide)
 		END;
 		targetFrame := NIL; this.source := NIL;
 		RETURN WinApi.S_OK
@@ -568,7 +562,7 @@ MODULE HostMechanisms;
 	PROCEDURE (this: IDropTarget) Drop (dataObj: WinOle.IDataObject; keyState: SET; pt: WinApi.POINT;
 														VAR effect: SET): COM.RESULT;
 		VAR res, w, h: INTEGER; v: Views.View; s: BOOLEAN;
-			c: Containers.Controller; q: ANYPTR; m: Containers.Model; p: Properties.BoundsPref;
+			c: Containers.Controller; m: Containers.Model; p: Properties.BoundsPref;
 	BEGIN
 		IF this.effect # WinOle.DROPEFFECT_NONE THEN
 			IF this.win # NIL THEN
@@ -658,7 +652,7 @@ MODULE HostMechanisms;
 	PROCEDURE PickMode (f, dest: Views.Frame; x, y: INTEGER): INTEGER;
 		VAR mode, cursor: INTEGER;
 	BEGIN
-		IF USER32.GetAsyncKeyState(1BH) < 0 THEN mode := escape; cursor := Ports.arrowCursor
+		IF WinApi.GetAsyncKeyState(1BH) < 0 THEN mode := escape; cursor := Ports.arrowCursor
 (*
 		ELSIF Home(f, x, y) THEN mode := Mechanisms.cancelPick; cursor := Ports.arrowCursor
 *)
@@ -722,42 +716,41 @@ MODULE HostMechanisms;
 										enabled, checked: ARRAY OF BOOLEAN;
 										VAR i: INTEGER;
 										VAR x, y: INTEGER; VAR buttons: SET);
-		VAR res, j: INTEGER; menu, wnd: USER32.Handle; pt: USER32.Point;
-			t: ARRAY 256 OF CHAR; st: ARRAY 256 OF SHORTCHAR; s: SET;
+		VAR res, j: INTEGER; menu, wnd: WinApi.HANDLE; pt: WinApi.POINT;
+			t: ARRAY 256 OF CHAR; s: SET;
 	BEGIN
 		ASSERT(0 < n, 20); ASSERT(n <= LEN(string), 21);
 		ASSERT(LEN(enabled) = LEN(string), 22);
 		ASSERT(LEN(checked) = LEN(string), 23);
-		
+		wnd := f.rider(HostPorts.Rider).port.wnd;
 		ASSERT(wnd # 0, 100);
-		menu := USER32.CreatePopupMenu(); j := 0;
+		menu := WinApi.CreatePopupMenu(); j := 0;
 		WHILE j < n DO
 			IF string[j] = "-" THEN
-				res := USER32.AppendMenuA(menu, {USER32.MFSeparator}, 0, NIL)
+				res := WinApi.AppendMenuW(menu, WinApi.MF_SEPARATOR, 0, NIL)
 			ELSE
-				Dialog.MapString(string[j], t); st := SHORT(t$);
-				res := USER32.AppendMenuA(menu, {}, 32000 + j, st);
+				Dialog.MapString(string[j], t);
+				res := WinApi.AppendMenuW(menu, {}, 32000 + j, t);
 				IF ~enabled[j] THEN
-					res := USER32.EnableMenuItem(menu, 32000 + j, {USER32.MFGrayed})
+					res := WinApi.EnableMenuItem(menu, 32000 + j, WinApi.MF_GRAYED)
 				ELSIF checked[j] THEN
-					res := USER32.CheckMenuItem(menu, 32000 + j, {USER32.MFChecked})
+					res := WinApi.CheckMenuItem(menu, 32000 + j, WinApi.MF_GRAYED)
 				END
 			END;
 			INC(j)
 		END;
 		pt.x := (x + f.gx) DIV f.unit; pt.y := (y + f.gy) DIV f.unit;
-		res := USER32.ClientToScreen(wnd, pt);
+		res := WinApi.ClientToScreen(wnd, pt);
 		s := {1, 2};	(* track right, center align *)
-		res := USER32.TrackPopupMenu(menu, s, pt.x, pt.y + 2, 0, wnd, NIL);
-		res := USER32.DestroyMenu(menu);
+		res := WinApi.TrackPopupMenu(menu, s, pt.x, pt.y + 2, 0, wnd, NIL);
+		res := WinApi.DestroyMenu(menu)
 	END PopUpAndSelect;
 
 
 	PROCEDURE Init*;
 		VAR h: Hook;
 	BEGIN
-		(* Sequencers.MarkBorder := MarkBorder; *)
-		NEW(h); Mechanisms.SetHook(h);
+		NEW(h); Mechanisms.SetHook(h)
 	END Init;
 
 BEGIN

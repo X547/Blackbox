@@ -234,7 +234,7 @@ PROCEDURE (t: Table) Available (): BOOLEAN;
 NEW, ABSTRACT
 Tells whether Read can execute immediately. This procedure is rarely used. It should be used before a Read is performed, if it is not guaranteed that the previous Exec has already returned a result. This may only happen if Exec is performed asynchronously. Note that Available() only guarantees that a result table has become available, but this table may well be empty (columns = 0 and rows = 0).
 
-PROCEDURE (t: Table) Read (row: INTEGER; VAR data: Dialog.Interactor)
+PROCEDURE (t: Table) Read (row: INTEGER; VAR data: ANYREC)
 NEW, ABSTRACT
 Reads the row'th row of the result table into the interactor data.
 The generic data type Row which consists of an open array of strings can be used to read a row of data from an arbitrary table. All table values are converted to a string representation in this case. Otherwise the fields of the data record must be of one of the following types:
@@ -257,7 +257,7 @@ t.base.async => data is global variable	24
 t is legal table in enclosing command	25
 
 Post
-t.res IN {0, converted, truncated, incompatible, noData}
+t.res IN {0, converted, truncated, overflow, incompatible, noData}
 
 PROCEDURE (t: Table) Clear
 NEW, ABSTRACT
@@ -286,7 +286,7 @@ Used internally. (Shows a protocol of what is happening during the execution of 
 
 PROCEDURE  OpenDatabase (protocol, id, password, datasource: ARRAY OF CHAR;
 													async, showErr: BOOLEAN; OUT d: Database; OUT res: INTEGER)
-Open the database specified by the parameters. protocol is the name of the module which contains the database driver, e.g., "DtfDriver", "DtfCDriver", or "SqlOdbc". Note that these names are case sensitive. id is a driver-specific string which denotes the connection information for the network in use, or similar protocol-specific information. password is the password used to log into the DBMS. It may be empty; in this case the user may be prompted for the password, depending on the driver. datasource specifies the database to be opened. It should be a unique name for the particular protocol.
+Open the database specified by the parameters. protocol is the name of the module which contains the database driver, e.g., "SqlOdbc" or "SqlOdbc3". Note that these names are case sensitive. id is a driver-specific string which denotes the connection information for the network in use, or similar protocol-specific information. password is the password used to log into the DBMS. It may be empty; in this case the user may be prompted for the password, depending on the driver. datasource specifies the database to be opened. It should be a unique name for the particular protocol.
 If the database described by protocol and datasource is already open in the same BlackBox environment, the same database connection may be used, without considering the password again.
 Consult the driver documentation for further information on the parameters to be passed.
 If async is true, the returned database object is allowed to behave asynchronously.

@@ -2,7 +2,7 @@ MODULE DevProfiler;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Ilya E. Ermakov"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -258,6 +258,7 @@ MODULE DevProfiler;
 	PROCEDURE ShowModule (VAR m: Module);
 		VAR i, p, ref, end: INTEGER; proc, list, a, b: Proc;
 	BEGIN
+		ASSERT(totalCount > 0, 20);
 		p := m.count * 100 DIV totalCount;
 		IF p > 0 THEN
 			out.WriteSString(m.mod.name); out.WriteTab; out.WriteTab;
@@ -323,7 +324,11 @@ MODULE DevProfiler;
 		Dialog.MapString("#Dev:InProfiledModules", str); out.WriteString(str);
 		out.WriteTab; out.WriteTab; 
 		out.WriteInt(totalCount); out.WriteTab; out.WriteTab;
-		n := totalCount * 100 DIV (totalCount + otherCount);
+		IF totalCount + otherCount > 0 THEN
+			n := totalCount * 100 DIV (totalCount + otherCount)
+		ELSE
+			n := 0
+		END;
 		out.WriteInt(n); out.WriteChar("%"); out.WriteLn;
 		out.WriteTab;
 		Dialog.MapString("#Dev:Other", str); out.WriteString(str);

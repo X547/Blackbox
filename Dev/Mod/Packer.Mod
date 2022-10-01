@@ -67,7 +67,8 @@ MODULE DevPacker;
 		ELSE
 			path[sp] := 0X;
 			i := 0; INC(sp);
-			WHILE name[sp] # 0X DO fname[i] := name[sp]; INC(sp); INC(i) END
+			WHILE name[sp] # 0X DO fname[i] := name[sp]; INC(sp); INC(i) END;
+			fname[i] := 0X
 		END
 	END SplitName;
 

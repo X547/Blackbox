@@ -1,5 +1,6 @@
 BlackBox Object File Format
 
+bh	25.01.2007	procedure signatures added
 bj	19.04.2001	updated file header with correct file tag and added processor field. Added semantic part of this docu.
 bh 	12.12.95
 
@@ -11,7 +12,7 @@ HeaderBlk	=	OFTag processor4 headsize4 metasize4 descsize4 codesize4 datasize4 n
 
 OFTag	=	6FX 4FX 43X 46X.
 
-MetaBlk	=	RefBlk Align ExpBlk PtrBlk FldBlk ImpBlk Names Consts Align.
+MetaBlk	=	RefBlk Align SigBlk ExpBlk PtrBlk FldBlk ImpBlk Names Consts Align.
 
 DescBlk	=	ModBlk Align TDescBlk.
 
@@ -21,11 +22,15 @@ Directory	=	numobj4 {Object}.
 
 Object	=	fprint4 offs4 id4 Struct.
 
-Struct	=	form4 | strRef4.
+SigBlk	=	{Signature}.
+
+Signature	=	Struct numPar4 {id4 Struct}.
+
+Struct	=	form4 | strRef4 | sigRef4.
 
 PtrBlk	=	{offset4}.
 
-FldBlk	=	{Directory}.
+FldBlk	=	{Directory | Signature}.
 
 ImpBlk	=	{0.4}.
 
@@ -43,7 +48,7 @@ TDescBlk	=	{RecDesc | ArrDesc | DArrDesc | PtrDesc | ProcDesc | FieldList}.
 RecDesc	=	0.4 {methRef4} size4 modRef4 id4 {btypRef4} flistRef4 {ptrOffs4} sent4.
 ArrDesc	=	nofele4 modRef4 id4 btypRef4.
 PtrDesc	=	0.4 modRef4 id4 btypRef4.
-ProcDesc	=	fprint4 modRef4 id4.
+ProcDesc	=	fprint4 modRef4 id4 sigRef4.
 FieldList	=	Directory.
 
 FixBlk	=	newreclink newarrlink metalink desclink codelink datalink.

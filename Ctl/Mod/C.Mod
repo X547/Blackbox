@@ -1462,7 +1462,7 @@ MODULE CtlC;
 	
 	
 	PROCEDURE ShowError (res: COM.RESULT; VAR error: WinOleAut.EXCEPINFO; param: INTEGER);
-		VAR source, description: ARRAY 256 OF SHORTCHAR;
+		VAR source, description: ARRAY 256 OF CHAR;
 			code, i: INTEGER; scode: COM.RESULT;
 	BEGIN
 		source := ""; description := ""; code := 0; scode := 0;
@@ -1471,13 +1471,13 @@ MODULE CtlC;
 			code := error.wCode; scode := error.scode;
 			IF error.bstrSource # NIL THEN
 				IF LEN(error.bstrSource$) >= LEN(source) THEN error.bstrSource[LEN(source) - 1] := 0X END;
-				source := SHORT(error.bstrSource$);
+				source := error.bstrSource$;
 				WinOleAut.SysFreeString(error.bstrSource)
 			END;
 			IF error.bstrDescription # NIL THEN
 				IF LEN(error.bstrDescription$) >= LEN(description) THEN error.bstrDescription[LEN(description) - 1] := 0X
 				END;
-				description := SHORT(error.bstrDescription$);
+				description := error.bstrDescription$;
 				WinOleAut.SysFreeString(error.bstrDescription)
 			END
 		ELSIF (res = 8002000AH (* DISP_E_OVERFLOW *) ) OR (res = 80020005H (* DISP_E_TYPEMISMATCH *) )
@@ -1485,7 +1485,7 @@ MODULE CtlC;
 			description := "Type error in parameter"
 		END;
 		IF description = "" THEN
-			i := WinApi.FormatMessage({12}, 0, res, 0, description, LEN(description), NIL);
+			i := WinApi.FormatMessageW({12}, 0, res, 0, description, LEN(description), NIL);
 			IF i > 0 THEN
 				REPEAT DEC(i) UNTIL (i < 0) OR (description[i] >= " ");
 				description[i + 1] := 0X;

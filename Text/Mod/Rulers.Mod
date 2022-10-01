@@ -1627,7 +1627,7 @@ MODULE TextRulers;
 	(** pre: d # NIL, d.attr # NIL **)
 	(** post: dir = d **)
 	BEGIN
-		ASSERT(d # NIL, 20); ASSERT(d.attr # NIL, 21); dir := d
+		ASSERT(d # NIL, 20); ASSERT(d.attr.init, 21); dir := d
 	END SetDir;
 
 

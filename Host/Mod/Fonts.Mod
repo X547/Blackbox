@@ -11,7 +11,7 @@ MODULE HostFonts;
 
 **)
 
-	IMPORT SYSTEM, KERNEL32, GDI32, USER32, Kernel, Fonts, HostRegistry;
+	IMPORT SYSTEM, WinApi, Kernel, Fonts, HostRegistry;
 
 	CONST
 		defSize = 8 * Fonts.point;	(* size of default font *)
@@ -25,7 +25,7 @@ MODULE HostFonts;
 		WTab = ARRAY 256 OF INTEGER;
 		DevFont* = POINTER TO RECORD
 			unit-: INTEGER;
-			id-: GDI32.Handle;
+			id-: WinApi.HANDLE;
 			next-: DevFont;
 			noGap-: BOOLEAN;
 			wtab-: WTab	(* rastered width in pixels *)
@@ -34,7 +34,7 @@ MODULE HostFonts;
 			asc-, dsc-, w-: INTEGER;
 			dev-: DevFont;	(* rastered fonts *)
 			wtab-, ftab-, ttab-: WTab;	(* univeral width in units *)
-			id-: GDI32.Handle;	(* font used for metric*)
+			id-: WinApi.HANDLE;	(* font used for metric*)
 			alias-: Fonts.Typeface;	(* alias # typeface & typeface # "*" == alien font *)
 			a, b: INTEGER	(* coefficients for metric *)
 		END;
@@ -45,7 +45,7 @@ MODULE HostFonts;
 			tface: Fonts.Typeface;
 			size: INTEGER;
 			style: SET;
-			weight: INTEGER;
+			weight: INTEGER
 		END;
 
 		Counter = RECORD (Kernel.Identifier)
@@ -68,15 +68,14 @@ MODULE HostFonts;
 		dgStyle: SET;
 		dir: Directory;
 		defUnit: INTEGER;	(* screen resolution *)
-		dc: USER32.Handle;
-		fontId: GDI32.Handle;
+		dc: WinApi.HANDLE;
 
 	(* width tab setup *)
 	
 	PROCEDURE NewDevFont (
 		typeface: ARRAY OF CHAR; size, unit: INTEGER; style: SET; weight: INTEGER
 	): DevFont;
-		VAR df: DevFont; res, it, ul, so, i: INTEGER; s: ARRAY LEN(Fonts.Typeface) OF SHORTCHAR;
+		VAR df: DevFont; it, ul, so: INTEGER;
 	BEGIN
 		IF size = 8 * Fonts.point THEN INC(size, Fonts.point DIV 4) END;
 		it := 0; ul := 0; so := 0;
@@ -84,50 +83,43 @@ MODULE HostFonts;
 		IF Fonts.underline IN style THEN ul := 1 END;
 		IF Fonts.strikeout IN style THEN so := 1 END;
 		NEW(df); df.unit := unit; df.next := NIL;
-		s := SHORT(typeface$);
-		df.id := GDI32.CreateFontA(-((size + unit DIV 2) DIV unit), 0, 0, 0, weight, it, ul, so, 1, 0, 2, 1, 4, s);
+		df.id := WinApi.CreateFontW(-((size + unit DIV 2) DIV unit), 0, 0, 0, weight, it, ul, so, 1, 0, 2, 1, 4, typeface);
 		RETURN df
 	END NewDevFont;
 	
-	PROCEDURE GetRasterWidth (dc: GDI32.Handle; VAR wtab: WTab);
-		VAR res, i, x: INTEGER; str: ARRAY 4 OF SHORTCHAR; p: GDI32.Point;
+	PROCEDURE GetRasterWidth (dc: WinApi.HANDLE; VAR wtab: WTab);
+		VAR res, i, x: INTEGER; str: ARRAY 4 OF CHAR; s: WinApi.SIZE;
 	BEGIN
-		res := GDI32.GetTextExtentPoint32A(dc, "x", 1, p);
-		IF res = 0 THEN	(* win32s *)
-			res := GDI32.GetTextExtentPointA(dc, "x", 1, p)
-		END;
-		i := 0; str := " x"; x := p.x;
+		res := WinApi.GetTextExtentPoint32W(dc, "x", 1, s);
+		i := 0; str := " x"; x := s.cx;
 		WHILE i < 256 DO
-			str[0] := SHORT(CHR(i));
-			res := GDI32.GetTextExtentPoint32A(dc, str, 2, p);
-			IF res = 0 THEN	(* win32s *)
-				res := GDI32.GetTextExtentPointA(dc, str, 2, p)
-			END;
-			wtab[i] := p.x - x; INC(i)
+			str[0] := CHR(i);
+			res := WinApi.GetTextExtentPoint32W(dc, str, 2, s);
+			wtab[i] := s.cx - x; INC(i)
 		END
 	END GetRasterWidth;
 	
 	PROCEDURE SetupWTabs (f: Font);
-		VAR res, a, b, asc, dsc, max, x, i: INTEGER; tm: GDI32.TextMetric;
-			df: DevFont; abc: ARRAY 256 OF GDI32.ABC; dc, old: USER32.Handle;
+		VAR res, a, b, max, x, i: INTEGER; tm: WinApi.TEXTMETRICW;
+			df: DevFont; abc: ARRAY 256 OF WinApi.ABC; dc, old: WinApi.HANDLE;
 	BEGIN
-		dc := USER32.GetDC(0);
-		old := GDI32.SelectObject(dc, f.dev.id);
-		res := GDI32.GetTextMetricsA(dc, tm);
-		IF useTTMetric & ODD(tm.pitchAndFamily DIV 4) THEN	(* use true type metric *)
+		dc := WinApi.GetDC(0);
+		old := WinApi.SelectObject(dc, f.dev.id);
+		res := WinApi.GetTextMetricsW(dc, tm);
+		IF useTTMetric & ODD(ORD(tm.tmPitchAndFamily) DIV 4) THEN	(* use true type metric *)
 			df := NewDevFont(f.alias, grid, 1, f.style, f.weight);
-			res := GDI32.SelectObject(dc, df.id);
-			res := GDI32.GetTextMetricsA(dc, tm);
+			res := WinApi.SelectObject(dc, df.id);
+			res := WinApi.GetTextMetricsW(dc, tm);
 			a := f.size MOD grid; b := f.size DIV grid; f.id := df.id;
-			res := GDI32.GetCharABCWidthsA(dc, 0, 255, abc);
+			res := WinApi.GetCharABCWidthsW(dc, 0, 255, abc[0]);
 			IF res # 0 THEN
 				i := 0; max := 0;
 				WHILE i < 256 DO
-					x := -abc[i].a;
+					x := -abc[i].abcA;
 					IF x > 0 THEN f.ftab[i] := x * a DIV grid + x * b END;
-					x := -abc[i].c;
+					x := -abc[i].abcC;
 					IF x > 0 THEN f.ttab[i] := x * a DIV grid + x * b END;
-					x := abc[i].a + abc[i].b + abc[i].c; x := x * a DIV grid + x * b;
+					x := abc[i].abcA + abc[i].abcB + abc[i].abcC; x := x * a DIV grid + x * b;
 					IF x > max THEN max := x END;
 					f.wtab[i] := x; INC(i)
 				END
@@ -138,10 +130,7 @@ MODULE HostFonts;
 			a := 0; b := defUnit; f.id := f.dev.id;
 			GetRasterWidth(dc, f.wtab);
 (*
-			res := GDI32.GetCharWidth32A(dc, 0, 255, f.wtab);
-			IF res = 0 THEN	(* win32s *)
-				res := GDI32.GetCharWidthA(dc, 0, 255, f.wtab)
-			END;
+			res := WinApi.GetCharWidth32W(dc, 0, 255, f.wtab);
 *)
 			i := 0; max := 0;
 			WHILE i < 256 DO
@@ -153,20 +142,20 @@ MODULE HostFonts;
 		f.wtab[ORD(figureSpace)] := f.wtab[ORD("0")];
 		f.ftab[ORD(figureSpace)] := f.ftab[ORD("0")];
 		f.ttab[ORD(figureSpace)] := f.ttab[ORD("0")];
-		x := tm.ascent + tm.extLeading; f.asc := x * a DIV grid + x * b;
-		f.dsc := tm.descent * a DIV grid + tm.descent * b;
+		x := tm.tmAscent + tm.tmExternalLeading; f.asc := x * a DIV grid + x * b;
+		f.dsc := tm.tmDescent * a DIV grid + tm.tmDescent * b;
 		f.w := max; f.a := a; f.b := b;
-		res := GDI32.SelectObject(dc, old);
-		res := USER32.ReleaseDC(0, dc)
+		res := WinApi.SelectObject(dc, old);
+		res := WinApi.ReleaseDC(0, dc)
 	END SetupWTabs;
 	
 	PROCEDURE Cleanup (f: Font);
 		VAR res: INTEGER; df: DevFont;
 	BEGIN
 		df := f.dev;
-		IF f.id # df.id THEN res := GDI32.DeleteObject(f.id) END;
+		IF f.id # df.id THEN res := WinApi.DeleteObject(f.id) END;
 		WHILE df # NIL DO
-			res := GDI32.DeleteObject(df.id);
+			res := WinApi.DeleteObject(df.id);
 			df := df.next
 		END;
 		f.id := 0; f.dev := NIL
@@ -175,18 +164,19 @@ MODULE HostFonts;
 
 	(* width methods for unicode *)
 	
-	PROCEDURE (f: Font) wTab* (dc: USER32.Handle; ch: CHAR): INTEGER, NEW;
-		VAR res, w: INTEGER; abc: ARRAY 1 OF GDI32.ABC; wt: ARRAY 1 OF INTEGER;
+	PROCEDURE (f: Font) wTab* (dc: WinApi.HANDLE; ch: CHAR): INTEGER, NEW;
+		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC; wt: ARRAY 1 OF INTEGER;
 	BEGIN
-		res := GDI32.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
+		IF ch < 100X THEN RETURN f.wtab[ORD(ch)] END;
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
 		IF res # 0 THEN
-			w := abc[0].a + abc[0].b + abc[0].c;
+			w := abc[0].abcA + abc[0].abcB + abc[0].abcC;
 			w := w * f.a DIV grid + w * f.b
 		ELSE
-			res := GDI32.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt);
+			res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt[0]);
 			IF res # 0 THEN w := wt[0] * f.a DIV grid + wt[0] * f.b
 			ELSE
-				res := GDI32.GetCharWidthW(dc, ORD(ch), ORD(ch), wt);
+				res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt[0]);
 				IF res # 0 THEN w := wt[0] * f.a DIV grid + wt[0] * f.b
 				ELSE w := f.wtab[1]
 				END
@@ -195,29 +185,41 @@ MODULE HostFonts;
 		RETURN w
 	END wTab;
 
-	PROCEDURE (f: Font) fTab* (dc: USER32.Handle; ch: CHAR): INTEGER, NEW;
-		VAR res, w: INTEGER; abc: ARRAY 1 OF GDI32.ABC;
+	PROCEDURE (f: Font) fTab* (dc: WinApi.HANDLE; ch: CHAR): INTEGER, NEW;
+		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
-		res := GDI32.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
-		IF (res # 0) & (abc[0].a < 0) THEN
-			w := -abc[0].a;
+		IF ch < 100X THEN RETURN f.ftab[ORD(ch)] END;
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
+		IF (res # 0) & (abc[0].abcA < 0) THEN
+			w := -abc[0].abcA;
 			w := w * f.a DIV grid + w * f.b
 		ELSE w := 0
 		END;
 		RETURN w
 	END fTab;
 
-	PROCEDURE (f: Font) tTab* (dc: USER32.Handle; ch: CHAR): INTEGER, NEW;
-		VAR res, w: INTEGER; abc: ARRAY 1 OF GDI32.ABC;
+	PROCEDURE (f: Font) tTab* (dc: WinApi.HANDLE; ch: CHAR): INTEGER, NEW;
+		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
-		res := GDI32.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
-		IF (res # 0) & (abc[0].c < 0) THEN
-			w := -abc[0].c;
+		IF ch < 100X THEN RETURN f.ttab[ORD(ch)] END;
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
+		IF (res # 0) & (abc[0].abcC < 0) THEN
+			w := -abc[0].abcC;
 			w := w * f.a DIV grid + w * f.b
 		ELSE w := 0
 		END;
 		RETURN w
 	END tTab;
+	
+	PROCEDURE (df: DevFont) wTab* (dc: WinApi.HANDLE; ch: CHAR): INTEGER, NEW;
+		VAR res, w: INTEGER; wt: ARRAY 1 OF INTEGER;
+	BEGIN
+		IF ch < 100X THEN RETURN df.wtab[ORD(ch)] END;
+		res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt[0]);
+		IF res = 0 THEN res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt[0]) END;
+		IF res # 0 THEN w := wt[0] ELSE w := df.wtab[1] END;
+		RETURN w
+	END wTab;
 	
 
 	(** Font **)
@@ -228,7 +230,7 @@ MODULE HostFonts;
 	END GetBounds;
 	
 	PROCEDURE (f: Font) SStringWidth* (IN s: ARRAY OF SHORTCHAR): INTEGER;
-		VAR i, d, w: INTEGER; ch: CHAR;
+		VAR i, w: INTEGER; ch: CHAR;
 	BEGIN
 		w := 0;
 		IF s # "" THEN
@@ -240,27 +242,19 @@ MODULE HostFonts;
 	END SStringWidth;
 
 	PROCEDURE (f: Font) StringWidth* (IN s: ARRAY OF CHAR): INTEGER;
-		VAR res, i, d, w: INTEGER; lc: CHAR; ch: SHORTCHAR;
-			str: ARRAY 1024 OF SHORTCHAR; dc, old: USER32.Handle;
+		VAR res, i, w: INTEGER; lc: CHAR; dc, old: WinApi.HANDLE;
 	BEGIN
-		IF isUnicode THEN
-			dc := USER32.GetDC(0);
-			old := GDI32.SelectObject(dc, f.id);
-			w := 0;
-			IF s[0] # 0X THEN
-				i := 0; lc := s[0];
-				WHILE lc # 0X DO INC(w, f.wTab(dc, lc)); INC(i); lc := s[i] END;
-				w := w + f.fTab(dc, s[0]) + f.tTab(dc, s[i-1])
-			END;
-			res := GDI32.SelectObject(dc, old);
-			res := USER32.ReleaseDC(0, dc);
-			RETURN w
-		ELSE
-			ch := 1X;
-			res := KERNEL32.WideCharToMultiByte(0, {}, s, -1, str, LEN(str), ch, NIL);
-			str[res] := 0X;
-			RETURN f.SStringWidth(str)
-		END
+		dc := WinApi.GetDC(0);
+		old := WinApi.SelectObject(dc, f.id);
+		w := 0;
+		IF s[0] # 0X THEN
+			i := 0; lc := s[0];
+			WHILE lc # 0X DO INC(w, f.wTab(dc, lc)); INC(i); lc := s[i] END;
+			w := w + f.fTab(dc, s[0]) + f.tTab(dc, s[i-1])
+		END;
+		res := WinApi.SelectObject(dc, old);
+		res := WinApi.ReleaseDC(0, dc);
+		RETURN w
 	END StringWidth;
 
 	PROCEDURE (f: Font) IsAlien* (): BOOLEAN;
@@ -278,16 +272,13 @@ MODULE HostFonts;
 	(* Directory *)
 	
 	
-	PROCEDURE SetupDevFont (dc: USER32.Handle; df: DevFont);
-		VAR res: INTEGER; abc: ARRAY 1 OF GDI32.ABC;
+	PROCEDURE SetupDevFont (dc: WinApi.HANDLE; df: DevFont);
+		VAR res: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
-		res := GDI32.GetCharABCWidthsA(dc, ORD("H"), ORD("H"), abc);
+		res := WinApi.GetCharABCWidthsW(dc, ORD("H"), ORD("H"), abc[0]);
 		IF res # 0 THEN	(* true type *)
-			df.noGap := (res # 0) & (abc[0].a <= 0);
-			res := GDI32.GetCharWidth32A(dc, 0, 255, df.wtab);
-			IF res = 0 THEN	(* win32s *)
-				res := GDI32.GetCharWidthA(dc, 0, 255, df.wtab)
-			END
+			df.noGap := (res # 0) & (abc[0].abcA <= 0);
+			res := WinApi.GetCharWidth32W(dc, 0, 255, df.wtab[0]);
 		ELSE	(* raster *)
 			df.noGap := FALSE;
 			GetRasterWidth(dc, df.wtab)
@@ -295,45 +286,44 @@ MODULE HostFonts;
 		df.wtab[ORD(figureSpace)] := df.wtab[ORD("0")]
 	END SetupDevFont;
 	
-	PROCEDURE InsertDevFont* (dc: USER32.Handle; font: Font; VAR df: DevFont; unit: INTEGER);
+	PROCEDURE InsertDevFont* (dc: WinApi.HANDLE; font: Font; VAR df: DevFont; unit: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
 		df := NewDevFont(font.alias, font.size, unit, font.style, font.weight);
-		res := GDI32.SelectObject(dc, df.id);
+		res := WinApi.SelectObject(dc, df.id);
 		SetupDevFont(dc, df);
 		df.next := font.dev.next; font.dev.next := df	(* screen font remains at list head *)
 	END InsertDevFont;
 	
 	PROCEDURE Setup (f: Font; typeface: ARRAY OF CHAR; size: INTEGER; style: SET; weight: INTEGER);
-		VAR res: INTEGER; tm: GDI32.TextMetric; name: Fonts.Typeface; dc, old: USER32.Handle;
-			s: ARRAY LEN(Fonts.Typeface) OF SHORTCHAR;
+		VAR res: INTEGER; tm: WinApi.TEXTMETRICW; name: Fonts.Typeface; dc, old: WinApi.HANDLE;
 	BEGIN
-		dc := USER32.GetDC(0);
-		old := GDI32.SelectObject(dc, f.dev.id);
-		res := GDI32.GetTextFaceA(dc, LEN(s), s); name := s$;
-		res := GDI32.GetTextMetricsA(dc, tm);
+		dc := WinApi.GetDC(0);
+		old := WinApi.SelectObject(dc, f.dev.id);
+		res := WinApi.GetTextFaceW(dc, LEN(name), name);
+		res := WinApi.GetTextMetricsW(dc, tm);
 		f.alias := name$;
 		IF typeface = Fonts.default THEN
 			name := Fonts.default
 		ELSIF (typeface = "") OR (typeface = ".") THEN
-			size := ((tm.height - tm.intLeading) * defUnit + (Fonts.point DIV 2)) DIV Fonts.point * Fonts.point;
+			size := ((tm.tmHeight - tm.tmInternalLeading) * defUnit + (Fonts.point DIV 2)) DIV Fonts.point * Fonts.point;
 			(* IF size = 8 * Fonts.point THEN INC(size, Fonts.point DIV 4) END; *)
-			weight := SHORT(tm.weight);
+			weight := tm.tmWeight;
 			IF typeface = "." THEN name := Fonts.default END;
-			IF tm.italic # 0 THEN INCL(style, Fonts.italic) END;
-			IF tm.underlined # 0 THEN INCL(style, Fonts.underline) END;
-			IF tm.struckOut # 0 THEN INCL(style, Fonts.strikeout) END;
+			IF tm.tmItalic # 0X THEN INCL(style, Fonts.italic) END;
+			IF tm.tmUnderlined # 0X THEN INCL(style, Fonts.underline) END;
+			IF tm.tmStruckOut # 0X THEN INCL(style, Fonts.strikeout) END
 		ELSIF name # typeface THEN
 			f.dev := NewDevFont(dfName, size, defUnit, style, weight);
-			res := GDI32.DeleteObject(GDI32.SelectObject(dc, f.dev.id));
+			res := WinApi.DeleteObject(WinApi.SelectObject(dc, f.dev.id));
 			f.alias := dfName$;
 			name := typeface$
 		END;
 		IF size # 0 THEN
 			SetupDevFont(dc, f.dev);
 			IF f.size = 0 THEN f.Init(name, size, style, weight) END;
-			res := GDI32.SelectObject(dc, old);
-			res := USER32.ReleaseDC(0, dc);
+			res := WinApi.SelectObject(dc, old);
+			res := WinApi.ReleaseDC(0, dc);
 			SetupWTabs(f)
 		END;
 		ASSERT(f.size > 0)
@@ -347,7 +337,7 @@ MODULE HostFonts;
 	END Identified;
 
 	PROCEDURE (d: Directory) This (typeface: Fonts.Typeface; size: INTEGER; style: SET; weight: INTEGER): Font;
-		VAR res: INTEGER; f: Font; i: Identifier; p: ANYPTR;
+		VAR f: Font; i: Identifier; p: ANYPTR;
 	BEGIN
 		ASSERT(size > 0, 20);
 		style := style * {Fonts.italic, Fonts.underline, Fonts.strikeout};
@@ -383,25 +373,25 @@ MODULE HostFonts;
 	END Default;
 
 	PROCEDURE CallBack (
-		VAR elf: GDI32.EnumLogFont; VAR ntm: GDI32.NewTextMetric; type, par: INTEGER
+		VAR [nil] elf: WinApi.ENUMLOGFONTW; VAR [nil] ntm: WinApi.NEWTEXTMETRICW; type, par: INTEGER
 	): INTEGER;
 		VAR p: ParPtr; info: Fonts.TypefaceInfo;
 	BEGIN
 		p := SYSTEM.VAL(ParPtr, par);
 		NEW(info);
-		info.typeface := elf.logFont.faceName$;
+		info.typeface := elf.elfLogFont.lfFaceName$;
 		IF p.last = NIL THEN p.first := info ELSE p.last.next := info END;
 		p.last := info;
 		RETURN 1
 	END CallBack;
 
 	PROCEDURE (d: Directory) TypefaceList* (): Fonts.TypefaceInfo;
-		VAR res: INTEGER; dc: GDI32.Handle; par: Par;
+		VAR res: INTEGER; dc: WinApi.HANDLE; par: Par;
 	BEGIN
-		dc := USER32.GetDC(0);
+		dc := WinApi.GetDC(0);
 		par.first := NIL; par.last := NIL;
-		res := GDI32.EnumFontFamiliesA(dc, NIL, CallBack, SYSTEM.ADR(par));
-		res := USER32.ReleaseDC(0, dc);
+		res := WinApi.EnumFontFamiliesW(dc, NIL, CallBack, SYSTEM.ADR(par));
+		res := WinApi.ReleaseDC(0, dc);
 		RETURN par.first
 	END TypefaceList;
 
@@ -454,7 +444,7 @@ MODULE HostFonts;
 	END SetTTMetric;
 	
 	PROCEDURE SetDefaultFont* (tf: Fonts.Typeface; size: INTEGER);
-		VAR s: ARRAY LEN(Fonts.Typeface) OF SHORTCHAR; t: Traverser; p: ANYPTR;
+		VAR t: Traverser; p: ANYPTR;
 	BEGIN
 		ASSERT(tf # "", 20); ASSERT(size > 0, 21);
 		IF tf = Fonts.default THEN tf := dfName$ END;
@@ -462,40 +452,38 @@ MODULE HostFonts;
 			dfName := tf$; dfSize := size;
 			t.typ := SYSTEM.TYP(Font); p := Kernel.ThisFinObj(t);
 			defFont := dir.This(Fonts.default, dfSize, {}, Fonts.normal);
-			s := SHORT(dfName$);
-			HostRegistry.WriteString("DefFontName", s);
+			HostRegistry.WriteString("DefFontName", dfName);
 			HostRegistry.WriteInt("DefFontSize", dfSize)
 		END
 	END SetDefaultFont;
 
 	PROCEDURE SetDialogFont* (tf: Fonts.Typeface; size: INTEGER; style: SET; weight: INTEGER);
-		VAR s: ARRAY LEN(Fonts.Typeface) OF SHORTCHAR; i: INTEGER;
+		VAR i: INTEGER;
 	BEGIN
 		ASSERT(tf # "", 20); ASSERT(size > 0, 21);
 		IF (dgName # tf) OR (dgSize # size) OR (dgStyle # style) OR (dgWght # weight) THEN
 			dgName := tf$; dgSize := size; dgStyle := style; dgWght := weight;
 			dlgFont := dir.This(dgName, dgSize, dgStyle, dgWght);
 			dlgBoldFont := dir.This(dgName, dgSize, dgStyle, Fonts.bold);
-			s := SHORT(dgName$);
-			HostRegistry.WriteString("DlgFontName", s);
+			HostRegistry.WriteString("DlgFontName", dgName);
 			HostRegistry.WriteInt("DlgFontSize", dgSize);
 			i := 0;
 			IF Fonts.italic IN dgStyle THEN INC(i, 1) END;
 			IF Fonts.underline IN dgStyle THEN INC(i, 2) END;
 			IF Fonts.strikeout IN dgStyle THEN INC(i, 4) END;
 			IF dgWght > Fonts.normal THEN INC(i, 8) END;
-			HostRegistry.WriteInt("DlgFontStyle", i);
+			HostRegistry.WriteInt("DlgFontStyle", i)
 		END
 	END SetDialogFont;
 
 
 	PROCEDURE Init;
-		VAR res, i: INTEGER; s: ARRAY 2 OF CHAR; df: ARRAY LEN(Fonts.Typeface) OF SHORTCHAR;
+		VAR res, i: INTEGER; dc, old, f: WinApi.HANDLE; tm: WinApi.TEXTMETRICW;
 	BEGIN
-		df := ""; dfSize := 0; dgSize := 0; dgStyle := {}; dgWght := Fonts.normal; i := 0;
-		HostRegistry.ReadString("DefFontName", df, res); dfName := df$;
+		dfName := ""; dgName := ""; dfSize := 0; dgSize := 0; dgStyle := {}; dgWght := Fonts.normal; i := 0;
+		HostRegistry.ReadString("DefFontName", dfName, res);
 		HostRegistry.ReadInt("DefFontSize", dfSize, res);
-		HostRegistry.ReadString("DlgFontName", df, res); dgName := df$;
+		HostRegistry.ReadString("DlgFontName", dgName, res);
 		HostRegistry.ReadInt("DlgFontSize", dgSize, res);
 		HostRegistry.ReadInt("DlgFontStyle", i, res);
 		IF ODD(i) THEN INCL(dgStyle, Fonts.italic) END;
@@ -504,12 +492,12 @@ MODULE HostFonts;
 		IF ODD(i DIV 8) THEN dgWght := Fonts.bold END;
 		HostRegistry.ReadBool("FontTTMetric", useTTMetric, res);
 		NEW(dir); Fonts.SetDir(dir);
-		dc := USER32.GetDC(0);
-		defUnit := 72 * Fonts.point DIV GDI32.GetDeviceCaps(dc, GDI32.LogPixelsY);
-		isUnicode := GDI32.TextOutW(dc, 0, 0, s, 0) # 0;
-		res := USER32.ReleaseDC(0, dc);
+		dc := WinApi.GetDC(0);
+		defUnit := 72 * Fonts.point DIV WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY);
+		isUnicode := TRUE;
+		res := WinApi.ReleaseDC(0, dc);
 		NEW(sysFont); NEW(sysFont.dev); sysFont.dev.unit := defUnit; sysFont.dev.next := NIL;
-		sysFont.dev.id := GDI32.GetStockObject(GDI32.SystemFont);
+		sysFont.dev.id := WinApi.GetStockObject(WinApi.SYSTEM_FONT);
 		Setup(sysFont, "", 0, {}, 0);
 		NEW(defFont); NEW(defFont.dev); defFont.dev.unit := defUnit; defFont.dev.next := NIL;
 		IF (dfName # "") & (dfSize > 5 * Fonts.point) & (dfSize < 100 * Fonts.point) THEN
@@ -517,7 +505,7 @@ MODULE HostFonts;
 		ELSE
 			i := (defSize + defUnit DIV 2) DIV defUnit;
 			IF i < 11 THEN i := 11 END;
-			defFont.dev.id := GDI32.CreateFontA(-i, 0, 0, 0, Fonts.normal, 0, 0, 0, 0, 7, 2, 1, 38, "");
+			defFont.dev.id := WinApi.CreateFontW(-i, 0, 0, 0, Fonts.normal, 0, 0, 0, 0, 7, 2, 1, 38, "");
 			Setup(defFont, ".", 0, {}, 0);
 			dfName := defFont.alias$
 		END;
@@ -526,12 +514,24 @@ MODULE HostFonts;
 			dlgFont := dir.This(dgName, dgSize, dgStyle, dgWght);
 			dlgBoldFont := dir.This(dgName, dgSize, dgStyle, Fonts.bold)
 		ELSE
-			dlgFont.dev.id := GDI32.GetStockObject(GDI32.AnsiVarFont);
+			dlgFont.dev.id := WinApi.GetStockObject(WinApi.ANSI_VAR_FONT);
+			(* ANSI_VAR_FONT is not a Unicode font *)
+			(* try to use the "Tahoma" font of same size *)
+			dc := WinApi.GetDC(0);
+			old := WinApi.SelectObject(dc, dlgFont.dev.id);
+			res := WinApi.GetTextMetricsW(dc, tm);
+			f := WinApi.CreateFontW(tm.tmHeight, 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, "Tahoma");
+			res := WinApi.SelectObject(dc, old);
+			res := WinApi.ReleaseDC(0, dc);
+			IF f # 0 THEN
+				res := WinApi.DeleteObject(dlgFont.dev.id);
+				dlgFont.dev.id := f
+			END;
 			Setup(dlgFont, "", 0, {}, 0);
 			dgName := dlgFont.alias$;
 			dlgBoldFont := dir.This(dlgFont.typeface, dlgFont.size, dlgFont.style, Fonts.bold);
-			IF KERNEL32.GetVersion() MOD 256 < 4 THEN dlgFont := dlgBoldFont END
-		END;
+			IF WinApi.GetVersion() MOD 256 < 4 THEN dlgFont := dlgBoldFont END
+		END
 	END Init;
 
 BEGIN

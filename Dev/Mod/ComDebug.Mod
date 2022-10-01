@@ -182,7 +182,7 @@ MODULE DevComDebug;
 	
 	PROCEDURE ShowError*;
 		VAR res: INTEGER; c: TextControllers.Controller; r: TextModels.Reader; f: TextMappers.Formatter;
-			beg, end, i: INTEGER; str: ARRAY 1024 OF SHORTCHAR; ch: CHAR; s: ARRAY 64 OF CHAR;
+			beg, end, i: INTEGER; str: ARRAY 1024 OF CHAR; ch: CHAR; s: ARRAY 64 OF CHAR;
 	BEGIN
 		c := TextControllers.Focus();
 		IF (c # NIL) & c.HasSelection() THEN
@@ -216,13 +216,13 @@ MODULE DevComDebug;
 				f.WriteChar(")"); f.WriteLn;
 				f.WriteSString("Description:");
 				f.WriteLn;
-				i := WinApi.FormatMessage({12}, 0, i, 0, str, LEN(str), NIL);
+				i := WinApi.FormatMessageW({12}, 0, i, 0, str, LEN(str), NIL);
 				IF i > 0 THEN
 					REPEAT DEC(i) UNTIL (i < 0) OR (str[i] >= " ");
 					str[i + 1] := 0X;
 				ELSE str := ""
 				END;
-				f.WriteSString(str);
+				f.WriteString(str);
 				f.WriteLn;
 				OpenInfoViewer(f.rider.Base(), "Show Error");
 				f.ConnectTo(NIL)
@@ -234,13 +234,13 @@ MODULE DevComDebug;
 	BEGIN
 		IF n > 1 THEN Hex(f, x DIV 16, n - 1) END;
 		x := x MOD 16;
-		IF x >= 10 THEN f.WriteChar(SHORT(CHR(x + ORD("A") - 10)))
-		ELSE f.WriteChar(SHORT(CHR(x + ORD("0"))))
+		IF x >= 10 THEN f.WriteChar(CHR(x + ORD("A") - 10))
+		ELSE f.WriteChar(CHR(x + ORD("0")))
 		END
 	END Hex;
 
 	PROCEDURE NewGuid*;
-		VAR f: TextMappers.Formatter; g: COM.GUID; res: COM.RESULT; n: SHORTINT;
+		VAR f: TextMappers.Formatter; g: COM.GUID; res: COM.RESULT; n: INTEGER;
 	BEGIN
 		f.ConnectTo(TextModels.CloneOf(StdLog.buf)); n := 10;
 		WHILE n > 0 DO

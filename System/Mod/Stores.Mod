@@ -2,7 +2,7 @@ MODULE Stores;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Fyodor Tkachov"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"

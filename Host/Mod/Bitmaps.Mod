@@ -337,13 +337,12 @@ MODULE HostBitmaps;
 	PROCEDURE ImportBitmap* (f: Files.File; OUT s: Stores.Store);
 		TYPE Str = POINTER TO ARRAY [untagged] OF CHAR;
 		VAR name: Str; bm: WinApi.HBITMAP; obj: StdView; res: INTEGER;
-			sname: ARRAY 260 OF SHORTCHAR; info: WinApi.BITMAP;
+			info: WinApi.BITMAP;
 	BEGIN
 		name := SYSTEM.VAL(Str, SYSTEM.VAL(INTEGER, f) + 40);	(* f(HostFiles.File).name *)
-		sname := SHORT(name$);
-		bm := WinApi.LoadImage(0, sname, WinApi.IMAGE_BITMAP, 0, 0, ORD(WinApi.LR_LOADFROMFILE));
+		bm := WinApi.LoadImageW(0, name, WinApi.IMAGE_BITMAP, 0, 0, ORD(WinApi.LR_LOADFROMFILE));
 		IF bm = 0 THEN res := WinApi.GetLastError(); HALT(100) END;
-		res := WinApi.GetObject(bm, SIZE(WinApi.BITMAP), SYSTEM.ADR(info));
+		res := WinApi.GetObjectW(bm, SIZE(WinApi.BITMAP), SYSTEM.ADR(info));
 		NEW(obj); obj.w := info.bmWidth; obj.h := info.bmHeight;
 		IF info.bmBitsPixel > 8 THEN obj.bits := 24 ELSE obj.bits := 8 END;
 		NEW(obj.model); obj.model.ref := bm;
@@ -440,7 +439,7 @@ MODULE HostBitmaps;
 		ASSERT(med.tymed = WinOle.TYMED_GDI, 20);
 		bm0 := med.u.hBitmap;
 		ASSERT(bm0 # 0, 20);
-		res := WinApi.GetObject(bm0, SIZE(WinApi.BITMAP), SYSTEM.ADR(info));
+		res := WinApi.GetObjectW(bm0, SIZE(WinApi.BITMAP), SYSTEM.ADR(info));
 		NEW(obj);
 		obj.w := info.bmWidth;
 		obj.h := info.bmHeight;

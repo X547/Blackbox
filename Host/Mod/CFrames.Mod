@@ -14,7 +14,7 @@ MODULE HostCFrames;
 	(* ColorField, DateField, TimeField, UpDownField *)
 
 	IMPORT
-		SYSTEM, WinApi, WinCtl, USER32, KERNEL32, GDI32,
+		SYSTEM, WinApi, WinCtl,
 		Kernel, Strings, Dates, Fonts, Ports, Views,
 		Controllers, Dialog, HostFonts, HostRegistry, HostPorts, HostWindows, StdCFrames;
 
@@ -33,7 +33,7 @@ MODULE HostCFrames;
 		Procedure = PROCEDURE;
 
 		Info = RECORD
-			wnd, ctrl, ud: USER32.Handle;
+			wnd, ctrl, ud: WinApi.HANDLE;
 			x1, y1, w1, h1, x2, y2, w2, h2: INTEGER;
 			hasFocus, dropDown, readOnly, undef: BOOLEAN;
 			bkgnd: Ports.Color
@@ -95,7 +95,7 @@ MODULE HostCFrames;
 
 		ComboBox = POINTER TO RECORD (StdCFrames.ComboBox)
 			i: Info;
-			edit: USER32.Handle
+			edit: WinApi.HANDLE
 		END;
 
 		Caption = POINTER TO RECORD (StdCFrames.Caption)
@@ -127,28 +127,27 @@ MODULE HostCFrames;
 		BrushCache = POINTER TO RECORD
 			next: BrushCache;
 			col: Ports.Color;
-			brush: GDI32.Handle
+			brush: WinApi.HANDLE
 		END;
 
 	VAR
-		instance: USER32.Handle;
-		SubclassCtl: PROCEDURE(wnd: USER32.Handle);
+		instance: WinApi.HANDLE;
+		SubclassCtl: PROCEDURE(wnd: WinApi.HANDLE);
 		CtlColor: PROCEDURE(msg, wPar, lPar: INTEGER): INTEGER;
 		scW, scH: INTEGER;	(* screen width and height *)
 		updateAllowed: BOOLEAN;
-		listBoxHandler: USER32.WndProc;
-		osVersion: INTEGER;
 		colors: ARRAY numColors OF Ports.Color;
 		(* date format *)
-		dateSep: SHORTCHAR;	(* separator character *)
+		dateSep: CHAR;	(* separator character *)
 		yearPart, monthPart, dayPart: INTEGER;	(* first = 1, last = 3 *)
 		del1, del2: INTEGER;	(* position of separators *)
 		(* time format *)
-		timeSep: SHORTCHAR;	(* separator character *)
+		timeSep: CHAR;	(* separator character *)
 		lastPart: INTEGER;	(* 3 for 24h format, 4 for 12h format *)
-		desig: ARRAY 2, 8 OF SHORTCHAR;	(* AM, PM strings *)
+		desig: ARRAY 2, 8 OF CHAR;	(* AM, PM strings *)
 		inHandleMouse*: BOOLEAN; (* to disable the main window handler in HostMenus *)
 		brushes: BrushCache;
+		
 
 	(* auxiliary procedures *)
 
@@ -157,7 +156,6 @@ MODULE HostCFrames;
 	BEGIN
 		i := 0;
 		WHILE s[i] # 0X DO
-			IF s[i] = 20ACX THEN s[i] := 80X END; (* euro *)
 			INC(i)
 		END
 	END ConvertFromUnicode;
@@ -167,7 +165,6 @@ MODULE HostCFrames;
 	BEGIN
 		i := 0;
 		WHILE s[i] # 0X DO
-			IF s[i] = 80X THEN s[i] := 20ACX END; (* euro *)
 			INC(i)
 		END
 	END ConvertToUnicode;
@@ -193,27 +190,27 @@ MODULE HostCFrames;
 			IF r.port.wnd # 0 THEN	(* port is a window *)
 				GetSize(f, x, y, w, h);
 				IF i.dropDown THEN
-					n := USER32.SendMessageA(i.ctrl, USER32.CBGetCount, 0, 0);
-					h0 := USER32.SendMessageA(i.ctrl, USER32.CBGetItemHeight, -1, 0);
-					h1 := USER32.SendMessageA(i.ctrl, USER32.CBGetItemHeight, 0, 0);
+					n := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETCOUNT, 0, 0);
+					h0 := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETITEMHEIGHT, -1, 0);
+					h1 := WinApi.SendMessageW(i.ctrl, WinApi.CB_GETITEMHEIGHT, 0, 0);
 					IF n < 1 THEN n := 1 ELSIF n > 8 THEN n := 8 END;
 					h := h0 + h1 * n + 8
 				END;
 				cx := r.l; cy := r.t; cw := r.r - r.l; ch := r.b - r.t;
 				IF (cx # i.x1) OR (cy # i.y1) OR (cw # i.w1) OR (ch # i.h1) THEN
 					i.x1 := cx; i.y1 := cy; i.w1 := cw; i.h1 := ch;
-					res := USER32.MoveWindow(i.wnd, cx, cy, cw, ch, 0)
+					res := WinApi.MoveWindow(i.wnd, cx, cy, cw, ch, 0)
 				END;
 				DEC(x, cx); DEC(y, cy);
 				IF (x # i.x2) OR (y # i.y2) OR (w # i.w2) OR (h # i.h2) THEN
 					i.x2 := x; i.y2 := y; i.w2 := w; i.h2 := h;
 					IF i.ud # 0 THEN
 						udw := upDownWidth DIV f.unit;
-						res := USER32.MoveWindow(i.ud, x + w - udw, y + 1, udw, h - 2, 0);
+						res := WinApi.MoveWindow(i.ud, x + w - udw, y + 1, udw, h - 2, 0);
 						DEC(w, udw);
 						IF SubclassCtl # NIL THEN DEC(w) END
 					END;
-					res := USER32.MoveWindow(i.ctrl, x, y, w, h, 0)
+					res := WinApi.MoveWindow(i.ctrl, x, y, w, h, 0)
 				END
 			END
 		END
@@ -231,7 +228,7 @@ MODULE HostCFrames;
 		RETURN bgnd
 	END BkGndColor;
 
-	PROCEDURE Open (f: StdCFrames.Frame; class, name: USER32.StringPtr;
+	PROCEDURE Open (f: StdCFrames.Frame; class, name: WinApi.PtrWSTR;
 																style, ex: SET; VAR i: Info);
 		VAR res, x, y, w, h, cx, cy, cw, ch, udw: INTEGER; p: HostPorts.Port; s: SET; r: Ports.Rider;
 	BEGIN
@@ -242,15 +239,15 @@ MODULE HostCFrames;
 		IF p.wnd # 0 THEN	(* port is a window *)
 			i.bkgnd := BkGndColor(f);
 			s := {27, 30};	(* disabled, child *)
-			i.wnd := USER32.CreateWindowExA({}, "Oberon Ctrl", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0);
+			i.wnd := WinApi.CreateWindowExW({}, "Oberon Ctrl", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0);
 			IF i.wnd # 0 THEN
 				DEC(x, cx); DEC(y, cy);
-				res := USER32.SetWindowLongA(i.wnd, dlgWindowExtra, SYSTEM.VAL(INTEGER, f));
-				i.ctrl := USER32.CreateWindowExA(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0);
+				res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(INTEGER, f));
+				i.ctrl := WinApi.CreateWindowExW(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0);
 				IF i.ctrl # 0 THEN
 					IF (SubclassCtl # NIL) & ~(f IS PushButton) THEN SubclassCtl(i.ctrl) END;
 					IF f.font # NIL THEN
-						res := USER32.SendMessageA(i.ctrl, USER32.WMSetFont, f.font(HostFonts.Font).dev.id, 0)
+						res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFONT, f.font(HostFonts.Font).dev.id, 0)
 					END;
 					IF (f IS UpDownField) OR (f IS TimeField) OR (f IS DateField) THEN
 						style := {23, 28, 30} + WinCtl.UDS_ALIGNRIGHT + WinCtl.UDS_ARROWKEYS;
@@ -258,10 +255,10 @@ MODULE HostCFrames;
 						i.ud := WinCtl.CreateUpDownControl(style, x + w - udw, y, udw, h, i.wnd, 0, instance, 0, 1, 0, 0)
 					END;
 					Adapt(f, i);
-					res := USER32.ShowWindow(i.wnd, 1);
-					res := USER32.ShowWindow(i.ctrl, 1);
-					IF i.ud # 0 THEN res := USER32.ShowWindow(i.ud, 1) END
-				ELSE res := USER32.DestroyWindow(i.wnd); i.wnd := 0
+					res := WinApi.ShowWindow(i.wnd, 1);
+					res := WinApi.ShowWindow(i.ctrl, 1);
+					IF i.ud # 0 THEN res := WinApi.ShowWindow(i.ud, 1) END
+				ELSE res := WinApi.DestroyWindow(i.wnd); i.wnd := 0
 				END
 			ELSE i.ctrl := 0
 			END
@@ -269,9 +266,9 @@ MODULE HostCFrames;
 			i.wnd := 0; i.ctrl := 0
 (*
 			s := {27, 31};	(* disabled, popup *)
-			i.wnd := USER32.CreateWindowExA({}, "Oberon Ctrl", "", s, scW - cw, scH - ch, cw, ch, 0, 0, instance, 0);
-			res := USER32.SetWindowLongA(i.wnd, dlgWindowExtra, SYSTEM.VAL(LONGINT, f));
-			i.ctrl := USER32.CreateWindowExA({}, class, name, style, x - cx, y - cy, w, h, i.wnd, 0, instance, 0)
+			i.wnd := WinApi.CreateWindowExW({}, "Oberon Ctrl", "", s, scW - cw, scH - ch, cw, ch, 0, 0, instance, 0);
+			res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(LONGINT, f));
+			i.ctrl := WinApi.CreateWindowExW({}, class, name, style, x - cx, y - cy, w, h, i.wnd, 0, instance, 0)
 *)
 		END
 	END Open;
@@ -282,16 +279,16 @@ MODULE HostCFrames;
 		r := f.rider(HostPorts.Rider); u := f.unit;
 		r.port.CloseBuffer;
 		updateAllowed := TRUE;
-		res := USER32.InvalidateRect(i.wnd, NIL, 0);
-		res := USER32.InvalidateRect(i.ctrl, NIL, 0);
-		res := USER32.UpdateWindow(i.wnd);
-		res := USER32.UpdateWindow(i.ctrl);
-		IF i.ud # 0 THEN res := USER32.UpdateWindow(i.ud) END;
+		res := WinApi.InvalidateRect(i.wnd, NIL, 0);
+		res := WinApi.InvalidateRect(i.ctrl, NIL, 0);
+		res := WinApi.UpdateWindow(i.wnd);
+		res := WinApi.UpdateWindow(i.ctrl);
+		IF i.ud # 0 THEN res := WinApi.UpdateWindow(i.ud) END;
 		updateAllowed := FALSE
 	END Paint;
 
 	PROCEDURE PaintRect (f: StdCFrames.Frame; VAR i: Info; l, t, r, b: INTEGER);
-		VAR res, u: INTEGER; ri: HostPorts.Rider; rect: GDI32.Rect;
+		VAR res, u: INTEGER; ri: HostPorts.Rider; rect: WinApi.RECT;
 	BEGIN
 		ri := f.rider(HostPorts.Rider); u := f.unit;
 		ri.port.CloseBuffer;
@@ -303,15 +300,15 @@ MODULE HostCFrames;
 		IF rect.top > i.y1 THEN rect.top := rect.top - 1 END;
 		IF rect.right < i.x1 + i.w1 THEN rect.right := rect.right + 1 END;
 		IF rect.bottom < i.y1 + i.h1 THEN rect.bottom := rect.bottom + 1 END;
-		res := USER32.InvalidateRect(i.wnd, rect, 0);
-		res := USER32.InvalidateRect(i.ctrl, rect, 0);
-		res := USER32.UpdateWindow(i.wnd);
-		res := USER32.UpdateWindow(i.ctrl);
-		IF i.ud # 0 THEN res := USER32.UpdateWindow(i.ud) END;
+		res := WinApi.InvalidateRect(i.wnd, rect, 0);
+		res := WinApi.InvalidateRect(i.ctrl, rect, 0);
+		res := WinApi.UpdateWindow(i.wnd);
+		res := WinApi.UpdateWindow(i.ctrl);
+		IF i.ud # 0 THEN res := WinApi.UpdateWindow(i.ud) END;
 		updateAllowed := FALSE
 	END PaintRect;
 
-	PROCEDURE ExtractLine (IN s: ARRAY OF SHORTCHAR; beg: INTEGER; fnt: Fonts.Font; maxW: INTEGER;
+	PROCEDURE ExtractLine (IN s: ARRAY OF CHAR; beg: INTEGER; fnt: Fonts.Font; maxW: INTEGER;
 		OUT line: Dialog.String; OUT lineW, end: INTEGER
 	);
 		VAR i, len, w: INTEGER; ch: CHAR;
@@ -332,13 +329,13 @@ MODULE HostCFrames;
 		ASSERT(end > beg, 80)
 	END ExtractLine;
 
-	PROCEDURE PrintSString (f: Views.Frame; w: INTEGER;
-		IN string: ARRAY OF SHORTCHAR; fnt: Fonts.Font; col: Ports.Color;
+	PROCEDURE PrintString (f: Views.Frame; w: INTEGER;
+		IN string: ARRAY OF CHAR; fnt: Fonts.Font; col: Ports.Color;
 		x0, y0: INTEGER; left, right, multiLine: BOOLEAN
 	);
 		VAR x, sw, asc, dsc, fw, beg, end, len, n: INTEGER; s: Dialog.String;
 	BEGIN
-		fnt.GetBounds(asc, dsc, fw); sw := fnt.SStringWidth(string);
+		fnt.GetBounds(asc, dsc, fw); sw := fnt.StringWidth(string);
 		w := MAX(fw, w - 2 * x0); (* ensures that always at least one character fits *)
 		beg := 0; len := LEN(string$); n := 0;
 		WHILE beg < len DO
@@ -350,15 +347,15 @@ MODULE HostCFrames;
 			beg := end; INC(n);
 			IF (beg < len) & (string[beg] = " ") THEN INC(beg) END
 		END
-	END PrintSString;
+	END PrintString;
 
-	PROCEDURE Print (f: StdCFrames.Frame; d, x, y: INTEGER; label: ARRAY OF SHORTCHAR);
+	PROCEDURE Print (f: StdCFrames.Frame; d, x, y: INTEGER; label: ARRAY OF CHAR);
 		VAR w, h, sw, a, asc, dsc, fw: INTEGER; font: Fonts.Font; on: BOOLEAN;
 	BEGIN
 		IF f.font # NIL THEN font := f.font ELSE font := HostFonts.dlgFont END;
 		f.view.context.GetSize(w, h);
 		font.GetBounds(asc, dsc, fw);
-		IF x < 0 THEN sw := font.SStringWidth(label); x := (w - sw) DIV 2 END;
+		IF x < 0 THEN sw := font.StringWidth(label); x := (w - sw) DIV 2 END;
 		IF y < 0 THEN y := (h + asc - dsc) DIV 2
 		ELSIF y = 0 THEN y := asc
 		END;
@@ -386,7 +383,7 @@ MODULE HostCFrames;
 			END
 		ELSIF d = -3 THEN
 			f.DrawRect(0, MIN(asc - f.dot, h), w, MAX(asc - f.dot, h), f.dot, Ports.defaultColor);
-			f.DrawRect(x, y - asc, x + font.SStringWidth(label), y + dsc, Ports.fill, Ports.background)
+			f.DrawRect(x, y - asc, x + font.StringWidth(label), y + dsc, Ports.fill, Ports.background)
 		ELSIF d > 0 THEN f.DrawRect(0, 0, w, h, d, Ports.defaultColor)
 		END;
 (*
@@ -403,15 +400,15 @@ MODULE HostCFrames;
 		f.DrawSString(x, y, Ports.defaultColor, label, font)
 *)
 		WITH f: Field DO
-			PrintSString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, f.multiLine)
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, f.multiLine)
 		| f: Caption DO
-			PrintSString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, TRUE)
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, f.left, f.right, TRUE)
 		ELSE
-			PrintSString(f, w, label, font, Ports.defaultColor, x, y, TRUE, FALSE, FALSE)
+			PrintString(f, w, label, font, Ports.defaultColor, x, y, TRUE, FALSE, FALSE)
 		END
 	END Print;
 
-	PROCEDURE SendKey (ch: SHORTCHAR; wnd: USER32.Handle);
+	PROCEDURE SendKey (ch: CHAR; wnd: WinApi.HANDLE);
 		VAR res, code: INTEGER;
 	BEGIN
 		CASE ch OF
@@ -431,10 +428,10 @@ MODULE HostCFrames;
 		ELSE code := 0
 		END;
 		IF code # 0 THEN
-			res := USER32.SendMessageA(wnd, USER32.WMKeyDown, code, 0);
-			res := USER32.SendMessageA(wnd, USER32.WMKeyUp, code, 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYDOWN, code, 0);
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYUP, code, 0)
 		ELSE
-			res := USER32.SendMessageA(wnd, USER32.WMChar, ORD(ch), 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_CHAR, ORD(ch), 0)
 		END
 	END SendKey;
 
@@ -443,56 +440,56 @@ MODULE HostCFrames;
 		inHandleMouse := FALSE
 	END Cleanup;
 
-	PROCEDURE HandleMouse (wnd: USER32.Handle; x, y: INTEGER; buttons: SET);
-		VAR res, b, hc, m: INTEGER; pt: USER32.Point; w: USER32.Handle; msg: USER32.Message;
+	PROCEDURE HandleMouse (wnd: WinApi.HANDLE; x, y: INTEGER; buttons: SET);
+		VAR res, b, hc, m: INTEGER; pt: WinApi.POINT; w: WinApi.HANDLE; msg: WinApi.MSG;
 			tc: TrapCleaner;
 	BEGIN
 		NEW(tc); Kernel.PushTrapCleaner(tc); inHandleMouse := TRUE;
-		res := USER32.ReleaseCapture(); b := 0;
+		res := WinApi.ReleaseCapture(); b := 0;
 		IF HostPorts.left IN buttons THEN INC(b) END;
 		IF HostPorts.right IN buttons THEN INC(b, 2) END;
 		IF Controllers.extend IN buttons THEN INC(b, 4) END;
 		IF Controllers.modify IN buttons THEN INC(b, 8) END;
 		pt.x := x; pt.y := y;
 		REPEAT
-			w := wnd; wnd := USER32.ChildWindowFromPoint(wnd, pt);
-			res := USER32.ClientToScreen(w, pt);
-			hc := USER32.SendMessageA(wnd, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
-			res := USER32.ScreenToClient(wnd, pt)
+			w := wnd; wnd := WinApi.ChildWindowFromPoint(wnd, pt);
+			res := WinApi.ClientToScreen(w, pt);
+			hc := WinApi.SendMessageW(wnd, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
+			res := WinApi.ScreenToClient(wnd, pt)
 		UNTIL (hc # 1) OR (w = wnd);
 		IF hc > 1 THEN
-			res := USER32.ClientToScreen(wnd, pt);
-			IF ODD(b) THEN m := USER32.WMNCLButtonDown ELSE m := USER32.WMNCRButtonDown END;
-			res := USER32.SendMessageA(wnd, m, hc, pt.x + pt.y * 65536)
+			res := WinApi.ClientToScreen(wnd, pt);
+			IF ODD(b) THEN m := WinApi.WM_NCLBUTTONDOWN ELSE m := WinApi.WM_NCRBUTTONDOWN END;
+			res := WinApi.SendMessageW(wnd, m, hc, pt.x + pt.y * 65536)
 		ELSE
-			res := USER32.GetClassLongA(wnd, -26);	(* classStyle *)
+			res := WinApi.GetClassLongW(wnd, -26);	(* classStyle *)
 			IF (Controllers.doubleClick IN buttons) & ODD(res DIV 8) THEN	(* DblClks IN classStyle *)
-				IF ODD(b) THEN m := USER32.WMLButtonDblClk ELSE m := USER32.WMRButtonDblClk END
+				IF ODD(b) THEN m := WinApi.WM_LBUTTONDBLCLK ELSE m := WinApi.WM_RBUTTONDBLCLK END
 			ELSE
-				IF ODD(b) THEN m := USER32.WMLButtonDown ELSE m := USER32.WMRButtonDown END
+				IF ODD(b) THEN m := WinApi.WM_LBUTTONDOWN ELSE m := WinApi.WM_RBUTTONDOWN END
 			END;
-			res := USER32.SendMessageA(wnd, m, b, pt.x + pt.y * 65536)
+			res := WinApi.SendMessageW(wnd, m, b, pt.x + pt.y * 65536)
 		END;
 		REPEAT
-			res := USER32.GetMessageA(msg, 0, 0, 0);
-			IF (msg.message >= USER32.WMMouseMove) & (msg.message <= USER32.WMMButtonDblClk) THEN
+			res := WinApi.GetMessageW(msg, 0, 0, 0);
+			IF (msg.message >= WinApi.WM_MOUSEMOVE) & (msg.message <= WinApi.WM_MBUTTONDBLCLK) THEN
 				b := msg.wParam
 			END;
-			res := USER32.TranslateMessage(msg);
-			res := USER32.DispatchMessageA(msg)
+			res := WinApi.TranslateMessage(msg);
+			res := WinApi.DispatchMessageW(msg)
 		UNTIL b MOD 4 = 0;
 		inHandleMouse := FALSE; Kernel.PopTrapCleaner(tc)
 	END HandleMouse;
 
-	PROCEDURE HandleWheel (wnd: USER32.Handle; x, y: INTEGER; op, nofLines: INTEGER;
+	PROCEDURE HandleWheel (wnd: WinApi.HANDLE; x, y: INTEGER; op, nofLines: INTEGER;
 		VAR done: BOOLEAN
 	);
 		VAR res: INTEGER;
 	BEGIN
 		IF op = Controllers.incPage THEN
-			res := WinApi.SendMessage(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEDOWN, WinApi.NULL)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEDOWN, WinApi.NULL)
 		ELSIF op = Controllers.decPage THEN
-			res := WinApi.SendMessage(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEUP, WinApi.NULL)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, WinApi.SB_PAGEUP, WinApi.NULL)
 		ELSE
 			IF op = Controllers.incLine THEN
 				op := WinApi.SB_LINEDOWN
@@ -500,7 +497,7 @@ MODULE HostCFrames;
 				op := WinApi.SB_LINEUP
 			END;
 			WHILE nofLines > 0 DO
-				res := WinApi.SendMessage(wnd, WinApi.WM_VSCROLL, op, WinApi.NULL);
+				res := WinApi.SendMessageW(wnd, WinApi.WM_VSCROLL, op, WinApi.NULL);
 				DEC(nofLines)
 			END
 		END;
@@ -513,31 +510,30 @@ MODULE HostCFrames;
 		IF focus THEN
 			IF on THEN
 				IF ~i.hasFocus THEN
-					res := USER32.SendMessageA(i.ctrl, USER32.WMSetFocus, 0, 0);
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
 					i.hasFocus := TRUE
 				END
 			ELSE
 				IF i.hasFocus THEN
-					res := USER32.SendMessageA(i.ctrl, USER32.WMKillFocus, 0, 0);
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_KILLFOCUS, 0, 0);
 					i.hasFocus := FALSE
 				END
 			END
 		END
 	END Mark;
 
-	PROCEDURE SetLabel (IN in: ARRAY OF CHAR; OUT out: ARRAY OF SHORTCHAR);
-		VAR s: Dialog.String;
+	PROCEDURE SetLabel (IN in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
 	BEGIN
-		Dialog.MapString(in, s); ConvertFromUnicode(s); out := SHORT(s)
+		Dialog.MapString(in, out); ConvertFromUnicode(out);
 	END SetLabel;
 
 	PROCEDURE CheckLabel (IN label: ARRAY OF CHAR; ctrl: INTEGER);
-		VAR res: INTEGER; lbl, s: ARRAY 256 OF SHORTCHAR; s0: Dialog.String;
+		VAR res: INTEGER; lbl, s: Dialog.String;
 	BEGIN
-		Dialog.MapString(label, s0);
-		ConvertFromUnicode(s0); lbl := SHORT(s0);
-		res := USER32.GetWindowTextA(ctrl, s, LEN(s));
-		IF s # lbl THEN res := USER32.SetWindowTextA(ctrl, lbl) END
+		Dialog.MapString(label, lbl);
+		ConvertFromUnicode(lbl);
+		res := WinApi.GetWindowTextW(ctrl, s, LEN(s));
+		IF s # lbl THEN res := WinApi.SetWindowTextW(ctrl, lbl) END
 	END CheckLabel;
 
 	(* PushButton *)
@@ -553,7 +549,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -563,28 +559,28 @@ MODULE HostCFrames;
 		VAR res: INTEGER; style: SET;
 	BEGIN
 		IF ~f.disabled & ~f.readOnly THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN
 				IF f.default THEN
-					style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
-					res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style + {0}))
+					style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
+					res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style + {0}))
 				END;
-				res := USER32.EnableWindow(f.i.ctrl, 1)
+				res := WinApi.EnableWindow(f.i.ctrl, 1)
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
 				IF f.default THEN
-					style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
-					res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style - {0}))
+					style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
+					res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style - {0}))
 				END;
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
 		CheckLabel(f.label, f.i.ctrl);
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: PushButton) Restore (l, t, r, b: INTEGER);
-		VAR style: SET; lbl: ARRAY 256 OF SHORTCHAR;
+		VAR style: SET; lbl: Dialog.String;
 	BEGIN
 		SetLabel(f.label, lbl);
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
@@ -605,13 +601,13 @@ MODULE HostCFrames;
 	END MouseDown;
 
 	PROCEDURE Execute (f: PushButton);
-		VAR old: USER32.Handle;
+		VAR old: WinApi.HANDLE;
 	BEGIN
 		IF f.Do # NIL THEN
-			old := USER32.SetCursor(HostPorts.cursors[HostPorts.busyCursor]);
+			old := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor]);
 			Dialog.ShowStatus("");
 			f.Do(f);
-			old := USER32.SetCursor(old)
+			old := WinApi.SetCursor(old)
 		END
 	END Execute;
 
@@ -641,7 +637,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -652,27 +648,27 @@ MODULE HostCFrames;
 	BEGIN
 		IF ~f.disabled THEN
 			f.Get(f, value);
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
-			IF f.undef THEN res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 2, 0)
-			ELSIF value THEN res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 1, 0)
-			ELSE res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 0, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
+			IF f.undef THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 2, 0)
+			ELSIF value THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 1, 0)
+			ELSE res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0)
 			END;
-			IF f.readOnly THEN res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE, 0)
-			ELSE res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0)
+			IF f.readOnly THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE, 0)
+			ELSE res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0)
 			END
 		ELSE
-			res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 0, 0);
-			res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0);
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0);
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
 		CheckLabel(f.label, f.i.ctrl);
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: CheckBox) Restore (l, t, r, b: INTEGER);
-		VAR style: SET; lbl: ARRAY 256 OF SHORTCHAR;
+		VAR style: SET; lbl: Dialog.String;
 	BEGIN
 		SetLabel(f.label, lbl);
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
@@ -702,8 +698,8 @@ MODULE HostCFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch >= " " THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(" "), 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(" "), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(" "), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(" "), 0)
 		END
 	END KeyDown;
 
@@ -727,7 +723,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -738,25 +734,25 @@ MODULE HostCFrames;
 	BEGIN
 		IF ~f.disabled THEN
 			f.Get(f, value);
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
-			IF f.undef THEN res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 0, 0)
-			ELSIF value THEN res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 1, 0)
-			ELSE res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 0, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
+			IF f.undef THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0)
+			ELSIF value THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 1, 0)
+			ELSE res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0)
 			END;
-			IF f.readOnly THEN res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE, 0)
-			ELSE res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0)
+			IF f.readOnly THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.TRUE, 0)
+			ELSE res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0)
 			END
 		ELSE
-			res := USER32.SendMessageA(f.i.ctrl, USER32.BMSetCheck, 0, 0);
-			res := USER32.SendMessageA(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0);
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETCHECK, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.BM_SETSTATE, WinApi.FALSE, 0);
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END;
 		CheckLabel(f.label, f.i.ctrl);
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: RadioButton) Restore (l, t, r, b: INTEGER);
-		VAR lbl: ARRAY 256 OF SHORTCHAR;
+		VAR lbl: Dialog.String;
 	BEGIN
 		SetLabel(f.label, lbl);
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
@@ -778,8 +774,8 @@ MODULE HostCFrames;
 		VAR res: INTEGER;
 	BEGIN
 		ASSERT(~f.disabled, 100);
-		res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(" "), 0);
-		res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(" "), 0)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(" "), 0);
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(" "), 0)
 	END KeyDown;
 
 	PROCEDURE (f: RadioButton) Mark (on, focus: BOOLEAN);
@@ -802,51 +798,47 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: ScrollBar) Update;
-		VAR res, size, sect, pos, p, q, m: INTEGER; i: HostWindows.ScrollInfo;
+		VAR res, size, sect, pos, p, q, m: INTEGER; i: WinApi.SCROLLINFO;
 	BEGIN
 		IF ~f.disabled THEN
 			f.Get(f, size, sect, pos);
 			IF size > sect THEN
-				IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+				IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 
-				p := KERNEL32.MulDiv(pos, scrollRange, size - sect);
-				IF (Dialog.platform # 11) & (HostWindows.GetScrollInfo # NIL) THEN
-					i.size := SIZE(HostWindows.ScrollInfo); i.mask := {0, 1, 2};	(* range, page, pos *)
-					res := HostWindows.GetScrollInfo(f.i.ctrl, USER32.SBCtl, i);
-					IF (res # 0) THEN
-						IF sect > 0 THEN q := KERNEL32.MulDiv(sect, scrollRange, size - sect); m := scrollRange + q
-						ELSE q := -1; m := scrollRange
-						END;
-						IF (i.pos # p) OR (i.page # q + 1) THEN
-							i.pos := p; i.page := q + 1; i.max := m;
-							res := HostWindows.SetScrollInfo(f.i.ctrl, USER32.SBCtl, i, 1)
-						END
-					ELSIF p # USER32.GetScrollPos(f.i.ctrl, USER32.SBCtl) THEN
-						res := USER32.SetScrollPos(f.i.ctrl, USER32.SBCtl, p, 1)
+				p := WinApi.MulDiv(pos, scrollRange, size - sect);
+				i.cbSize := SIZE(WinApi.SCROLLINFO); i.fMask := {0, 1, 2};	(* range, page, pos *)
+				res := WinApi.GetScrollInfo(f.i.ctrl, WinApi.SB_CTL, i);
+				IF (res # 0) THEN
+					IF sect > 0 THEN q := WinApi.MulDiv(sect, scrollRange, size - sect); m := scrollRange + q
+					ELSE q := -1; m := scrollRange
+					END;
+					IF (i.nPos # p) OR (i.nPage # q + 1) THEN
+						i.nPos := p; i.nPage := q + 1; i.nMax := m;
+						res := WinApi.SetScrollInfo(f.i.ctrl, WinApi.SB_CTL, i, 1)
 					END
-				ELSIF p # USER32.GetScrollPos(f.i.ctrl, USER32.SBCtl) THEN
-					res := USER32.SetScrollPos(f.i.ctrl, USER32.SBCtl, p, 1)
+				ELSIF p # WinApi.GetScrollPos(f.i.ctrl, WinApi.SB_CTL) THEN
+					res := WinApi.SetScrollPos(f.i.ctrl, WinApi.SB_CTL, p, 1)
 				END
 	(*
-				IF USER32.GetScrollPos(f.i.ctrl, USER32.SBCtl) # pos THEN
-					res := USER32.SetScrollRange(f.i.ctrl, USER32.SBCtl, 0, size, 1);
-					res := USER32.SetScrollPos(f.i.ctrl, USER32.SBCtl, pos, 1)
+				IF WinApi.GetScrollPos(f.i.ctrl, WinApi.SBCtl) # pos THEN
+					res := WinApi.SetScrollRange(f.i.ctrl, WinApi.SBCtl, 0, size, 1);
+					res := WinApi.SetScrollPos(f.i.ctrl, WinApi.SBCtl, pos, 1)
 				END
 	*)
 			ELSE
-				IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+				IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: ScrollBar) Restore (l, t, r, b: INTEGER);
@@ -857,7 +849,7 @@ MODULE HostCFrames;
 			f.view.context.GetSize(w, h);
 			IF h > w THEN INCL(style, 0) END;	(* vertical *)
 			Open(f, "SCROLLBAR", "", style, {}, f.i);
-			res := USER32.SetScrollRange(f.i.ctrl, USER32.SBCtl, 0, scrollRange, 1)
+			res := WinApi.SetScrollRange(f.i.ctrl, WinApi.SB_CTL, 0, scrollRange, 1)
 		END;
 		f.Update;
 		IF f.i.wnd # 0 THEN Paint(f, f.i) ELSE Print(f, f.dot, -1, -1, "") END
@@ -874,7 +866,7 @@ MODULE HostCFrames;
 	PROCEDURE (f: ScrollBar) KeyDown (ch: CHAR);
 	BEGIN
 		ASSERT(~f.disabled, 100);
-		SendKey(SHORT(ch), f.i.ctrl)
+		SendKey(ch, f.i.ctrl)
 	END KeyDown;
 
 	PROCEDURE (f: ScrollBar) Mark (on, focus: BOOLEAN);
@@ -897,7 +889,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -937,50 +929,48 @@ MODULE HostCFrames;
 	END Equal;
 
 	PROCEDURE (f: Field) Update;
-		VAR res: INTEGER; s, s1: ARRAY 512 OF CHAR; ps, ps1: POINTER TO ARRAY OF CHAR;
-			ss: ARRAY 512 OF SHORTCHAR; pss: POINTER TO ARRAY OF SHORTCHAR; style: SET;
+		VAR res: INTEGER; s, s1: ARRAY 512 OF CHAR; ps, ps1: POINTER TO ARRAY OF CHAR; style: SET;
 	BEGIN
 		IF f.maxLen > 255 THEN
-			NEW(ps, 2 * f.maxLen + 1); NEW(ps1, 2 * f.maxLen + 1); NEW(pss, 2 * f.maxLen + 1);
+			NEW(ps, 2 * f.maxLen + 1); NEW(ps1, 2 * f.maxLen + 1);
 			IF f.undef OR f.disabled THEN ps[0] := 0X ELSE f.Get(f, ps^) END;
-			res := USER32.GetWindowTextA(f.i.ctrl, pss^, LEN(pss^)); ps1^ := pss^$; ConvertToUnicode(ps1^);
-			IF (USER32.GetWindowTextLengthA(f.i.ctrl) >= LEN(ps^)) OR ~Equal(f, ps^, ps1^) THEN
+			res := WinApi.GetWindowTextW(f.i.ctrl, ps1^, LEN(ps1^)); ConvertToUnicode(ps1^);
+			IF (WinApi.GetWindowTextLengthW(f.i.ctrl) >= LEN(ps^)) OR ~Equal(f, ps^, ps1^) THEN
 				f.isUpdate := TRUE;
 				IF f.multiLine THEN InsLF(ps^) END;
 				ConvertFromUnicode(ps^);
-				pss^ := SHORT(ps^$); res := USER32.SetWindowTextA(f.i.ctrl, pss^);
+				res := WinApi.SetWindowTextW(f.i.ctrl, ps^);
 				f.isUpdate := FALSE
 			END
 		ELSE
 			IF f.undef OR f.disabled THEN s := "" ELSE f.Get(f, s) END;
-			res := USER32.GetWindowTextA(f.i.ctrl, ss, LEN(s1)); s1 := ss$; ConvertToUnicode(s1);
-			IF (USER32.GetWindowTextLengthA(f.i.ctrl) >= LEN(s)) OR ~Equal(f, s, s1) THEN
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, LEN(s1)); ConvertToUnicode(s1);
+			IF (WinApi.GetWindowTextLengthW(f.i.ctrl) >= LEN(s)) OR ~Equal(f, s, s1) THEN
 				f.isUpdate := TRUE;
 				IF f.multiLine THEN InsLF(s) END;
 				ConvertFromUnicode(s);
-				ss := SHORT(s$); res := USER32.SetWindowTextA(f.i.ctrl, ss);
+				res := WinApi.SetWindowTextW(f.i.ctrl, s);
 				f.isUpdate := FALSE
 			END
 		END;
-		style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
+		style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
 		IF (f.readOnly # f.i.readOnly) OR (f.undef # f.i.undef) THEN
 (*
-			res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style / {11}));
+			res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
 *)
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef
 		END;
 		IF f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: Field) Restore (l, t, r, b: INTEGER);
-		VAR res, w, h: INTEGER; style: SET;
-			s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, w, h: INTEGER; style: SET; s: Dialog.String;
 	BEGIN
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
 			f.view.context.GetSize(w, h);
@@ -999,19 +989,19 @@ MODULE HostCFrames;
 			END;
 			IF f.password THEN INCL(style, 5) END;	(* password *)
 			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMLimitText, f.maxLen, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, f.maxLen, 0);
 			f.Update;
 			IF f.front & ~f.disabled THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0);
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, 23H, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23H, 0)
 			END
 		ELSE f.Update
 		END;
 		IF f.i.wnd # 0 THEN
 			Paint(f, f.i)
 		ELSE
-			f.Get(f, s); ss := SHORT(s$);
-			Print(f, f.dot, 2 * Ports.point, 0, ss)
+			f.Get(f, s);
+			Print(f, f.dot, 2 * Ports.point, 0, s)
 		END
 	END Restore;
 
@@ -1029,8 +1019,7 @@ MODULE HostCFrames;
 		IF f.multiLine OR (ch # 0DX) THEN
 			f.del := FALSE;
 			IF (ch = DEL) OR (ch = BS) THEN f.del := TRUE END;
-			IF ch = 20ACX THEN ch := 80X END; (* euro *)
-			SendKey(SHORT(ch), f.i.ctrl)
+			SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
@@ -1040,30 +1029,28 @@ MODULE HostCFrames;
 	BEGIN
 		IF clipboard THEN
 			IF op = Controllers.cut THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCut, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CUT, 0, 0)
 			ELSIF op = Controllers.copy THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCopy, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0)
 			ELSIF op = Controllers.paste THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMPaste, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_PASTE, 0, 0)
 			END
 		END
 	END Edit;
 
-	PROCEDURE (f: Field) Idle;
-	BEGIN
-	END Idle;
+	PROCEDURE (f: Field) Idle, EMPTY;
 
 	PROCEDURE (f: Field) Select (from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
 		IF to = MAX(INTEGER) THEN to := -1 END;
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, from, to)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to)
 	END Select;
 
 	PROCEDURE (f: Field) GetSelection (OUT from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMGetSel, SYSTEM.ADR(from), SYSTEM.ADR(to));
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, SYSTEM.ADR(from), SYSTEM.ADR(to));
 		IF from = -1 THEN to := -1 ELSIF to = -1 THEN to := MAX(INTEGER) END
 	END GetSelection;
 
@@ -1075,16 +1062,16 @@ MODULE HostCFrames;
 	PROCEDURE (f: Field) Length (): INTEGER;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.GetWindowTextLengthA(f.i.ctrl);
+		res := WinApi.GetWindowTextLengthW(f.i.ctrl);
 		RETURN res
 	END Length;
 
 	PROCEDURE (f: Field) GetCursor (x, y: INTEGER; modifiers: SET; VAR cursor: INTEGER);
-		VAR res, hc: INTEGER; pt: USER32.Point;
+		VAR res, hc: INTEGER; pt: WinApi.POINT;
 	BEGIN
 		pt.x := (x - 1) DIV f.unit + 1; pt.y := (y - 1) DIV f.unit + 1;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
-		hc := USER32.SendMessageA(f.i.ctrl, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 		IF hc = 1 THEN cursor := Ports.textCursor END
 	END GetCursor;
 
@@ -1103,55 +1090,55 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0; f.i.ud := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: UpDownField) Update;
-		VAR res, val: INTEGER; s: ARRAY 16 OF CHAR; ss: ARRAY 16 OF SHORTCHAR; style: SET; upd: BOOLEAN;
+		VAR res, val: INTEGER; s: ARRAY 16 OF CHAR; style: SET; upd: BOOLEAN;
 	BEGIN
 		IF ~f.disabled THEN
 			IF f.undef THEN upd := TRUE ELSE f.Get(f, val); upd := val # f.val END;
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 1); upd := TRUE
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 1); upd := TRUE
 			END;
 			IF f.readOnly THEN
-				IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+				IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 			ELSE
-				IF USER32.IsWindowEnabled(f.i.ud) = 0 THEN res := USER32.EnableWindow(f.i.ud, 1) END
+				IF WinApi.IsWindowEnabled(f.i.ud) = 0 THEN res := WinApi.EnableWindow(f.i.ud, 1) END
 			END;
 			IF upd THEN
 				f.isUpdate := TRUE;
-				IF f.undef THEN ss := ""
-				ELSE Strings.IntToString(val, s); ss := SHORT(s$)
+				IF f.undef THEN s := ""
+				ELSE Strings.IntToString(val, s)
 				END;
-				res := USER32.SetWindowTextA(f.i.ctrl, ss);
+				res := WinApi.SetWindowTextW(f.i.ctrl, s);
 				f.val := val; f.isUpdate := FALSE
 			END;
-			style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
+			style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
 		IF (f.readOnly # f.i.readOnly) OR (f.undef # f.i.undef) THEN
 (*
-			res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style / {11}));
+			res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
 *)
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef
 		END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
 				f.isUpdate := TRUE;
-				res := USER32.SetWindowTextA(f.i.ctrl, "");
+				res := WinApi.SetWindowTextW(f.i.ctrl, "");
 				f.isUpdate := FALSE;
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END;
-			IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: UpDownField) Restore (l, t, r, b: INTEGER);
-		VAR res, w, h: INTEGER; style: SET; s: ARRAY 16 OF CHAR; ss: ARRAY 16 OF SHORTCHAR;
+		VAR res, w, h: INTEGER; style: SET; s: ARRAY 16 OF CHAR;
 	BEGIN
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
 			f.view.context.GetSize(w, h);
@@ -1160,13 +1147,13 @@ MODULE HostCFrames;
 			IF f.readOnly THEN INCL(style, 11) END;	(* readonly *)
 *)
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef;
-			ss := "0"; f.val := 0;
-			Open(f, "EDIT", ss, style, WinApi.WS_EX_CLIENTEDGE, f.i);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMLimitText, 16, 0);
+			f.val := 0;
+			Open(f, "EDIT", "0", style, WinApi.WS_EX_CLIENTEDGE, f.i);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0);
 			f.Update;
 			IF f.front & ~f.disabled THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0);
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, 23H, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23H, 0)
 			END
 		ELSE f.Update
 		END;
@@ -1174,8 +1161,8 @@ MODULE HostCFrames;
 			Paint(f, f.i)
 		ELSE
 			f.Get(f, w);
-			Strings.IntToString(w, s); ss := SHORT(s$);
-			Print(f, f.dot, 2 * Ports.point, 0, ss)
+			Strings.IntToString(w, s);
+			Print(f, f.dot, 2 * Ports.point, 0, s)
 		END
 	END Restore;
 
@@ -1200,7 +1187,7 @@ MODULE HostCFrames;
 			END;
 			IF val # f.val THEN f.Set(f, val); f.Update END
 		ELSIF (ch # 0DX) THEN
-			SendKey(SHORT(ch), f.i.ctrl)
+			SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
@@ -1210,30 +1197,28 @@ MODULE HostCFrames;
 	BEGIN
 		IF clipboard THEN
 			IF op = Controllers.cut THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCut, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_CUT, 0, 0)
 			ELSIF op = Controllers.copy THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCopy, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0)
 			ELSIF op = Controllers.paste THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMPaste, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_PASTE, 0, 0)
 			END
 		END
 	END Edit;
 
-	PROCEDURE (f: UpDownField) Idle;
-	BEGIN
-	END Idle;
+	PROCEDURE (f: UpDownField) Idle, EMPTY;
 
 	PROCEDURE (f: UpDownField) Select (from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
 		IF to = MAX(INTEGER) THEN to := -1 END;
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, from, to)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, from, to)
 	END Select;
 
 	PROCEDURE (f: UpDownField) GetSelection (OUT from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMGetSel, SYSTEM.ADR(from), SYSTEM.ADR(to));
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, SYSTEM.ADR(from), SYSTEM.ADR(to));
 		IF from = -1 THEN to := -1 ELSIF to = -1 THEN to := MAX(INTEGER) END
 	END GetSelection;
 
@@ -1243,11 +1228,11 @@ MODULE HostCFrames;
 	END Mark;
 
 	PROCEDURE (f: UpDownField) GetCursor (x, y: INTEGER; modifiers: SET; VAR cursor: INTEGER);
-		VAR res, hc: INTEGER; pt: USER32.Point;
+		VAR res, hc: INTEGER; pt: WinApi.POINT;
 	BEGIN
 		pt.x := (x - 1) DIV f.unit + 1; pt.y := (y - 1) DIV f.unit + 1;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
-		hc := USER32.SendMessageA(f.i.ctrl, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 		IF hc = 1 THEN cursor := Ports.textCursor END
 	END GetCursor;
 
@@ -1277,20 +1262,20 @@ MODULE HostCFrames;
 		END
 	END SetTimePart;
 
-	PROCEDURE TimeToString (VAR time: Dates.Time; VAR str: ARRAY OF SHORTCHAR);
+	PROCEDURE TimeToString (VAR time: Dates.Time; VAR str: ARRAY OF CHAR);
 		VAR val, min, max, i, j, k: INTEGER;
 	BEGIN
 		GetTimePart(time, 1, val, min, max);
-		str[0] := SHORT(CHR(val DIV 10 + ORD("0")));
-		str[1] := SHORT(CHR(val MOD 10 + ORD("0")));
+		str[0] := CHR(val DIV 10 + ORD("0"));
+		str[1] := CHR(val MOD 10 + ORD("0"));
 		str[2] := timeSep;
 		GetTimePart(time, 2, val, min, max);
-		str[3] := SHORT(CHR(val DIV 10 + ORD("0")));
-		str[4] := SHORT(CHR(val MOD 10 + ORD("0")));
+		str[3] := CHR(val DIV 10 + ORD("0"));
+		str[4] := CHR(val MOD 10 + ORD("0"));
 		str[5] := timeSep;
 		GetTimePart(time, 3, val, min, max);
-		str[6] := SHORT(CHR(val DIV 10 + ORD("0")));
-		str[7] := SHORT(CHR(val MOD 10 + ORD("0")));
+		str[6] := CHR(val DIV 10 + ORD("0"));
+		str[7] := CHR(val MOD 10 + ORD("0"));
 		IF lastPart = 3 THEN
 			str[8] := 0X
 		ELSE
@@ -1306,7 +1291,7 @@ MODULE HostCFrames;
 	BEGIN
 		f.GetSel(f, sel);
 		IF sel = -1 THEN sel := lastPart END;
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, 3 * sel - 3, 3 * sel - 1)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 3 * sel - 3, 3 * sel - 1)
 	END Select;
 
 	PROCEDURE (f: TimeField) SetOffset (x, y: INTEGER);
@@ -1320,52 +1305,52 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0; f.i.ud := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: TimeField) Update;
-		VAR res: INTEGER; s, s1: ARRAY 20 OF SHORTCHAR; time: Dates.Time; style: SET;
+		VAR res: INTEGER; s, s1: ARRAY 20 OF CHAR; time: Dates.Time; style: SET;
 	BEGIN
 		IF ~f.disabled THEN
 			IF f.undef THEN s := "" ELSE f.Get(f, time); TimeToString(time, s) END;
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			IF f.readOnly THEN
-				IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+				IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 			ELSE
-				IF USER32.IsWindowEnabled(f.i.ud) = 0 THEN res := USER32.EnableWindow(f.i.ud, 1) END
+				IF WinApi.IsWindowEnabled(f.i.ud) = 0 THEN res := WinApi.EnableWindow(f.i.ud, 1) END
 			END;
-			res := USER32.GetWindowTextA(f.i.ctrl, s1, LEN(s1));
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, LEN(s1));
 			IF s # s1 THEN
 				f.isUpdate := TRUE;
-				res := USER32.SetWindowTextA(f.i.ctrl, s);
+				res := WinApi.SetWindowTextW(f.i.ctrl, s);
 				f.isUpdate := FALSE
 			END;
-			style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
+			style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
 		IF (f.readOnly # f.i.readOnly) OR (f.undef # f.i.undef) THEN
 (*
-			res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style / {11}));
+			res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
 *)
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef
 		END;
 			f.Select
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
 				f.isUpdate := TRUE;
-				res := USER32.SetWindowTextA(f.i.ctrl, "");
+				res := WinApi.SetWindowTextW(f.i.ctrl, "");
 				f.isUpdate := FALSE;
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END;
-			IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: TimeField) Restore (l, t, r, b: INTEGER);
-		VAR res, w, h: INTEGER; style: SET; s: ARRAY 20 OF SHORTCHAR; time: Dates.Time;
+		VAR res, w, h: INTEGER; style: SET; s: ARRAY 20 OF CHAR; time: Dates.Time;
 	BEGIN
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
 			f.view.context.GetSize(w, h);
@@ -1375,11 +1360,11 @@ MODULE HostCFrames;
 *)
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef;
 			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMLimitText, 16, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0);
 			f.Update;
 			IF f.front & ~f.disabled THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0);
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, 23H, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23H, 0)
 			END
 		ELSE f.Update
 		END;
@@ -1400,7 +1385,7 @@ MODULE HostCFrames;
 			f.GetSel(f, sel);
 			IF sel = 0 THEN f.SetSel(f, 1); f.Select END;
 			HandleMouse(f.i.wnd, x DIV f.unit, y DIV f.unit, buttons);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMGetSel, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, 0, 0);
 			sel := res MOD 65536 DIV 3 + 1;
 			IF sel >= lastPart THEN sel := -1 END;
 			f.cur := 0; f.SetSel(f, sel); f.Select
@@ -1450,7 +1435,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF clipboard THEN
 			IF op = Controllers.copy THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCopy, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0)
 			END
 		END
 	END Edit;
@@ -1461,16 +1446,16 @@ MODULE HostCFrames;
 		Mark(on, f.front, f.i);
 		IF ~on & focus THEN
 			f.SetSel(f, 0); f.cur := 0;
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, 0, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 0, 0)
 		END
 	END Mark;
 
 	PROCEDURE (f: TimeField) GetCursor (x, y: INTEGER; modifiers: SET; VAR cursor: INTEGER);
-		VAR res, hc: INTEGER; pt: USER32.Point;
+		VAR res, hc: INTEGER; pt: WinApi.POINT;
 	BEGIN
 		pt.x := (x - 1) DIV f.unit + 1; pt.y := (y - 1) DIV f.unit + 1;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
-		hc := USER32.SendMessageA(f.i.ctrl, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 		IF hc = 1 THEN cursor := Ports.textCursor END
 	END GetCursor;
 
@@ -1524,7 +1509,7 @@ MODULE HostCFrames;
 		END
 	END SetDatePart;
 
-	PROCEDURE DateToString (VAR date: Dates.Date; VAR str: ARRAY OF SHORTCHAR);
+	PROCEDURE DateToString (VAR date: Dates.Date; VAR str: ARRAY OF CHAR);
 		VAR val, min, max, p, i: INTEGER;
 	BEGIN
 		p := 1; i := 0;
@@ -1532,11 +1517,11 @@ MODULE HostCFrames;
 			IF p > 1 THEN str[i] := dateSep; INC(i) END;
 			GetDatePart(date, p, val, min, max);
 			IF max = 9999 THEN
-				str[i] := SHORT(CHR(val DIV 1000 MOD 10 + ORD("0"))); INC(i);
-				str[i] := SHORT(CHR(val DIV 100 MOD 10 + ORD("0"))); INC(i)
+				str[i] := CHR(val DIV 1000 MOD 10 + ORD("0")); INC(i);
+				str[i] := CHR(val DIV 100 MOD 10 + ORD("0")); INC(i)
 			END;
-			str[i] := SHORT(CHR(val DIV 10 MOD 10 + ORD("0"))); INC(i);
-			str[i] := SHORT(CHR(val MOD 10 + ORD("0"))); INC(i);
+			str[i] := CHR(val DIV 10 MOD 10 + ORD("0")); INC(i);
+			str[i] := CHR(val MOD 10 + ORD("0")); INC(i);
 			INC(p)
 		END;
 		str[i] := 0X
@@ -1550,7 +1535,7 @@ MODULE HostCFrames;
 		ELSIF sel = 2 THEN a := del1 + 1; b := del2
 		ELSE a := del2 + 1; b := del2 + 5
 		END;
-		res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, a, b)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, a, b)
 	END Select;
 
 	PROCEDURE (f: DateField) SetOffset (x, y: INTEGER);
@@ -1564,14 +1549,14 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0; f.i.ud := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: DateField) Update;
-		VAR res: INTEGER; s, s1: ARRAY 20 OF SHORTCHAR; date: Dates.Date; style: SET; sel: INTEGER;
+		VAR res: INTEGER; s, s1: ARRAY 20 OF CHAR; date: Dates.Date; style: SET; sel: INTEGER;
 	BEGIN
 		IF ~f.disabled THEN
 			IF f.undef THEN s := ""
@@ -1579,41 +1564,41 @@ MODULE HostCFrames;
 				IF f.cnt > 0 THEN f.GetSel(f, sel); SetDatePart(date, sel, f.val) END;
 				DateToString(date, s)
 			END;
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			IF f.readOnly THEN
-				IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+				IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 			ELSE
-				IF USER32.IsWindowEnabled(f.i.ud) = 0 THEN res := USER32.EnableWindow(f.i.ud, 1) END
+				IF WinApi.IsWindowEnabled(f.i.ud) = 0 THEN res := WinApi.EnableWindow(f.i.ud, 1) END
 			END;
-			res := USER32.GetWindowTextA(f.i.ctrl, s1, LEN(s1));
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, LEN(s1));
 			IF s # s1 THEN
 				f.isUpdate := TRUE;
-				res := USER32.SetWindowTextA(f.i.ctrl, s);
+				res := WinApi.SetWindowTextW(f.i.ctrl, s);
 				f.isUpdate := FALSE
 			END;
-			style := BITS(USER32.GetWindowLongA(f.i.ctrl, -16));	(* window style *)
+			style := BITS(WinApi.GetWindowLongW(f.i.ctrl, -16));	(* window style *)
 			IF (f.readOnly # f.i.readOnly) OR (f.undef # f.i.undef) THEN
 	(*
-				res := USER32.SetWindowLongA(f.i.ctrl, -16, ORD(style / {11}));
+				res := WinApi.SetWindowLongW(f.i.ctrl, -16, ORD(style / {11}));
 	*)
-				res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+				res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 				f.i.readOnly := f.readOnly; f.i.undef := f.undef
 			END;
 			f.Select
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
 				f.isUpdate := TRUE;
-				res := USER32.SetWindowTextA(f.i.ctrl, "");
+				res := WinApi.SetWindowTextW(f.i.ctrl, "");
 				f.isUpdate := FALSE;
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END;
-			IF USER32.IsWindowEnabled(f.i.ud) # 0 THEN res := USER32.EnableWindow(f.i.ud, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ud) # 0 THEN res := WinApi.EnableWindow(f.i.ud, 0) END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: DateField) Restore (l, t, r, b: INTEGER);
-		VAR res, w, h: INTEGER; style: SET; s: ARRAY 20 OF SHORTCHAR; date: Dates.Date;
+		VAR res, w, h: INTEGER; style: SET; s: ARRAY 20 OF CHAR; date: Dates.Date;
 	BEGIN
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
 			f.view.context.GetSize(w, h);
@@ -1623,11 +1608,11 @@ MODULE HostCFrames;
 *)
 			f.i.readOnly := f.readOnly; f.i.undef := f.undef;
 			Open(f, "EDIT", "", style, WinApi.WS_EX_CLIENTEDGE, f.i);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMLimitText, 16, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_LIMITTEXT, 16, 0);
 			f.Update;
 			IF f.front & ~f.disabled THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0);
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, 23H, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, 23H, 0)
 			END
 		ELSE f.Update
 		END;
@@ -1669,7 +1654,7 @@ MODULE HostCFrames;
 			f.GetSel(f, sel);
 			IF sel = 0 THEN f.SetSel(f, 1); f.Select END;
 			HandleMouse(f.i.wnd, x DIV f.unit, y DIV f.unit, buttons);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMGetSel, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_GETSEL, 0, 0);
 			res := res MOD 65536;
 			IF res <= del1 THEN sel := 1
 			ELSIF res <= del2 THEN sel := 2
@@ -1753,7 +1738,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF clipboard THEN
 			IF op = Controllers.copy THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMCopy, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_COPY, 0, 0)
 			END
 		END
 	END Edit;
@@ -1766,16 +1751,16 @@ MODULE HostCFrames;
 		Mark(on, f.front, f.i);
 		IF ~on & focus THEN
 			f.SetSel(f, 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.EMSetSel, 0, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.EM_SETSEL, 0, 0)
 		END
 	END Mark;
 
 	PROCEDURE (f: DateField) GetCursor (x, y: INTEGER; modifiers: SET; VAR cursor: INTEGER);
-		VAR res, hc: INTEGER; pt: USER32.Point;
+		VAR res, hc: INTEGER; pt: WinApi.POINT;
 	BEGIN
 		pt.x := (x - 1) DIV f.unit + 1; pt.y := (y - 1) DIV f.unit + 1;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
-		hc := USER32.SendMessageA(f.i.ctrl, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
+		hc := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 		IF hc = 1 THEN cursor := Ports.textCursor END
 	END GetCursor;
 
@@ -1794,7 +1779,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -1804,28 +1789,28 @@ MODULE HostCFrames;
 		VAR res, i, j: INTEGER; c: Ports.Color;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			IF f.undef THEN j := -1
 			ELSE
 				f.Get(f, c); j := 0;
 				WHILE (j < numColors) & (c # colors[j]) DO INC(j) END
 			END;
-			i := USER32.SendMessageA(f.i.ctrl, USER32.CBGetCurSel, 0, 0);
+			i := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCURSEL, 0, 0);
 			IF (i # j) OR (j = numColors) & (c # f.color) THEN
 				f.color := c;
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, j, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, j, 0)
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, -1, 0);
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0);
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
 		IF f.readOnly # f.i.readOnly THEN
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: ColorField) Restore (l, t, r, b: INTEGER);
@@ -1837,12 +1822,12 @@ MODULE HostCFrames;
 			(* drop down list, auto scroll, ownerdrawn, tabstop, ver scroll, border, child *)
 			style := {0, 1, 4, 6, 16, 21, 23, 30};
 			Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i); i := 0;
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetExtendedUI, 1, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, 1, 0);
 			WHILE i < numColors DO
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBAddString, 0, colors[i]);
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, colors[i]);
 				INC(i)
 			END;
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBAddString, 0, -1);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, -1);
 			Adapt(f, f.i)
 		END;
 		f.Update;
@@ -1862,9 +1847,9 @@ MODULE HostCFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch = " " THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(ch), 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(ch), 0)
-		ELSE SendKey(SHORT(ch), f.i.ctrl)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
+		ELSE SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
@@ -1888,7 +1873,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -1898,64 +1883,64 @@ MODULE HostCFrames;
 		VAR res, i, j: INTEGER;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			IF f.undef THEN i := -1 ELSE f.Get(f, i) END; j := i;
 			IF f.i.dropDown THEN
-				IF (i < 0) OR (i >= USER32.SendMessageA(f.i.ctrl, USER32.CBGetCount, 0, 0)) THEN j := -1
+				IF (i < 0) OR (i >= WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCOUNT, 0, 0)) THEN j := -1
 				ELSIF f.sorted THEN
 					j := 0;
-					WHILE i # USER32.SendMessageA(f.i.ctrl, USER32.CBGetItemData, j, 0) DO INC(j) END
+					WHILE i # WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETITEMDATA, j, 0) DO INC(j) END
 				END;
-				i := USER32.SendMessageA(f.i.ctrl, USER32.CBGetCurSel, j, 0);
-				IF i # j THEN res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, j, 0) END
+				i := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETCURSEL, j, 0);
+				IF i # j THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, j, 0) END
 			ELSE
-				IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
-				IF (i < 0) OR (i >= USER32.SendMessageA(f.i.ctrl, USER32.LBGetCount, 0, 0)) THEN j := -1
+				IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
+				IF (i < 0) OR (i >= WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETCOUNT, 0, 0)) THEN j := -1
 				ELSIF f.sorted THEN
 					j := 0;
-					WHILE i # USER32.SendMessageA(f.i.ctrl, USER32.LBGetItemData, j, 0) DO INC(j) END
+					WHILE i # WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, j, 0) DO INC(j) END
 				END;
-				i := USER32.SendMessageA(f.i.ctrl, USER32.LBGetCurSel, j, 0);
-				IF i # j THEN res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetCurSel, j, 0) END
+				i := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETCURSEL, j, 0);
+				IF i # j THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETCURSEL, j, 0) END
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
 				IF f.i.dropDown THEN
-					res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, -1, 0)
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0)
 				ELSE
-					res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetCurSel, -1, 0)
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETCURSEL, -1, 0)
 				END;
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
 		IF f.readOnly # f.i.readOnly THEN
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: ListBox) UpdateList;
-		VAR res, i: INTEGER; s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, i: INTEGER; s: Dialog.String;
 	BEGIN
 		IF f.i.dropDown THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBResetContent, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_RESETCONTENT, 0, 0);
 			i := 0; f.GetName(f, i, s);
-			Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$);
-			WHILE ss # "" DO
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBAddString, 0, SYSTEM.ADR(ss));
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetItemData, res, i);
-				INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$)
+			Dialog.MapString(s, s); ConvertFromUnicode(s);
+			WHILE s # "" DO
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, SYSTEM.ADR(s));
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETITEMDATA, res, i);
+				INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s);
 			END;
 			Adapt(f, f.i)
 		ELSE
-			res := USER32.SendMessageA(f.i.ctrl, USER32.LBResetContent, 0, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_RESETCONTENT, 0, 0);
 			i := 0; f.GetName(f, i, s);
-			Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$);
-			WHILE ss # "" DO
-				res := USER32.SendMessageA(f.i.ctrl, USER32.LBAddString, 0, SYSTEM.ADR(ss));
-				res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetItemData, res, i);
-				INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$)
+			Dialog.MapString(s, s); ConvertFromUnicode(s);
+			WHILE s # "" DO
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_ADDSTRING, 0, SYSTEM.ADR(s));
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETITEMDATA, res, i);
+				INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s);
 			END
 		END;
 		f.Update
@@ -1976,7 +1961,7 @@ MODULE HostCFrames;
 				style := {0, 1, 6, 16, 21, 23, 30};	(* drop down list, auto scroll, tabstop, ver scroll, border, child *)
 				IF f.sorted THEN INCL(style, 8) END;	(* sort *)
 				Open(f, "COMBOBOX", "", style, WinApi.WS_EX_CLIENTEDGE, f.i);
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetExtendedUI, WinApi.TRUE, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, WinApi.TRUE, 0)
 			END;
 			f.UpdateList
 		ELSE
@@ -1985,16 +1970,21 @@ MODULE HostCFrames;
 		IF f.i.wnd # 0 THEN Paint(f, f.i) 
 		ELSE
 			f.Get(f, i); f.GetName(f, i, s);
-			Print(f, f.dot, 2 * Ports.point, 0, SHORT(s$))
+			Print(f, f.dot, 2 * Ports.point, 0, s)
 		END
 	END Restore;
 
 
 	PROCEDURE (f: ListBox) DblClickOk (x, y: INTEGER): BOOLEAN;
-		VAR res, i: INTEGER; rect: WinApi.RECT;
+		VAR res, i, j, msg: INTEGER; rect: WinApi.RECT;
 	BEGIN
-		f.Get(f, i);
-		res := USER32.SendMessageA(f.i.ctrl, WinApi.LB_GETITEMRECT, i, SYSTEM.ADR(rect));
+		f.Get(f, i); j := i;
+		IF f.sorted THEN
+			IF f.i.dropDown THEN msg := WinApi.CB_GETITEMDATA ELSE msg := WinApi.LB_GETITEMDATA END;
+			j := 0;
+			WHILE i # WinApi.SendMessageW(f.i.ctrl, msg, j, 0) DO INC(j) END
+		END;		
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMRECT, j, SYSTEM.ADR(rect));
 		IF res = WinApi.LB_ERR THEN RETURN FALSE END;
 		x := x DIV f.unit; y := y DIV f.unit;
 		RETURN (x >= rect.left) & (x <= rect.right) & (y >= rect.top) & (y <= rect.bottom)
@@ -2021,11 +2011,10 @@ MODULE HostCFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch = " " THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(ch), 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
 		ELSE
-			IF ch = 20ACX THEN ch := 80X END; (* euro *)
-			SendKey(SHORT(ch), f.i.ctrl)
+			SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
@@ -2049,26 +2038,26 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: SelectionBox) DblClickOk (x, y: INTEGER): BOOLEAN;
-		VAR res, i: INTEGER; s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, i: INTEGER; s: Dialog.String;
 		sel: BOOLEAN; rect: WinApi.RECT;
 	BEGIN
-		i := 0; f.GetName(f, i, s); ConvertFromUnicode(s); ss := SHORT(s$);
+		i := 0; f.GetName(f, i, s); ConvertFromUnicode(s);
 		x := x DIV f.unit; y := y DIV f.unit;
-		WHILE ss # "" DO
+		WHILE s # "" DO
 			f.Get(f, i, sel);
 			IF sel THEN
-				res := USER32.SendMessageA(f.i.ctrl, WinApi.LB_GETITEMRECT, i, SYSTEM.ADR(rect));
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMRECT, i, SYSTEM.ADR(rect));
 				IF res = WinApi.LB_ERR THEN RETURN FALSE END;
 				IF (x >= rect.left) & (x <= rect.right) & (y >= rect.top) & (y <= rect.bottom) THEN RETURN TRUE END
 			END;
-			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$)
+			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s)
 		END;
 		RETURN FALSE
 	END DblClickOk;
@@ -2077,30 +2066,30 @@ MODULE HostCFrames;
 		VAR res, i, j, a, b: INTEGER; sel: BOOLEAN;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			i := 0;
 			WHILE i < f.num DO j := i;
 				IF f.sorted THEN
-					j := USER32.SendMessageA(f.i.ctrl, USER32.LBGetItemData, i, 0)
+					j := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, i, 0)
 				END;
 				f.Get(f, j, sel);
 				IF sel & ~f.undef THEN a := 1 ELSE a := 0 END;
-				b := USER32.SendMessageA(f.i.ctrl, USER32.LBGetSel, i, 0);
+				b := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETSEL, i, 0);
 				IF a # b THEN
-					res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetSel, a, i) END;
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, a, i) END;
 				INC(i)
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetSel, 0, -1);
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, 0, -1);
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
 		IF f.readOnly # f.i.readOnly THEN
-			res := USER32.InvalidateRect(f.i.ctrl, NIL, 1);
+			res := WinApi.InvalidateRect(f.i.ctrl, NIL, 1);
 			f.i.readOnly := f.readOnly
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: SelectionBox) UpdateRange (op, from, to: INTEGER);
@@ -2109,31 +2098,31 @@ MODULE HostCFrames;
 		ASSERT((from >= 0) & (from <= to) & (to < f.num), 100);
 		IF (op = Dialog.set) OR (from # to) THEN f.Update; RETURN END;
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
 			i := from;
 			IF f.sorted THEN
 				i := 0;
-				WHILE USER32.SendMessageA(f.i.ctrl, USER32.LBGetItemData, i, 0) # from DO INC(i) END
+				WHILE WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETITEMDATA, i, 0) # from DO INC(i) END
 			END;
 			f.Get(f, from, sel);
 			IF sel THEN a := 1 ELSE a := 0 END;
-			b := USER32.SendMessageA(f.i.ctrl, USER32.LBGetSel, i, 0);
+			b := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_GETSEL, i, 0);
 			IF a # b THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetSel, a, i) END
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETSEL, a, i) END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END
 	END UpdateRange;
 
 	PROCEDURE (f: SelectionBox) UpdateList;
-		VAR res, i: INTEGER; s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, i: INTEGER; s: Dialog.String;
 	BEGIN
-		res := USER32.SendMessageA(f.i.ctrl, USER32.LBResetContent, 0, 0);
-		i := 0; f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$);
-		WHILE ss # "" DO
-			res := USER32.SendMessageA(f.i.ctrl, USER32.LBAddString, 0, SYSTEM.ADR(ss));
-			res := USER32.SendMessageA(f.i.ctrl, USER32.LBSetItemData, res, i);
-			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_RESETCONTENT, 0, 0);
+		i := 0; f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s);
+		WHILE s # "" DO
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_ADDSTRING, 0, SYSTEM.ADR(s));
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.LB_SETITEMDATA, res, i);
+			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s)
 		END;
 		f.num := i;
 		f.Update
@@ -2176,17 +2165,14 @@ MODULE HostCFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch = " " THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(ch), 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
 		ELSE
-			IF ch = 20ACX THEN ch := 80X END; (* euro *)
-			SendKey(SHORT(ch), f.i.ctrl)
+			SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
-	PROCEDURE (f: SelectionBox) Select (from, to: INTEGER);
-	BEGIN
-	END Select;
+	PROCEDURE (f: SelectionBox) Select (from, to: INTEGER), EMPTY;
 
 	PROCEDURE (f: SelectionBox) GetSelection (OUT from, to: INTEGER);
 	BEGIN
@@ -2213,64 +2199,64 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
 	END Close;
 
 	PROCEDURE (f: ComboBox) Update;
-		VAR res: INTEGER; s: ARRAY 256 OF CHAR; ss, ss1: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; s, s1: Dialog.String;
 	BEGIN
 		IF ~f.disabled THEN
-			IF f.undef THEN ss := "" ELSE f.Get(f, s); ConvertFromUnicode(s); ss := SHORT(s$) END;
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END;
-			res := USER32.GetWindowTextA(f.i.ctrl, ss1, LEN(ss1));
-			IF (USER32.GetWindowTextLengthA(f.i.ctrl) >= LEN(ss)) OR (ss # ss1) THEN
+			IF f.undef THEN s := "" ELSE f.Get(f, s); ConvertFromUnicode(s) END;
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END;
+			res := WinApi.GetWindowTextW(f.i.ctrl, s1, LEN(s1));
+			IF (WinApi.GetWindowTextLengthW(f.i.ctrl) >= LEN(s)) OR (s # s1) THEN
 				IF ~f.i.dropDown THEN
-					res := USER32.SendMessageA(f.i.ctrl, USER32.CBFindStringExact, -1, SYSTEM.ADR(ss));
-					res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, res, 0)
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_FINDSTRINGEXACT, -1, SYSTEM.ADR(s));
+					res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, res, 0)
 				END;
-				res := USER32.SetWindowTextA(f.i.ctrl, ss)
+				res := WinApi.SetWindowTextW(f.i.ctrl, s)
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetCurSel, -1, 0);
-				res := USER32.SetWindowTextA(f.i.ctrl, "");
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETCURSEL, -1, 0);
+				res := WinApi.SetWindowTextW(f.i.ctrl, "");
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: ComboBox) UpdateList;
-		VAR res, i: INTEGER; s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res, i: INTEGER; s: Dialog.String;
 	BEGIN
-		res := USER32.SendMessageA(f.i.ctrl, USER32.CBResetContent, 0, 0);
-		i := 0; f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$);
-		WHILE ss # "" DO
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBAddString, 0, SYSTEM.ADR(ss));
-			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s$)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_RESETCONTENT, 0, 0);
+		i := 0; f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s);
+		WHILE s # "" DO
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_ADDSTRING, 0, SYSTEM.ADR(s));
+			INC(i); f.GetName(f, i, s); Dialog.MapString(s, s); ConvertFromUnicode(s)
 		END;
 		Adapt(f, f.i);
 		f.Update
 	END UpdateList;
 
 	PROCEDURE (f: ComboBox) Restore (l, t, r, b: INTEGER);
-		VAR res, w, h: INTEGER; s: ARRAY 256 OF CHAR; ss: ARRAY 256 OF SHORTCHAR;
-			style: SET; pt: USER32.Point;
+		VAR res, w, h: INTEGER; s: Dialog.String;
+			style: SET; pt: WinApi.POINT;
 	BEGIN
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
-			f.Get(f, s); ConvertFromUnicode(s); ss := SHORT(s$); f.view.context.GetSize(w, h);
+			f.Get(f, s); ConvertFromUnicode(s); f.view.context.GetSize(w, h);
 			style := {6, 16, 21, 23, 30};	(* auto scroll, tabstop, ver scroll, border, child *)
 			IF f.sorted THEN INCL(style, 8) END;	(* sort *)
 			f.i.dropDown := h <= dropDownHeight;
 			IF f.i.dropDown THEN INCL(style, 1) ELSE INCL(style, 0) END;	(* dropdown / simple *)
-			Open(f, "COMBOBOX", ss, style, WinApi.WS_EX_CLIENTEDGE, f.i);
+			Open(f, "COMBOBOX", s, style, WinApi.WS_EX_CLIENTEDGE, f.i);
 			pt.x := 4; pt.y := 4;
-			f.edit := USER32.ChildWindowFromPoint(f.i.ctrl, pt);	(* hack found in win api manual ! *)
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetExtendedUI, 1, 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.CBLimitText, 255, 0);
+			f.edit := WinApi.ChildWindowFromPoint(f.i.ctrl, pt);	(* hack found in win api manual ! *)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEXTENDEDUI, 1, 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_LIMITTEXT, 255, 0);
 			f.UpdateList
 		ELSE
 			f.Update
@@ -2289,8 +2275,7 @@ MODULE HostCFrames;
 	PROCEDURE (f: ComboBox) KeyDown (ch: CHAR);
 	BEGIN
 		ASSERT(~f.disabled, 100);
-		IF ch = 20ACX THEN ch := 80X END; (* euro *)
-		SendKey(SHORT(ch), f.edit)
+		SendKey(ch, f.edit)
 	END KeyDown;
 
 	PROCEDURE (f: ComboBox) Edit (op: INTEGER;
@@ -2300,31 +2285,30 @@ MODULE HostCFrames;
 	BEGIN
 		IF clipboard THEN
 			IF op = Controllers.cut THEN
-				res := USER32.SendMessageA(f.edit, USER32.WMCut, 0, 0)
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_CUT, 0, 0)
 			ELSIF op = Controllers.copy THEN
-				res := USER32.SendMessageA(f.edit, USER32.WMCopy, 0, 0)
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_COPY, 0, 0)
 			ELSIF op = Controllers.paste THEN
-				res := USER32.SendMessageA(f.edit, USER32.WMPaste, 0, 0)
+				res := WinApi.SendMessageW(f.edit, WinApi.WM_PASTE, 0, 0)
 			END
 		END
 	END Edit;
 
-	PROCEDURE (f: ComboBox) Idle;
-	END Idle;
+	PROCEDURE (f: ComboBox) Idle, EMPTY;
 
 	PROCEDURE (f: ComboBox) Select (from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
 		IF to > 32767 THEN to := -1 END;
-		IF from < 0 THEN res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetEditSel, 0, 65535)
-		ELSE res := USER32.SendMessageA(f.i.ctrl, USER32.CBSetEditSel, 0, from MOD 65536 + to * 65536)
+		IF from < 0 THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEDITSEL, 0, 65535)
+		ELSE res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_SETEDITSEL, 0, from MOD 65536 + to * 65536)
 		END
 	END Select;
 
 	PROCEDURE (f: ComboBox) GetSelection (OUT from, to: INTEGER);
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.SendMessageA(f.i.ctrl, USER32.CBGetEditSel, SYSTEM.ADR(from), SYSTEM.ADR(to));
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.CB_GETEDITSEL, SYSTEM.ADR(from), SYSTEM.ADR(to));
 		IF from = -1 THEN to := -1 ELSIF to = -1 THEN to := MAX(INTEGER) END
 	END GetSelection;
 
@@ -2334,12 +2318,12 @@ MODULE HostCFrames;
 		IF f.front THEN
 			IF on THEN
 				IF ~f.i.hasFocus THEN
-					res := USER32.SendMessageA(f.edit, USER32.WMSetFocus, 0, 0);
+					res := WinApi.SendMessageW(f.edit, WinApi.WM_SETFOCUS, 0, 0);
 					f.i.hasFocus := TRUE
 				END
 			ELSE
 				IF f.i.hasFocus THEN
-					res := USER32.SendMessageA(f.edit, USER32.WMKillFocus, 0, 0);
+					res := WinApi.SendMessageW(f.edit, WinApi.WM_KILLFOCUS, 0, 0);
 					f.i.hasFocus := FALSE
 				END
 			END
@@ -2349,29 +2333,29 @@ MODULE HostCFrames;
 	PROCEDURE (f: ComboBox) Length (): INTEGER;
 		VAR res: INTEGER;
 	BEGIN
-		res := USER32.GetWindowTextLengthA(f.i.ctrl);
+		res := WinApi.GetWindowTextLengthW(f.i.ctrl);
 		RETURN res
 	END Length;
 
 	PROCEDURE (f: ComboBox) GetCursor (x, y: INTEGER; modifiers: SET; VAR cursor: INTEGER);
-		VAR res, hc: INTEGER; pt: USER32.Point;
+		VAR res, hc: INTEGER; pt: WinApi.POINT;
 	BEGIN
 		pt.x := (x - 1) DIV f.unit + 1; pt.y := (y - 1) DIV f.unit + 1;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
-		hc := USER32.SendMessageA(f.edit, USER32.WMNCHitTest, 0, pt.x + pt.y * 65536);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
+		hc := WinApi.SendMessageW(f.edit, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 		IF hc = 1 THEN cursor := Ports.textCursor END
 (*
 		u := f.unit; pt.x := x DIV u - 1; pt.y := y DIV u - 1;
-		wnd := USER32.ChildWindowFromPoint(f.i.ctrl, pt);
+		wnd := WinApi.ChildWindowFromPoint(f.i.ctrl, pt);
 		IF wnd = f.edit THEN cursor := Ports.textCursor
 		ELSE cursor := Ports.arrowCursor
 		END
 
 		u := f.unit; pt.x := x DIV u; pt.y := y DIV u;
-		res := USER32.ClientToScreen(f.i.wnd, pt);
+		res := WinApi.ClientToScreen(f.i.wnd, pt);
 		ChildWindowAt(f.i.wnd, pt, wnd, hc);
-		res := USER32.ScreenToClient(wnd, pt);
-		res := USER32.SendMessageA(wnd, USER32.WMSetCursor, wnd, hc + USER32.WMMouseMove * 65536);
+		res := WinApi.ScreenToClient(wnd, pt);
+		res := WinApi.SendMessageW(wnd, WinApi.WMSetCursor, wnd, hc + WinApi.WMMouseMove * 65536);
 		cursor := -1
 *)
 	END GetCursor;
@@ -2391,7 +2375,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -2401,16 +2385,16 @@ MODULE HostCFrames;
 		VAR res: INTEGER;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END;
 		CheckLabel(f.label, f.i.ctrl);
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: Caption) Restore (l, t, r, b: INTEGER);
-		VAR lbl: ARRAY 256 OF SHORTCHAR; style: SET;
+		VAR lbl: Dialog.String; style: SET;
 	BEGIN
 		SetLabel(f.label, lbl);
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
@@ -2440,7 +2424,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END
 		(*f.Close^*)
@@ -2450,16 +2434,16 @@ MODULE HostCFrames;
 		VAR res: INTEGER;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN res := USER32.EnableWindow(f.i.ctrl, 1) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 1) END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN res := USER32.EnableWindow(f.i.ctrl, 0) END
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END;
 		CheckLabel(f.label, f.i.ctrl);
-		res := USER32.UpdateWindow(f.i.ctrl)
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 
 	PROCEDURE (f: Group) Restore (l, t, r, b: INTEGER);
-		VAR lbl: ARRAY 256 OF SHORTCHAR;
+		VAR lbl: Dialog.String;
 	BEGIN
 		SetLabel(f.label, lbl);
 		IF f.i.ctrl = 0 THEN	(* lazy allocation *)
@@ -2483,7 +2467,7 @@ MODULE HostCFrames;
 	BEGIN
 		IF f.i.wnd # 0 THEN	(* deallocate *)
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
-			res := USER32.DestroyWindow(f.i.wnd);
+			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
 		END;
 		IF f.himl # NIL THEN res := WinCtl.ImageList_Destroy(f.himl) END
@@ -2502,26 +2486,26 @@ MODULE HostCFrames;
 		IF f.haslines THEN style := style + WinCtl.TVS_HASLINES END;
 		IF f.hasbuttons THEN style := style + WinCtl.TVS_HASBUTTONS END;
 		IF f.atroot THEN style := style + WinCtl.TVS_LINESATROOT END;
-		Open(f, WinCtl.WC_TREEVIEW, "", style, {}, f.i);	(* 3 *)
-		res := USER32.SendMessageA(f.i.ctrl, WinCtl.TV_FIRST + 033, 100, 0); (* TVM_SETSCROLLTIME*)
+		Open(f, WinCtl.WC_TREEVIEWW, "", style, {}, f.i);	(* 3 *)
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TV_FIRST + 033, 100, 0); (* TVM_SETSCROLLTIME*)
 		IF f.foldericons THEN
 			(* Create an imagelist and associate it with the control *)
 			IF f.himl # NIL THEN ok := WinCtl.ImageList_Destroy(f.himl) END;
 			f.himl := WinCtl.ImageList_Create(16, 16, {}, 3, 0);
 			IF f.himl # NIL THEN
-				hbmp := WinApi.LoadImage(
+				hbmp := WinApi.LoadImageW(
 					instance, "#6", WinApi.IMAGE_ICON, 16, 16, ORD(WinApi.LR_LOADTRANSPARENT));
 				f.folderimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp);
 				ok := WinApi.DestroyIcon(hbmp);
-				hbmp := WinApi.LoadImage(
+				hbmp := WinApi.LoadImageW(
 					instance, "#7", WinApi.IMAGE_ICON, 16, 16, ORD(WinApi.LR_LOADTRANSPARENT));
 				f.openimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp);
 				ok := WinApi.DestroyIcon(hbmp);
-				hbmp := WinApi.LoadImage(
+				hbmp := WinApi.LoadImageW(
 					instance, "#8", WinApi.IMAGE_ICON, 16, 16, ORD(WinApi.LR_LOADTRANSPARENT));
 				f.leafimg := WinCtl.ImageList_ReplaceIcon(f.himl, -1, hbmp);
 				ok := WinApi.DestroyIcon(hbmp);
-				res := USER32.SendMessageA(
+				res := WinApi.SendMessageW(
 					f.i.ctrl, WinCtl.TVM_SETIMAGELIST, WinCtl.TVSIL_NORMAL, SYSTEM.VAL(INTEGER, f.himl))
 			END
 		END
@@ -2531,17 +2515,17 @@ MODULE HostCFrames;
 		VAR res: INTEGER;
 	BEGIN
 		IF ~f.disabled THEN
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 1)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 1)
 			END
 		ELSE
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl);
+		res := WinApi.UpdateWindow(f.i.ctrl);
 		IF ~f.disabled & (f.readOnly # f.i.readOnly) THEN
-			IF f.readOnly OR ~f.i.hasFocus THEN res := USER32.SendMessageA(f.i.ctrl, USER32.WMKillFocus, 0, 0)
+			IF f.readOnly OR ~f.i.hasFocus THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KILLFOCUS, 0, 0)
 			END;
 			f.i.readOnly := f.readOnly
 		END
@@ -2552,49 +2536,48 @@ MODULE HostCFrames;
 	BEGIN
 		IF Dialog.platform = Dialog.windowsNT4 THEN f.UpdateNT4; RETURN END;
 		IF ~f.disabled & ~f.readOnly THEN
-			res := USER32.SendMessageA(f.i.ctrl, WinCtl.TV_FIRST + 029, 0, -1); (* TVM_SETBKCOLOR *)
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 1)
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TV_FIRST + 029, 0, -1); (* TVM_SETBKCOLOR *)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 1)
 			END
 		ELSIF ~f.disabled & f.readOnly THEN
-			res := USER32.SendMessageA(
+			res := WinApi.SendMessageW(
 				f.i.ctrl, WinCtl.TV_FIRST + 029, 0, Ports.dialogBackground); (* TVM_SETBKCOLOR *)
-			IF USER32.IsWindowEnabled(f.i.ctrl) = 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 1)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) = 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 1)
 			END
 		ELSE
-			res := USER32.SendMessageA(
+			res := WinApi.SendMessageW(
 				f.i.ctrl, WinCtl.TV_FIRST + 029, 0, Ports.dialogBackground); (* TVM_SETBKCOLOR *)
-			IF USER32.IsWindowEnabled(f.i.ctrl) # 0 THEN
-				res := USER32.EnableWindow(f.i.ctrl, 0)
+			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN
+				res := WinApi.EnableWindow(f.i.ctrl, 0)
 			END
 		END;
-		res := USER32.UpdateWindow(f.i.ctrl);
+		res := WinApi.UpdateWindow(f.i.ctrl);
 		IF ~f.disabled & (f.readOnly # f.i.readOnly) THEN
 			IF f.readOnly THEN
 				(* Selection has to be focused since it won't be visible on a gray backround otherwise *)
-				res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0)
+				res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
 			ELSE
-				IF ~f.i.hasFocus THEN res := USER32.SendMessageA(f.i.ctrl, USER32.WMKillFocus, 0, 0) END
+				IF ~f.i.hasFocus THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KILLFOCUS, 0, 0) END
 			END;
 			f.i.readOnly := f.readOnly
 		END;
-		res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0)
+		res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0)
 	END Update;
 
 	PROCEDURE (f: TreeFrame) WinInsertItem (
 		VAR tn: Dialog.TreeNode; pWndAdr: INTEGER; OUT wndAdr: INTEGER
 	), NEW;
-		VAR res: INTEGER; p: Dialog.TreeNode;
-			tvi: WinCtl.TVITEMA; tvins: WinCtl.TVINSERTSTRUCTA;
-			s: Dialog.String; ss: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; p: Dialog.TreeNode; s: Dialog.String;
+			tvi: WinCtl.TVITEMW; tvins: WinCtl.TVINSERTSTRUCTW;
 	BEGIN
 		ASSERT(tn # NIL, 20);
 		f.treeArray[f.curindex].tn := tn;
 		p := f.Parent(f, tn);
 		tvi.mask := WinCtl.TVIF_TEXT + WinCtl.TVIF_PARAM + WinCtl.TVIF_IMAGE + WinCtl.TVIF_SELECTEDIMAGE;
-		tn.GetName(s); Dialog.MapString(s, s); ConvertFromUnicode(s); ss := SHORT(s);
-		tvi.pszText := ss; tvi.cchTextMax := LEN(ss); tvi.lParam := f.curindex;
+		tn.GetName(s); Dialog.MapString(s, s); ConvertFromUnicode(s);
+		tvi.pszText := s; tvi.cchTextMax := LEN(s); tvi.lParam := f.curindex;
 		IF tn.IsFolder() THEN
 			IF tn.IsExpanded() THEN tvi.iImage := f.openimg
 			ELSE tvi.iImage := f.folderimg
@@ -2607,13 +2590,13 @@ MODULE HostCFrames;
 		IF f.sorted THEN tvins.hInsertAfter := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, WinCtl.TVI_SORT)
 		ELSE tvins.hInsertAfter := SYSTEM.VAL(WinCtl.Ptr_TREEITEM, WinCtl.TVI_LAST)
 		END;
-		wndAdr := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_INSERTITEM, 0, SYSTEM.ADR(tvins));
+		wndAdr := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_INSERTITEMW, 0, SYSTEM.ADR(tvins));
 		f.treeArray[f.curindex].wndAdr := wndAdr;
 		IF p # NIL THEN
 			IF p.IsExpanded() THEN
-				res := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_EXPAND, pWndAdr)
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_EXPAND, pWndAdr)
 			ELSE
-				res := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_COLLAPSE, pWndAdr)
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_EXPAND, WinCtl.TVE_COLLAPSE, pWndAdr)
 			END
 		END;
 		INC(f.curindex)
@@ -2641,12 +2624,12 @@ MODULE HostCFrames;
 		f.InsertNode(f.Child(f, NIL), WinCtl.TVI_ROOT);
 		(* Select the node that is selected *)
 		IF sel = NIL THEN
-			res := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_SELECTITEM, WinCtl.TVGN_CARET, 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_SELECTITEM, WinCtl.TVGN_CARET, 0)
 		ELSE
 			i := 0; done := FALSE;
 			WHILE (i < len) & (~done) DO
 				IF sel = f.treeArray[i].tn THEN
-					res := USER32.SendMessageA(
+					res := WinApi.SendMessageW(
 						f.i.ctrl, WinCtl.TVM_SELECTITEM, WinCtl.TVGN_CARET, f.treeArray[i].wndAdr);
 					done := TRUE
 				END;
@@ -2655,12 +2638,12 @@ MODULE HostCFrames;
 		END;
 		f.Select(f, sel);
 		f.Update;
-		IF f.i.hasFocus THEN res := USER32.SendMessageA(f.i.ctrl, USER32.WMSetFocus, 0, 0) END;
+		IF f.i.hasFocus THEN res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_SETFOCUS, 0, 0) END;
 		f.inUpdateList := FALSE
 	END UpdateList;
 
 	PROCEDURE (f: TreeFrame) ExpandCollapse(index, action: INTEGER), NEW;
-		VAR res: INTEGER; tn: Dialog.TreeNode; tvi: WinCtl.TVITEMA;
+		VAR res: INTEGER; tn: Dialog.TreeNode; tvi: WinCtl.TVITEMW;
 	BEGIN
 		tn := f.treeArray[index].tn;
 		IF action = WinCtl.TVE_COLLAPSE THEN
@@ -2677,14 +2660,14 @@ MODULE HostCFrames;
 		ELSE
 			tvi.iImage := f.folderimg; tvi.iSelectedImage := f.folderimg
 		END;
-		res := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_SETITEM, 0, SYSTEM.ADR(tvi))
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_SETITEMW, 0, SYSTEM.ADR(tvi))
 	END ExpandCollapse;
 
 	PROCEDURE (f: TreeFrame) DblClickOk (x, y: INTEGER): BOOLEAN;
 		VAR res: INTEGER; hinf: WinCtl.TVHITTESTINFO;
 	BEGIN
 		hinf.pt.x := x DIV f.unit; hinf.pt.y := y DIV f.unit;
-		res := USER32.SendMessageA(f.i.ctrl, WinCtl.TVM_HITTEST, 0, SYSTEM.ADR(hinf));
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TVM_HITTEST, 0, SYSTEM.ADR(hinf));
 		IF hinf.hItem = NIL THEN
 			RETURN FALSE
 		ELSE
@@ -2723,11 +2706,10 @@ MODULE HostCFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch = " " THEN
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyDown, ORD(ch), 0);
-			res := USER32.SendMessageA(f.i.ctrl, USER32.WMKeyUp, ORD(ch), 0)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
 		ELSE
-			IF ch = 20ACX THEN ch := 80X END;
-			SendKey(SHORT(ch), f.i.ctrl)
+			SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 
@@ -2737,9 +2719,9 @@ MODULE HostCFrames;
 	END Mark;
 
 	PROCEDURE (f: TreeFrame) GetSize (OUT w, h: INTEGER);
-		VAR rect: GDI32.Rect; res: INTEGER;
+		VAR rect: WinApi.RECT; res: INTEGER;
 	BEGIN
-		res := USER32.GetWindowRect(f.i.wnd, rect);
+		res := WinApi.GetWindowRect(f.i.wnd, rect);
 		w := (rect.right - rect.left) * f.unit; h := (rect.bottom - rect.top) * f.unit
 	END GetSize;
 
@@ -2937,25 +2919,24 @@ MODULE HostCFrames;
 	(* control window class *)
 
 	(* Used for common controls, not standard controls *)
-	PROCEDURE HandleNotifyMsg (wnd: USER32.Handle; lParam, out: INTEGER);
+	PROCEDURE HandleNotifyMsg (wnd: WinApi.HANDLE; lParam, out: INTEGER);
 		VAR
-			c: StdCFrames.Frame;
-			pnmhdr: WinApi.PtrNMHDR; pnmtv: WinCtl.PtrNMTREEVIEW;
-			ret: INTEGER;
+			c: StdCFrames.Frame; ret: INTEGER;
+			pnmhdr: WinApi.PtrNMHDR; pnmtv: WinCtl.PtrNMTREEVIEWW;
 	BEGIN
 		ret := WinApi.FALSE;
-		c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 		pnmhdr := SYSTEM.VAL(WinApi.PtrNMHDR, lParam);
 		WITH c: TreeFrame DO
 			IF c.i.ctrl # 0 THEN
-				IF ~c.inUpdateList & c.readOnly & (pnmhdr.code = WinCtl.TVN_SELCHANGING) THEN
+				IF ~c.inUpdateList & c.readOnly & (pnmhdr.code = WinCtl.TVN_SELCHANGINGW) THEN
 					ret := WinApi.TRUE
-				ELSIF pnmhdr.code = WinCtl.TVN_SELCHANGED THEN
-					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEW, lParam);
+				ELSIF pnmhdr.code = WinCtl.TVN_SELCHANGEDW THEN
+					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEWW, lParam);
 					c.selIndex := pnmtv.itemNew.lParam;
 					c.Select(c, c.treeArray[c.selIndex].tn)
-				ELSIF pnmhdr.code = WinCtl.TVN_ITEMEXPANDED THEN
-					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEW, lParam);
+				ELSIF pnmhdr.code = WinCtl.TVN_ITEMEXPANDEDW THEN
+					pnmtv := SYSTEM.VAL(WinCtl.PtrNMTREEVIEWW, lParam);
 					c.ExpandCollapse(pnmtv.itemNew.lParam, pnmtv.action)
 				END
 			END
@@ -2964,24 +2945,23 @@ MODULE HostCFrames;
 		SYSTEM.PUT(out, ret)
 	END HandleNotifyMsg;
 
-	PROCEDURE HandleCommand (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE HandleCommand (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR res, nc, i, j: INTEGER; c: StdCFrames.Frame; s: ARRAY 512 OF CHAR;
 			ps: POINTER TO ARRAY OF CHAR; b: BOOLEAN;
-			ss: ARRAY 512 OF SHORTCHAR; pss: POINTER TO ARRAY OF SHORTCHAR;
 	BEGIN
-		c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 		nc := wParam DIV 65536;
 		WITH c: PushButton DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.BNClicked THEN Execute(c)
+				IF nc = WinApi.BN_CLICKED THEN Execute(c)
 				END
 			END
 		| c: CheckBox DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.BNClicked THEN
-					i := USER32.SendMessageA(c.i.ctrl, USER32.BMGetCheck, 0, 0);
+				IF nc = WinApi.BN_CLICKED THEN
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_GETCHECK, 0, 0);
 					IF i = 0 THEN i := 1 ELSE i := 0 END;
-					res := USER32.SendMessageA(c.i.ctrl, USER32.BMSetCheck, i, 0);
+					res := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_SETCHECK, i, 0);
 					c.undef := FALSE; c.Set(c, i = 1)
 (*
 					c.undef := res = 2;
@@ -2991,8 +2971,8 @@ MODULE HostCFrames;
 			END
 		| c: RadioButton DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.BNClicked THEN
-					res := USER32.SendMessageA(c.i.ctrl, USER32.BMGetCheck, 0, 0);
+				IF nc = WinApi.BN_CLICKED THEN
+					res := WinApi.SendMessageW(c.i.ctrl, WinApi.BM_GETCHECK, 0, 0);
 					c.Set(c, res # 0)
 				END
 			END
@@ -3001,26 +2981,26 @@ MODULE HostCFrames;
 				IF (nc = WinApi.EN_CHANGE) & ~c.isUpdate THEN
 					IF ~c.left THEN (* right center alignment implies multiline which sends two update messages *)
 						IF c.maxLen > 255 THEN
-							NEW(ps, 2 * c.maxLen + 1); NEW(pss, 2 * c.maxLen + 1);
-							res := USER32.GetWindowTextA(c.i.ctrl, pss^, LEN(ps^)); ps^ := pss^$;
+							NEW(ps, 2 * c.maxLen + 1);
+							res := WinApi.GetWindowTextW(c.i.ctrl, ps^, LEN(ps^));
 							IF c.multiLine THEN DelLF(ps^) END;
 							ConvertToUnicode(ps^);
 							IF c.del OR (ps$ # "") THEN c.Set(c, ps^) END
 						ELSE
-							res := USER32.GetWindowTextA(c.i.ctrl, ss, LEN(ss)); s := ss$;
+							res := WinApi.GetWindowTextW(c.i.ctrl, s, LEN(s));
 							IF c.multiLine THEN DelLF(s) END;
 							ConvertToUnicode(s);
 							IF c.del OR (s$ # "") THEN c.Set(c, s) END
 						END
 					ELSE
 						IF c.maxLen > 255 THEN
-							NEW(ps, 2 * c.maxLen + 1); NEW(pss, 2 * c.maxLen + 1);
-							res := USER32.GetWindowTextA(c.i.ctrl, pss^, LEN(ps^)); ps^ := pss^$;
+							NEW(ps, 2 * c.maxLen + 1);
+							res := WinApi.GetWindowTextW(c.i.ctrl, ps^, LEN(ps^));
 							IF c.multiLine THEN DelLF(ps^) END;
 							ConvertToUnicode(ps^);
 							c.Set(c, ps^)
 						ELSE
-							res := USER32.GetWindowTextA(c.i.ctrl, ss, LEN(ss)); s := ss$;
+							res := WinApi.GetWindowTextW(c.i.ctrl, s, LEN(s));
 							IF c.multiLine THEN DelLF(s) END;
 							ConvertToUnicode(s);
 							c.Set(c, s)
@@ -3030,16 +3010,16 @@ MODULE HostCFrames;
 			END
 		| c: UpDownField DO
 			IF c.i.ctrl # 0 THEN
-				IF (nc = USER32.ENChange) & ~c.isUpdate THEN
-					res := USER32.GetWindowTextA(c.i.ctrl, ss, LEN(ss)); s := ss$;
+				IF (nc = WinApi.EN_CHANGE) & ~c.isUpdate THEN
+					res := WinApi.GetWindowTextW(c.i.ctrl, s, LEN(s));
 					Strings.StringToInt(s, c.val, res);
 					c.Set(c, c.val)
 				END
 			END
 		| c: ColorField DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.CBNSelChange THEN
-					i := USER32.SendMessageA(c.i.ctrl, USER32.CBGetCurSel, 0, 0);
+				IF nc = WinApi.CBN_SELCHANGE THEN
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0);
 					IF i = numColors THEN
 						Dialog.GetColor(c.color, i, b);
 						IF b THEN c.Set(c, i); c.Update END
@@ -3051,29 +3031,29 @@ MODULE HostCFrames;
 		| c: ListBox DO
 			IF c.i.ctrl # 0 THEN
 				IF c.i.dropDown THEN
-					IF nc = USER32.CBNSelChange THEN
-						i := USER32.SendMessageA(c.i.ctrl, USER32.CBGetCurSel, 0, 0);
-						IF c.sorted THEN i := USER32.SendMessageA(c.i.ctrl, USER32.CBGetItemData, i, 0) END;
+					IF nc = WinApi.CBN_SELCHANGE THEN
+						i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0);
+						IF c.sorted THEN i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETITEMDATA, i, 0) END;
 						IF i >= 0 THEN c.Set(c, i) END
 					END
 				ELSE
-					IF nc = USER32.LBNSelChange THEN
-						i := USER32.SendMessageA(c.i.ctrl, USER32.LBGetCurSel, 0, 0);
-						IF c.sorted THEN i := USER32.SendMessageA(c.i.ctrl, USER32.LBGetItemData, i, 0) END;
+					IF nc = WinApi.LBN_SELCHANGE THEN
+						i := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETCURSEL, 0, 0);
+						IF c.sorted THEN i := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETITEMDATA, i, 0) END;
 						IF i >= 0 THEN c.Set(c, i) END
 					END
 				END
 			END
 		| c: SelectionBox DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.LBNSelChange THEN
+				IF nc = WinApi.LBN_SELCHANGE THEN
 (*
-					i := USER32.SendMessageA(c.i.ctrl, USER32.LBGetAnchorIndex, 0, 0);
-					j := USER32.SendMessageA(c.i.ctrl, USER32.LBGetCaretIndex, 0, 0);
-					res := USER32.SendMessageA(c.i.ctrl, USER32.LBGetSel, i, 0);
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetAnchorIndex, 0, 0);
+					j := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetCaretIndex, 0, 0);
+					res := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetSel, i, 0);
 					IF c.sorted THEN
-						i := USER32.SendMessageA(c.i.ctrl, USER32.LBGetItemData, i, 0);
-						j := USER32.SendMessageA(c.i.ctrl, USER32.LBGetItemData, j, 0)
+						i := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetItemData, i, 0);
+						j := WinApi.SendMessageW(c.i.ctrl, WinApi.LBGetItemData, j, 0)
 					END;
 					IF (i >= 0) & (i < c.num) THEN
 						Log.Int(i); Log.Int(j); Log.Ln; Log.Int(wParam); Log.Int(lParam); Log.Int(res); Log.Ln;
@@ -3083,8 +3063,8 @@ MODULE HostCFrames;
 					i := 0;
 					WHILE i < c.num DO
 						j := i;
-						res := USER32.SendMessageA(c.i.ctrl, USER32.LBGetSel, j, 0);
-						IF c.sorted THEN j := USER32.SendMessageA(c.i.ctrl, USER32.LBGetItemData, j, 0) END;
+						res := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETSEL, j, 0);
+						IF c.sorted THEN j := WinApi.SendMessageW(c.i.ctrl, WinApi.LB_GETITEMDATA, j, 0) END;
 						c.Get(c, j, b);
 						IF (res # 0) & ~b THEN c.Incl(c, j, j)
 						ELSIF (res = 0) & b THEN c.Excl(c, j, j)
@@ -3095,14 +3075,14 @@ MODULE HostCFrames;
 			END
 		| c: ComboBox DO
 			IF c.i.ctrl # 0 THEN
-				IF nc = USER32.CBNEditChange THEN
-					res := USER32.GetWindowTextA(c.i.ctrl, ss, LEN(ss));
-					s := ss$; c.Set(c, s)
-				ELSIF nc = USER32.CBNSelChange THEN
-					i := USER32.SendMessageA(c.i.ctrl, USER32.CBGetCurSel, 0, 0);
+				IF nc = WinApi.CBN_EDITCHANGE THEN
+					res := WinApi.GetWindowTextW(c.i.ctrl, s, LEN(s));
+					c.Set(c, s)
+				ELSIF nc = WinApi.CBN_SELCHANGE THEN
+					i := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETCURSEL, 0, 0);
 					IF i >= 0 THEN
-						res := USER32.SendMessageA(c.i.ctrl, USER32.CBGetLBText, i, SYSTEM.ADR(ss));
-						s := ss$; c.Set(c, s)
+						res := WinApi.SendMessageW(c.i.ctrl, WinApi.CB_GETLBTEXT, i, SYSTEM.ADR(s));
+						c.Set(c, s)
 					END
 				END
 			END
@@ -3110,22 +3090,22 @@ MODULE HostCFrames;
 		END
 	END HandleCommand;
 
-	PROCEDURE HandleScroll (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE HandleScroll (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR nc, size, sect, pos: INTEGER; c: StdCFrames.Frame; arrows: BOOLEAN;
 	BEGIN
 		arrows := FALSE;
-		c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 		WITH c: ScrollBar DO
 			IF c.i.ctrl # 0 THEN
 				Views.ValidateRoot(Views.RootOf(c));
 				nc := wParam MOD 65536; c.Get(c, size, sect, pos);
-				IF (nc = USER32.SBThumbPos) OR
-					HostWindows.visualScroll & (nc = USER32.SBThumbTrack) THEN
-						c.Set(c, KERNEL32.MulDiv(SHORT(wParam DIV 65536), size - sect, scrollRange))
-				ELSIF nc = USER32.SBLineUp THEN c.Track(c, StdCFrames.lineUp, pos)
-				ELSIF nc = USER32.SBLineDown THEN c.Track(c, StdCFrames.lineDown, pos)
-				ELSIF nc = USER32.SBPageUp THEN c.Track(c, StdCFrames.pageUp, pos)
-				ELSIF nc = USER32.SBPageDown THEN c.Track(c, StdCFrames.pageDown, pos)
+				IF (nc = WinApi.SB_THUMBPOSITION) OR
+					HostWindows.visualScroll & (nc = WinApi.SB_THUMBTRACK) THEN
+						c.Set(c, WinApi.MulDiv(wParam DIV 65536, size - sect, scrollRange))
+				ELSIF nc = WinApi.SB_LINEUP THEN c.Track(c, StdCFrames.lineUp, pos)
+				ELSIF nc = WinApi.SB_LINEDOWN THEN c.Track(c, StdCFrames.lineDown, pos)
+				ELSIF nc = WinApi.SB_PAGEUP THEN c.Track(c, StdCFrames.pageUp, pos)
+				ELSIF nc = WinApi.SB_PAGEDOWN THEN c.Track(c, StdCFrames.pageDown, pos)
 				END;
 				c.Update
 			END
@@ -3139,7 +3119,7 @@ MODULE HostCFrames;
 		END;
 		IF arrows THEN
 			nc := wParam MOD 65536;
-			IF nc = USER32.SBThumbPos THEN
+			IF nc = WinApi.SB_THUMBPOSITION THEN
 				IF wParam DIV 65536 # 0 THEN c.KeyDown(AU)
 				ELSE c.KeyDown(AD)
 				END
@@ -3147,140 +3127,140 @@ MODULE HostCFrames;
 		END
 	END HandleScroll;
 
-	PROCEDURE HandleDraw (wnd: USER32.Handle; wParam, lParam: INTEGER);
-		VAR res: INTEGER; c: StdCFrames.Frame; p: USER32.PDrawItemStruct;
-			brush: GDI32.Handle; rect: GDI32.Rect; col: Ports.Color;
+	PROCEDURE HandleDraw (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
+		VAR res: INTEGER; c: StdCFrames.Frame; p: WinApi.PtrDRAWITEMSTRUCT;
+			brush: WinApi.HANDLE; rect: WinApi.RECT; col: Ports.Color;
 	BEGIN
-		c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
-		p := SYSTEM.VAL(USER32.PDrawItemStruct, lParam);
+		c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
+		p := SYSTEM.VAL(WinApi.PtrDRAWITEMSTRUCT, lParam);
 		WITH c: ColorField DO
 			IF 0 IN p.itemState THEN
-				rect := p.itemRect;
-				brush := GDI32.CreateSolidBrush(HostPorts.selBackground);
-				res := USER32.FillRect(p.dc, rect, brush);
-				res := GDI32.DeleteObject(brush);
+				rect := p.rcItem;
+				brush := WinApi.CreateSolidBrush(HostPorts.selBackground);
+				res := WinApi.FillRect(p.hDC, rect, brush);
+				res := WinApi.DeleteObject(brush);
 				INC(rect.left); INC(rect.top); DEC(rect.right); DEC(rect.bottom);
-				brush := GDI32.CreateSolidBrush(Ports.background);
-				res := USER32.FillRect(p.dc, rect, brush);
-				res := GDI32.DeleteObject(brush)
+				brush := WinApi.CreateSolidBrush(Ports.background);
+				res := WinApi.FillRect(p.hDC, rect, brush);
+				res := WinApi.DeleteObject(brush)
 			ELSE
 				IF c.disabled OR c.readOnly THEN
-					brush := GDI32.CreateSolidBrush(Ports.dialogBackground)
+					brush := WinApi.CreateSolidBrush(Ports.dialogBackground)
 				ELSE
-					brush := GDI32.CreateSolidBrush(Ports.background)
+					brush := WinApi.CreateSolidBrush(Ports.background)
 				END;
-				res := USER32.FillRect(p.dc, p.itemRect, brush);
-				res := GDI32.DeleteObject(brush)
+				res := WinApi.FillRect(p.hDC, p.rcItem, brush);
+				res := WinApi.DeleteObject(brush)
 			END;
-			IF (p.itemId = numColors) & (p.itemRect.top > 20) THEN
-				brush := GDI32.CreateSolidBrush(HostPorts.textCol);
-				rect.top := p.itemRect.bottom - 6; rect.bottom := rect.top + 2;
-				rect.left := p.itemRect.left + 4; rect.right := rect.left + 2;
-				res := USER32.FillRect(p.dc, rect, brush);
-				rect.left := p.itemRect.left + 8; rect.right := rect.left + 2;
-				res := USER32.FillRect(p.dc, rect, brush);
-				rect.left := p.itemRect.left + 12; rect.right := rect.left + 2;
-				res := USER32.FillRect(p.dc, rect, brush)
-			ELSIF p.itemId >= 0 THEN
-				rect := p.itemRect; INC(rect.left, 2); INC(rect.top, 2); DEC(rect.right, 2); DEC(rect.bottom, 2);
-				IF p.itemId = numColors THEN col := c.color
-				ELSIF (p.itemId >= 0) & (p.itemId < LEN(colors)) THEN col := colors[p.itemId]
+			IF (p.itemID = numColors) & (p.rcItem.top > 20) THEN
+				brush := WinApi.CreateSolidBrush(HostPorts.textCol);
+				rect.top := p.rcItem.bottom - 6; rect.bottom := rect.top + 2;
+				rect.left := p.rcItem.left + 4; rect.right := rect.left + 2;
+				res := WinApi.FillRect(p.hDC, rect, brush);
+				rect.left := p.rcItem.left + 8; rect.right := rect.left + 2;
+				res := WinApi.FillRect(p.hDC, rect, brush);
+				rect.left := p.rcItem.left + 12; rect.right := rect.left + 2;
+				res := WinApi.FillRect(p.hDC, rect, brush)
+			ELSIF p.itemID >= 0 THEN
+				rect := p.rcItem; INC(rect.left, 2); INC(rect.top, 2); DEC(rect.right, 2); DEC(rect.bottom, 2);
+				IF p.itemID = numColors THEN col := c.color
+				ELSIF (p.itemID >= 0) & (p.itemID < LEN(colors)) THEN col := colors[p.itemID]
 				ELSE col := HostPorts.textCol
 				END;
-				brush := GDI32.CreateSolidBrush(col);
-				res := USER32.FillRect(p.dc, rect, brush);
-				res := GDI32.DeleteObject(brush)
+				brush := WinApi.CreateSolidBrush(col);
+				res := WinApi.FillRect(p.hDC, rect, brush);
+				res := WinApi.DeleteObject(brush)
 			END
 		END
 	END HandleDraw;
 
-	PROCEDURE ColorBrush (col: Ports.Color): GDI32.Handle;
+	PROCEDURE ColorBrush (col: Ports.Color): WinApi.HANDLE;
 		VAR p: BrushCache;
 	BEGIN
-		IF col = Ports.white THEN RETURN GDI32.GetStockObject(GDI32.WhiteBrush)
+		IF col = Ports.white THEN RETURN WinApi.GetStockObject(WinApi.WHITE_BRUSH)
 		ELSIF col = Ports.dialogBackground THEN RETURN HostPorts.dialogBrush
 		ELSE
 			p := brushes;
 			WHILE (p # NIL) & (p.col # col) DO p := p.next END;
 			IF p # NIL THEN RETURN p.brush
 			ELSE
-				NEW(p); p.col := col; p.brush := GDI32.CreateSolidBrush(col); p.next := brushes; brushes := p;
+				NEW(p); p.col := col; p.brush := WinApi.CreateSolidBrush(col); p.next := brushes; brushes := p;
 				RETURN p.brush
 			END
 		END
 	END ColorBrush;
 
-	PROCEDURE [2] CtrlHandler (wnd: USER32.Handle; message, wParam, lParam: INTEGER): INTEGER;
-		VAR res: INTEGER; c: StdCFrames.Frame; p: USER32.PMeasureItemStruct;
+	PROCEDURE [2] CtrlHandler (wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER): INTEGER;
+		VAR res: INTEGER; c: StdCFrames.Frame; p: WinApi.PtrMEASUREITEMSTRUCT;
 	BEGIN
-		IF message = USER32.WMCommand THEN
+		IF message = WinApi.WM_COMMAND THEN
 			Kernel.Try(HandleCommand, wnd, wParam, lParam);
 			RETURN 0
 		ELSIF message = WinApi.WM_NOTIFY THEN
 			res := -1;
 			Kernel.Try(HandleNotifyMsg, wnd, lParam, SYSTEM.ADR(res));
 			IF res # -1 THEN RETURN res ELSE RETURN 0 END
-		ELSIF (message = USER32.WMHScroll) OR (message = USER32.WMVScroll) THEN
+		ELSIF (message = WinApi.WM_HSCROLL) OR (message = WinApi.WM_VSCROLL) THEN
 			Kernel.Try(HandleScroll, wnd, wParam, lParam);
 			RETURN 0
-		ELSIF message = USER32.WMDrawItem THEN
+		ELSIF message = WinApi.WM_DRAWITEM THEN
 			Kernel.Try(HandleDraw, wnd, wParam, lParam);
 			RETURN 1
-		ELSIF message = USER32.WMMeasureItem THEN
-			c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
+		ELSIF message = WinApi.WM_MEASUREITEM THEN
+			c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 			WITH c: ColorField DO
-				p := SYSTEM.VAL(USER32.PMeasureItemStruct, lParam);
-				IF p.itemId = -1 THEN p.itemHeight := 11 * Ports.point DIV c.unit + 1
+				p := SYSTEM.VAL(WinApi.PtrMEASUREITEMSTRUCT, lParam);
+				IF p.itemID = -1 THEN p.itemHeight := 11 * Ports.point DIV c.unit + 1
 				ELSE p.itemHeight := 11 * Ports.point DIV c.unit - 1
 				END;
 				RETURN 1
 			ELSE
 			END
-		ELSIF (message >= USER32.WMCtlColorMsgBox) & (message <= USER32.WMCtlColorStatic) THEN
-			c := SYSTEM.VAL(StdCFrames.Frame, USER32.GetWindowLongA(wnd, dlgWindowExtra));
+		ELSIF (message >= WinApi.WM_CTLCOLORMSGBOX) & (message <= WinApi.WM_CTLCOLORSTATIC) THEN
+			c := SYSTEM.VAL(StdCFrames.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 			IF ((c IS Field) OR (c IS UpDownField) OR (c IS TimeField) OR (c IS DateField)
 					OR (c IS ListBox) OR (c IS SelectionBox) OR (c IS ColorField))
 					& (c.disabled OR c.readOnly) THEN
-				res := GDI32.SetBkColor(wParam, Ports.dialogBackground);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetBkColor(wParam, Ports.dialogBackground);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN HostPorts.dialogBrush
 			ELSIF (c IS TreeFrame) & (c.disabled OR c.readOnly) & (Dialog.platform # Dialog.windowsNT4) THEN
-				res := GDI32.SetBkColor(wParam, Ports.dialogBackground);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetBkColor(wParam, Ports.dialogBackground);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN HostPorts.dialogBrush
 			ELSIF ((c IS Field) OR (c IS UpDownField) OR (c IS TimeField) OR (c IS DateField))
 					& ~c.disabled & c.undef THEN
-				res := GDI32.SetBkMode(wParam, 1); (* transparent *)
-				res := GDI32.SetTextColor(wParam, 0C0C0C0H);
+				res := WinApi.SetBkMode(wParam, 1); (* transparent *)
+				res := WinApi.SetTextColor(wParam, 0C0C0C0H);
 				RETURN HostPorts.dim50Brush
 			ELSIF c IS Caption THEN
-				res := GDI32.SetTextColor(wParam, HostPorts.dialogTextCol);
-				res := GDI32.SetBkColor(wParam, c(Caption).i.bkgnd);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol);
+				res := WinApi.SetBkColor(wParam, c(Caption).i.bkgnd);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN ColorBrush(c(Caption).i.bkgnd)
 			ELSIF CtlColor # NIL THEN
 				res := CtlColor(message, wParam, lParam);
 				IF res # 0 THEN RETURN res END
 			ELSIF c IS CheckBox THEN
-				res := GDI32.SetTextColor(wParam, HostPorts.dialogTextCol);
-				res := GDI32.SetBkColor(wParam, c(CheckBox).i.bkgnd);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol);
+				res := WinApi.SetBkColor(wParam, c(CheckBox).i.bkgnd);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN ColorBrush(c(CheckBox).i.bkgnd)
 			ELSIF c IS RadioButton THEN
-				res := GDI32.SetTextColor(wParam, HostPorts.dialogTextCol);
-				res := GDI32.SetBkColor(wParam, c(RadioButton).i.bkgnd);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol);
+				res := WinApi.SetBkColor(wParam, c(RadioButton).i.bkgnd);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN ColorBrush(c(RadioButton).i.bkgnd)
 			ELSIF c IS Group THEN
-				res := GDI32.SetTextColor(wParam, HostPorts.dialogTextCol);
-				res := GDI32.SetBkColor(wParam, c(Group).i.bkgnd);
-				res := GDI32.SetBkMode(wParam, 2);	(* opaque *)
+				res := WinApi.SetTextColor(wParam, HostPorts.dialogTextCol);
+				res := WinApi.SetBkColor(wParam, c(Group).i.bkgnd);
+				res := WinApi.SetBkMode(wParam, 2);	(* opaque *)
 				RETURN ColorBrush(c(Group).i.bkgnd)
 			END
-		ELSIF message = USER32.WMEraseBkGnd THEN
+		ELSIF message = WinApi.WM_ERASEBKGND THEN
 			RETURN 1
 		END;
-		RETURN USER32.DefWindowProcA(wnd, message, wParam, lParam)
+		RETURN WinApi.DefWindowProcW(wnd, message, wParam, lParam)
 	END CtrlHandler;
 
 
@@ -3298,41 +3278,41 @@ MODULE HostCFrames;
 	END Install;
 
 	PROCEDURE InitClass;
-		VAR class: USER32.WndClass;
+		VAR res: INTEGER; class: WinApi.WNDCLASSW;
 	BEGIN
-		class.cursor := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCArrow));
-		class.icon := USER32.LoadIconA(instance, USER32.MakeIntRsrc(1));
-		class.menuName := NIL;
-		class.className := "Oberon Ctrl";
-		class.backgnd := 0;	(* no background *)
+		class.hCursor := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW));
+		class.hIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1));
+		class.lpszMenuName := NIL;
+		class.lpszClassName := "Oberon Ctrl";
+		class.hbrBackground := 0;	(* no background *)
 		class.style := {};
-		class.instance := instance;
-		class.wndProc := CtrlHandler;
-		class.clsExtra := 0;
-		class.wndExtra := dlgWindowExtra + 4;
-		USER32.RegisterClassA(class)
+		class.hInstance := instance;
+		class.lpfnWndProc := CtrlHandler;
+		class.cbClsExtra := 0;
+		class.cbWndExtra := dlgWindowExtra + 4;
+		res := WinApi.RegisterClassW(class)
 	END InitClass;
 
 	PROCEDURE InitNationalInfo;
-		VAR res: INTEGER; str: ARRAY 8 OF SHORTCHAR;
+		VAR res: INTEGER; str: ARRAY 8 OF CHAR;
 	BEGIN
-		res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_SDATE, str, LEN(str));
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_SDATE, str, LEN(str));
 		dateSep := str[0];
-		res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_STIME, str, LEN(str));
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_STIME, str, LEN(str));
 		timeSep := str[0];
-		res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_IDATE, str, LEN(str));
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_IDATE, str, LEN(str));
 		IF str = "1" THEN dayPart := 1; monthPart := 2; yearPart := 3; del1 := 2; del2 := 5
 		ELSIF str = "2" THEN yearPart := 1; monthPart := 2; dayPart := 3; del1 := 4; del2 := 7
 		ELSE monthPart := 1; dayPart := 2; yearPart := 3; del1 := 2; del2 := 5
 		END;
-		res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_ITIME, str, LEN(str));
+		res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_ITIME, str, LEN(str));
 		IF str = "1" THEN
 			lastPart := 3
 		ELSE
 			lastPart := 4;
-			res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_S1159, str, LEN(str));
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S1159, str, LEN(str));
 			desig[0] := str$;
-			res := WinApi.GetLocaleInfo(HostRegistry.localeId, WinApi.LOCALE_S2359, str, LEN(str));
+			res := WinApi.GetLocaleInfoW(HostRegistry.localeId, WinApi.LOCALE_S2359, str, LEN(str));
 			desig[1] := str$
 		END
 	END InitNationalInfo;
@@ -3349,27 +3329,16 @@ MODULE HostCFrames;
 	END InitColors;
 
 	PROCEDURE Init;
-		VAR v: INTEGER;
 	BEGIN
 		StdCFrames.setFocus := TRUE;
 		SetDefFonts;
-		scW := USER32.GetSystemMetrics(0);	(* screen width *)
-		scH := USER32.GetSystemMetrics(1);	(* screen height *)
-		instance := KERNEL32.GetModuleHandleA(NIL);
-		v := KERNEL32.GetVersion();
-		osVersion := v MOD 256 * 100 + v DIV 256 MOD 256;
+		scW := WinApi.GetSystemMetrics(0);	(* screen width *)
+		scH := WinApi.GetSystemMetrics(1);	(* screen height *)
+		instance := WinApi.GetModuleHandleW(NIL);
 		InitClass;
 		InitNationalInfo;
 		InitColors;
 		Install
-		(*
-		IF HostWindows.ctl3d # 0 THEN
-			SYSTEM.PUT(
-				SYSTEM.ADR(SubclassCtl), KERNEL32.GetProcAddress(HostWindows.ctl3d, "Ctl3dSubclassCtl"));
-			SYSTEM.PUT(
-				SYSTEM.ADR(CtlColor), KERNEL32.GetProcAddress(HostWindows.ctl3d, "Ctl3dCtlColorEx"))
-		END
-		*)
 	END Init;
 
 BEGIN

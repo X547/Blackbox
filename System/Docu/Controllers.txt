@@ -569,7 +569,7 @@ Remove f from the list of forwarders. If f is not registered, nothing happens.
 Pre
 f # NIL	20
 
-PROCEDURE ForwardVia (target: BOOLEAN; VAR msg: FocusMessage)
+PROCEDURE ForwardVia (target: BOOLEAN; VAR msg: Views.CtrlMessage)
 Send msg to either target or front focus.
 
 PROCEDURE SetCurrentPath (target: BOOLEAN)

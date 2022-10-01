@@ -35,22 +35,21 @@ MODULE DevSearch;
 
 	VAR
 		w: TextMappers.Formatter;
-		key: ARRAY 256 OF INTEGER;
 
 	PROCEDURE Find (t: TextModels.Model; pat: Pattern; title: Files.Name; VAR list: Text; caseSens: BOOLEAN);
 		VAR r: TextModels.Reader; num: INTEGER; i, j, b, e, n: INTEGER; ch: CHAR; ref: Pattern; l: Text;
 	BEGIN
 		n := 0; num := 0;
-		WHILE pat[n] # 0X DO INC(n) END;
+		WHILE pat[n] # 0X DO
+			IF ~caseSens THEN pat[n] := CAP(pat[n]) END ;
+			INC(n)
+		END;
 		r := t.NewReader(NIL);
 		r.SetPos(0); r.ReadChar(ch);
 		WHILE ~r.eot DO
 			ref[0] := ch; i := 0; j := 0; b := 0; e := 1;
 			WHILE ~r.eot & (i < n) DO
-(*
-				IF key[ORD(pat[i])] = key[ORD(ch)] THEN INC(i); j := (j + 1) MOD maxPat
-*)
-				IF caseSens & (pat[i]=ch) OR ~caseSens & (CAP(pat[i]) = CAP(ch)) THEN INC(i); j := (j + 1) MOD maxPat
+				IF caseSens & (pat[i]=ch) OR ~caseSens & (pat[i] = CAP(ch)) THEN INC(i); j := (j + 1) MOD maxPat
 				ELSE i := 0; b := (b + 1) MOD maxPat; j := b
 				END;
 				IF j # e THEN ch := ref[j]
@@ -228,14 +227,6 @@ MODULE DevSearch;
 		TextCmds.FindFirst("")
 	END SelectCaseInSens;
 
-	PROCEDURE InitKey;
-		VAR i: INTEGER;
-	BEGIN
-		i := 0; WHILE i < 256 DO key[i] := SHORT(i); INC(i) END;
-		i := ORD("a"); WHILE i <= ORD("z") DO key[i] := ORD(CAP(CHR(i))); INC(i) END;
-		i := 192; WHILE i <= 255 DO key[i] := ORD(CAP(CHR(i))); INC(i) END
-	END InitKey;
-
 
 	PROCEDURE NextChar (r: TextModels.Reader): CHAR;
 		VAR ch: CHAR;
@@ -331,6 +322,4 @@ MODULE DevSearch;
 		END
 	END Compare;
 
-BEGIN
-	InitKey
 END DevSearch.

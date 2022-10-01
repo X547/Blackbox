@@ -10,8 +10,8 @@ Appendices	A: Brief History of Pascal	B: Pascal to Comp. Pascal
 
 User Manuals	Developer Manuals	Component Pascal	Miscellaneous
 Framework	Framework	Language Report	License
-Text Subsystem	Text Subsystem	What's New?	Licensing Policy
-Form Subsystem	Form Subsystem	Character Set	Contributors
-Dev Subsystem	Dev Subsystem	Documentation Conventions	Platform-Specific Issues
-Custom Commands	Sql Subsystem	Programming Conventions	
+Text Subsystem	Text Subsystem	What's New?	Contributors
+Form Subsystem	Form Subsystem	Character Set	Platform-Specific Issues
+Dev Subsystem	Dev Subsystem	Documentation Conventions
+Custom Commands	Sql Subsystem	Programming Conventions
           	

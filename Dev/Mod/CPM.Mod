@@ -67,7 +67,7 @@ MODULE DevCPM;
 		HdTProcName* = "@tproc";
 
 		(* maximal number of exported stuctures: *)
-		MaxStruct* = 4096;	(* must be < MAX(INTEGER) DIV 2 in object model *)
+		MaxStruct* = 16000;	(* must be < MAX(INTEGER) DIV 2 in object model *)
 		
 		(* maximal number of record extensions: *)
 		MaxExts* = 15;	(* defined by type descriptor layout *)
@@ -117,6 +117,7 @@ TYPE
 		file*: Files.File;	(* used for sym file import *)
 		codeDir*: ARRAY 16 OF CHAR;
 		symDir*: ARRAY 16 OF CHAR;
+		checksum*: INTEGER;	(* symbol file checksum *)
 		
 		lastpos: INTEGER;
 		realpat: INTEGER;
@@ -133,6 +134,8 @@ TYPE
 		
 		lineReader: TextModels.Reader;
 		lineNum: INTEGER;
+		
+		crc32tab: ARRAY 256 OF INTEGER;
 
 
 	PROCEDURE^ err* (n: INTEGER);
@@ -155,11 +158,16 @@ TYPE
 	END Close;
 
 	PROCEDURE Get* (VAR ch: SHORTCHAR);
-	VAR ch1: CHAR;
+		VAR ch1: CHAR;
 	BEGIN
 		REPEAT in.ReadChar(ch1); INC(curpos) UNTIL (ch1 < 100X) & (ch1 # TextModels.viewcode);
 		ch := SHORT(ch1)
 	END Get;
+	
+	PROCEDURE GetL* (VAR ch: CHAR);
+	BEGIN
+		REPEAT in.ReadChar(ch); INC(curpos) UNTIL ch # TextModels.viewcode;
+	END GetL;
 	
 	PROCEDURE LineOf* (pos: INTEGER): INTEGER;
 		VAR ch: CHAR;
@@ -237,7 +245,7 @@ TYPE
 		END;
 		IF (options * {sysImp, sys386, sys68k} # {}) & ((num = 1) OR (num = 2)) THEN INC(flag, num)
 		ELSIF (sys68k IN options) & (num = 4) THEN INC(flag, num)
-		ELSIF (sys386 IN options) & (num = -10) & (flag = 0) THEN flag := -10
+		ELSIF (options * {sys386, interface} # {}) & (num = -10) & (flag = 0) THEN flag := -10
 		ELSIF (options * {sys386, com} # {}) & (num = 8) & (flag = 0) THEN flag := 8
 		ELSIF (options * {sysImp, sys386} # {}) & (num = 16) & (flag = 0) THEN flag := 16
 		ELSIF ({sysImp, java} - options = {}) & ((num= -33) OR (num = -35)) & (flag = 0) THEN flag := num
@@ -256,7 +264,7 @@ TYPE
 				IF old <= 1 THEN flag := SHORT(old + 2) END
 			ELSIF ((num = 4) OR (id = "out")) & (oberon IN options) THEN
 				IF old <= 1 THEN flag := SHORT(old + 4) END
-			ELSIF ((num = 8) OR (id = "new")) & (com IN options) THEN
+			ELSIF ((num = 8) OR (id = "new")) & (options * {com, interface} # {}) THEN
 				IF old <= 1 THEN flag := SHORT(old + 8) END
 			ELSIF ((num = 16) OR (id = "iid")) & (com IN options) THEN
 				IF old <= 1 THEN flag := SHORT(old + 16) END
@@ -323,10 +331,18 @@ TYPE
 		IF flag = 0 THEN err(225) END
 	END GetPointerSysFlag;
 	
+	PROCEDURE GetProcTypSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	BEGIN
+		IF ((num = -10) OR (id = "ccall")) & (options * {sys386, interface} # {}) THEN flag := -10
+		ELSE err(225); flag := 0
+		END
+	END GetProcTypSysFlag;
+	
 	PROCEDURE PropagateRecordSysFlag* (baseFlag: SHORTINT; VAR flag: SHORTINT);
 	BEGIN
 		IF (baseFlag = 1) OR (baseFlag >= 3) & (baseFlag <= 7) THEN	(* propagate untagged .. union *)
 			IF flag = 0 THEN flag := baseFlag
+			ELSIF (flag = 6) & (baseFlag < 6) THEN (* OK *)	(* special case for 8 byte aligned records *)
 			ELSIF flag # baseFlag THEN err(225); flag := 0
 			END
 		ELSIF (baseFlag # 10) & (flag = 10) THEN err(225)
@@ -494,9 +510,36 @@ TYPE
 
 	(* fingerprinting *)
 
-	PROCEDURE FPrint* (VAR fp: INTEGER; val: INTEGER);
+	PROCEDURE InitCrcTab;
+		(* CRC32, high bit first, pre & post inverted *)
+		CONST poly = {0, 1, 2, 4, 5, 7, 8, 10, 11, 12, 16, 22, 23, 26};	(* CRC32 polynom *)
+		VAR x, c, i: INTEGER;
 	BEGIN
-		fp := SYSTEM.ROT(ORD(BITS(fp) / BITS(val)), 1)
+		x := 0;
+		WHILE x < 256 DO
+			c := x * 1000000H; i := 0;
+			WHILE i < 8 DO
+				IF c < 0 THEN c := ORD(BITS(c * 2) / poly)
+				ELSE c := c * 2
+				END;
+				INC(i)
+			END;
+			crc32tab[ORD(BITS(x) / BITS(255))] := ORD(BITS(c) / BITS(255));
+			INC(x)
+		END
+	END InitCrcTab;
+	
+	PROCEDURE FPrint* (VAR fp: INTEGER; val: INTEGER);
+		VAR c: INTEGER;
+	BEGIN
+(*
+		fp := SYSTEM.ROT(ORD(BITS(fp) / BITS(val)), 1)	(* bad collision detection *)
+*)
+		(* CRC32, high bit first, pre & post inverted *)
+		c := ORD(BITS(fp * 256) / BITS(crc32tab[ORD(BITS(fp DIV 1000000H) / BITS(val DIV 1000000H)) MOD 256]));
+		c := ORD(BITS(c * 256) / BITS(crc32tab[ORD(BITS(c DIV 1000000H) / BITS(val DIV 10000H)) MOD 256]));
+		c := ORD(BITS(c * 256) / BITS(crc32tab[ORD(BITS(c DIV 1000000H) / BITS(val DIV 100H)) MOD 256]));
+		fp := ORD(BITS(c * 256) / BITS(crc32tab[ORD(BITS(c DIV 1000000H) / BITS(val)) MOD 256]));
 	END FPrint;
 
 	PROCEDURE FPrintSet* (VAR fp: INTEGER; set: SET);
@@ -513,15 +556,25 @@ TYPE
 		FPrint(fp, LoWord(lr)); FPrint(fp, HiWord(lr))
 	END FPrintLReal;
 
+	PROCEDURE ChkSum (VAR fp: INTEGER; val: INTEGER);	(* symbolfile checksum *)
+	BEGIN
+		(* same as FPrint, 8 bit only *)
+		fp := ORD(BITS(fp * 256) / BITS(crc32tab[ORD(BITS(fp DIV 1000000H) / BITS(val)) MOD 256]))
+	END ChkSum;
+
 
 
 	(* compact format *)
 	
 	PROCEDURE WriteLInt (w: Files.Writer; i: INTEGER);
 	BEGIN
+		ChkSum(checksum, i);
 		w.WriteByte(SHORT(SHORT(i MOD 256))); i := i DIV 256;
+		ChkSum(checksum, i);
 		w.WriteByte(SHORT(SHORT(i MOD 256))); i := i DIV 256;
+		ChkSum(checksum, i);
 		w.WriteByte(SHORT(SHORT(i MOD 256))); i := i DIV 256;
+		ChkSum(checksum, i);
 		w.WriteByte(SHORT(SHORT(i MOD 256)))
 	END WriteLInt;
 
@@ -529,14 +582,19 @@ TYPE
 		VAR b: BYTE; x: INTEGER;
 	BEGIN
 		r.ReadByte(b); x := b MOD 256;
+		ChkSum(checksum, b);
 		r.ReadByte(b); x := x + 100H * (b MOD 256);
+		ChkSum(checksum, b);
 		r.ReadByte(b); x := x + 10000H * (b MOD 256);
-		r.ReadByte(b); i := x + 1000000H * b
+		ChkSum(checksum, b);
+		r.ReadByte(b); i := x + 1000000H * b;
+		ChkSum(checksum, b)
 	END ReadLInt;
 
 	PROCEDURE WriteNum (w: Files.Writer; i: INTEGER);
 	BEGIN	(* old format of Oberon *)
-		WHILE (i < -64) OR (i > 63) DO w.WriteByte(SHORT(SHORT(i MOD 128 - 128))); i := i DIV 128 END;
+		WHILE (i < -64) OR (i > 63) DO ChkSum(checksum, i MOD 128 - 128); w.WriteByte(SHORT(SHORT(i MOD 128 - 128))); i := i DIV 128 END;
+		ChkSum(checksum, i MOD 128);
 		w.WriteByte(SHORT(SHORT(i MOD 128)))
 	END WriteNum;
 
@@ -544,8 +602,9 @@ TYPE
 		VAR b: BYTE; s, y: INTEGER;
 	BEGIN
 		s := 0; y := 0; r.ReadByte(b);
-		WHILE b < 0 DO INC(y, ASH(b + 128, s)); INC(s, 7); r.ReadByte(b) END;
-		i := ASH((b + 64) MOD 128 - 64, s) + y
+		IF ~r.eof THEN ChkSum(checksum, b) END;
+		WHILE b < 0 DO INC(y, ASH(b + 128, s)); INC(s, 7); r.ReadByte(b); ChkSum(checksum, b) END;
+		i := ASH((b + 64) MOD 128 - 64, s) + y;
 	END ReadNum;
 	
 	PROCEDURE WriteNumSet (w: Files.Writer; x: SET);
@@ -587,7 +646,8 @@ TYPE
 	PROCEDURE SymRCh* (VAR ch: SHORTCHAR);
 		VAR b: BYTE;
 	BEGIN
-		inSym.ReadByte(b); ch := SHORT(CHR(b))
+		inSym.ReadByte(b); ch := SHORT(CHR(b));
+		ChkSum(checksum, b)
 	END SymRCh;
 	
 	PROCEDURE SymRInt* (): INTEGER;
@@ -651,6 +711,7 @@ TYPE
 
 	PROCEDURE SymWCh* (ch: SHORTCHAR);
 	BEGIN
+		ChkSum(checksum, ORD(ch));
 		outSym.WriteByte(SHORT(ORD(ch)))
 	END SymWCh;
 
@@ -796,5 +857,6 @@ TYPE
 	END InitHost;
 
 BEGIN
+	InitCrcTab;
 	InitHost
 END DevCPM.

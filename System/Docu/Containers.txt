@@ -30,8 +30,6 @@ DEFINITION Containers;
 			(v: View) InitModel (m: Model), NEW;
 			(v: View) InitModel2- (m: Model), NEW, EMPTY;
 			(v: View) AcceptableModel- (m: Model): BOOLEAN, NEW, ABSTRACT;
-			(v: View) GetRect (f: Views.Frame; view: Views.View; OUT l, t, r, b: INTEGER), NEW, ABSTRACT;
-
 			(v: View) ThisModel (): Model, EXTENSIBLE;
 			(v: View) SetController (c: Controller), NEW;
 			(v: View) ThisController (): Controller, NEW, EXTENSIBLE;

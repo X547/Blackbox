@@ -31,7 +31,7 @@ MODULE HostMail;
 		VAR dll: WinApi.HINSTANCE;
 	BEGIN
 		IF ~checked THEN
-			dll := WinApi.LoadLibrary("MAPI32");
+			dll := WinApi.LoadLibraryW("MAPI32");
 			IF dll # 0 THEN
 				SYSTEM.PUT(SYSTEM.ADR(sendDocument), WinApi.GetProcAddress(dll, "cmc_send_documents"));
 			END;
@@ -100,13 +100,13 @@ MODULE HostMail;
 	END SendDocumentGuard;
 	
 	PROCEDURE Init;
-		VAR res: INTEGER; path: HostFiles.FullName; sp: ARRAY 260 OF SHORTCHAR;
+		VAR res: INTEGER; path: HostFiles.FullName;
 	BEGIN
-		res := WinApi.GetTempPath(LEN(sp), sp); path := sp$;
+		res := WinApi.GetTempPathW(LEN(path), path);
 		tempLoc := HostFiles.NewLocator(path);
 	END Init;
 	
 BEGIN
 	Init
-END HostMail.xy
+END HostMail.
 

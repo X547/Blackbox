@@ -156,7 +156,7 @@ MODULE StdStamps;
 			wr.WriteInt(v.history[i].date);
 			wr.WriteXInt(v.history[i].time);
 			IF v.history[i].comment # NIL THEN
-				len := SHORT(LEN(v.history[i].comment$));
+				len := LEN(v.history[i].comment$);
 				wr.WriteXInt(len);
 				wr.WriteXString(v.history[i].comment^);
 			ELSE wr.WriteXInt(0);

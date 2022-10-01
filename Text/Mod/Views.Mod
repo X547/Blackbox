@@ -600,28 +600,21 @@ MODULE TextViews;
 			v1: Views.View; c: Containers.Controller;
 			py, end, skip: INTEGER;
 			cache: RECORD	(* initially: long = TRUE, len = 0 *)
-				short: BOOLEAN;	(* tuning: only short chars in cache *)
 				x, y: INTEGER; color: Ports.Color; font: Fonts.Font;
 				len: INTEGER;
-				sbuf: ARRAY cacheLen OF SHORTCHAR;
 				buf: ARRAY cacheLen OF CHAR
 			END;
 
 		PROCEDURE FlushCaches;
 		BEGIN
 			IF cache.len > 0 THEN
-				IF cache.short THEN
-					cache.sbuf[cache.len] := 0X;
-					f.DrawSString(cache.x, cache.y, cache.color, cache.sbuf, cache.font)
-				ELSE
-					cache.buf[cache.len] := 0X;
-					f.DrawString(cache.x, cache.y, cache.color, cache.buf, cache.font)
-				END
+				cache.buf[cache.len] := 0X;
+				f.DrawString(cache.x, cache.y, cache.color, cache.buf, cache.font)
 			END;
-			cache.short := TRUE; cache.len := 0
+			cache.len := 0
 		END FlushCaches;
 
-		PROCEDURE CacheSString (x, y: INTEGER; c: INTEGER; IN s: ARRAY OF SHORTCHAR;
+		PROCEDURE CacheString (x, y: INTEGER; c: INTEGER; IN s: ARRAY OF CHAR;
 			f: Fonts.Font
 		);
 			VAR i, j, len: INTEGER;
@@ -632,17 +625,12 @@ MODULE TextViews;
 			END;
 			ASSERT(cache.len + len < cacheLen, 100);
 			IF cache.len = 0 THEN cache.x := x; cache.y := y; cache.color := c; cache.font := f END;
-			IF cache.short THEN
-				i := 0; j := cache.len;
-				WHILE i < len DO cache.sbuf[j] := s[i]; INC(i); INC(j) END;
-				cache.len := j
-			ELSE
-				i := 0; j := cache.len;
-				WHILE i < len DO cache.buf[j] := s[i]; INC(i); INC(j) END;
-				cache.len := j
-			END
-		END CacheSString;
+			i := 0; j := cache.len;
+			WHILE i < len DO cache.buf[j] := s[i]; INC(i); INC(j) END;
+			cache.len := j
+		END CacheString;
 
+(*
 		PROCEDURE CacheString (x, y: INTEGER; c: INTEGER; IN s: ARRAY OF CHAR;
 			f: Fonts.Font
 		);
@@ -663,10 +651,11 @@ MODULE TextViews;
 			WHILE i < len DO cache.buf[j] := s[i]; INC(i); INC(j) END;
 			cache.len := j
 		END CacheString;
+*)
 
 	BEGIN
 		IF box.len > 0 THEN
-			cache.short := TRUE; cache.len := 0;
+			cache.len := 0;
 			end := start + box.len; skip := start + box.skipOff;
 			rd := GetReader(v, start, box); rd.Read;
 			WHILE ~rd.eot & (rd.pos <= end) & (rd.x < r) DO
@@ -683,21 +672,19 @@ MODULE TextViews;
 								(c # NIL) & (v1 = c.ThisFocus()) )
 						END
 					ELSIF (rd.h > 0) & (rd.w > 0) THEN
-						IF box.rbox & ~v.hideMarks THEN rd.sString[0] := parasign END;	(* ¶ sign *)
+						IF box.rbox & ~v.hideMarks THEN rd.string[0] := parasign END;	(* ¶ sign *)
 						py := y - rd.attr.offset;
-						IF rd.sString[0] > " " THEN
-							CacheSString(rd.x, py, rd.attr.color, rd.sString, rd.attr.font);
+						IF rd.string[0] > " " THEN
+							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font);
 							IF ~v.hideMarks & (TextModels.hideable IN rd.textOpts) THEN
 								f.DrawRect(rd.x, py - box.asc + f.dot,
 									MIN(rd.x + rd.w, f.r), py + box.dsc - f.dot, 0, Ports.grey25)
 							END
-						ELSIF rd.sString[0] # 0X THEN
+						ELSIF rd.string[0] # 0X THEN
 							FlushCaches;
 							IF ~v.hideMarks & (TextModels.hideable IN rd.textOpts) THEN
 								f.DrawRect(rd.x, py - box.asc + f.dot, rd.x + rd.w, py + box.dsc - f.dot, 0, Ports.grey25)
 							END
-						ELSIF rd.string[0] # 0X THEN
-							CacheString(rd.x, py, rd.attr.color, rd.string, rd.attr.font);
 						ELSE FlushCaches
 						END
 					END
@@ -1420,8 +1407,8 @@ MODULE TextViews;
 		WHILE rd.pos < pos DO
 			p1 := rd.pos; rd.AdjustWidth(t.start, p1, t.box, rd.w); INC(rd.x, rd.w); rd.Read
 		END;
-		IF LEN(rd.sString$) > 1 THEN	(* collated subsequence *)
-			rd.x := f.SCharPos(rd.x, pos - p1, rd.sString, rd.attr.font);
+		IF LEN(rd.string$) > 1 THEN	(* collated subsequence *)
+			rd.x := f.CharPos(rd.x, pos - p1, rd.string, rd.attr.font);
 			IF rd.pos = pos THEN rd.Read END
 		ELSIF rd.pos = pos THEN
 			rd.AdjustWidth(t.start, pos, t.box, rd.w); INC(rd.x, rd.w); rd.Read
@@ -1465,8 +1452,8 @@ MODULE TextViews;
 					p1 := rd.pos; INC(rd.x, rd.w);
 					rd.Read; rd.AdjustWidth(t.start, rd.pos, t.box, rd.w)
 				END;
-				IF LEN(rd.sString$) > 1 THEN	(* collated subsequence *)
-					INC(p1, f.SCharIndex(rd.x, x, rd.sString, rd.attr.font))
+				IF LEN(rd.string$) > 1 THEN	(* collated subsequence *)
+					INC(p1, f.CharIndex(rd.x, x, rd.string, rd.attr.font))
 				END;
 				CacheReader(v, rd)
 			END

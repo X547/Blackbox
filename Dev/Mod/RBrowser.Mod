@@ -318,36 +318,24 @@ MODULE DevRBrowser;
 		VAR t: TextModels.Model; tv: TextViews.View;
 			c: Containers.Controller; v: Views.View;
 	BEGIN
-		IF Dialog.platform = 11 THEN
-			(* this feature is not available under Windows 3.11, because it doesn't distinguish small/capital
-				letters, as is necessary for correct spelling of subsystem and module names *)
-			Dialog.ShowMsg("#Host:NotUnderWindows3")
-		ELSE
-			t := TextModels.dir.New();
-			AddFiles(t);
-			tv := TextViews.dir.New(t);
-			c := tv.ThisController();
-			(* set Browser mode: *)
-			c.SetOpts(c.opts + {Containers.noCaret} - {Containers.noSelection, Containers.noFocus});
-			Views.OpenAux(tv, "Repository")
-		END
+		t := TextModels.dir.New();
+		AddFiles(t);
+		tv := TextViews.dir.New(t);
+		c := tv.ThisController();
+		(* set Browser mode: *)
+		c.SetOpts(c.opts + {Containers.noCaret} - {Containers.noSelection, Containers.noFocus});
+		Views.OpenAux(tv, "Repository")
 	END ShowRepository;
 
 	PROCEDURE Update*;
 		VAR t, t0: TextModels.Model; v: Views.View; script: Stores.Operation;
 	BEGIN
-		IF Dialog.platform = 11 THEN
-			(* this feature is not available under Windows 3.11, because it doesn't distinguish small/capital
-				letters, as is necessary for correct spelling of subsystem and module names *)
-			Dialog.ShowMsg("#Host:NotUnderWindows3")
-		ELSE
-			t0 := TextViews.FocusText();
-			Models.BeginScript(t0, "Update repository", script);
-			t := TextModels.CloneOf(t0);
-			AddFiles(t);
-			t0.Delete(0, t0.Length());  t0.Insert(0, t, 0, t.Length());
-			Models.EndScript(t0, script)
-		END
+		t0 := TextViews.FocusText();
+		Models.BeginScript(t0, "Update repository", script);
+		t := TextModels.CloneOf(t0);
+		AddFiles(t);
+		t0.Delete(0, t0.Length());  t0.Insert(0, t, 0, t.Length());
+		Models.EndScript(t0, script)
 	END Update;
 
 	PROCEDURE PathToLoc (path: ARRAY OF CHAR; VAR loc: Files.Locator);

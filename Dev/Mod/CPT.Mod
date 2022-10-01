@@ -280,6 +280,7 @@ MODULE DevCPT;
 				OR ((x.form = Pointer) & (y.form = Pointer))
 				OR ((x.form = ProcTyp) & (y.form = ProcTyp))) DO
 			IF x.form = ProcTyp THEN
+				IF x.sysflag # y.sysflag THEN RETURN FALSE END;
 				xp := x.link; yp := y.link;
 				INC(depth);
 				WHILE (xp # NIL) & (yp # NIL) & (xp.mode = yp.mode) & (xp.sysflag = yp.sysflag)
@@ -298,7 +299,7 @@ MODULE DevCPT;
 	BEGIN
 		IF (x.form = Pointer) & (y.form = Pointer) THEN x := x.BaseTyp; y := y.BaseTyp END;
 		IF (x.comp = Record) & (y.comp = Record) THEN
-			IF y = anytyp THEN RETURN TRUE END;
+			IF (y = anytyp) & ~x.untagged THEN RETURN TRUE END;
 			WHILE (x # NIL) & (x # undftyp) & (x # y) DO x := x.BaseTyp END
 		END;
 		RETURN (x # NIL) & EqualType(x, y)
@@ -319,7 +320,7 @@ MODULE DevCPT;
 	END Includes;
 	
 	PROCEDURE FindImport*(VAR name: Name; mod: Object; VAR res: Object);
-		VAR obj: Object;
+		VAR obj: Object; (* i: INTEGER; n: Name; *)
 	BEGIN obj := mod.scope.right;
 		LOOP
 			IF obj = NIL THEN EXIT END ;
@@ -332,7 +333,27 @@ MODULE DevCPT;
 				EXIT
 			END
 		END ;
-		res := obj
+		res := obj;
+(*	bh: checks usage of non Unicode WinApi functions and types
+		IF (res # NIL) & (mod.scope.library # NIL)
+				& ~(DevCPM.interface IN DevCPM.options)
+				& (SelfName # "Kernel") & (SelfName # "HostPorts") THEN
+			n := name + "W";
+			FindImport(n, mod, obj);
+			IF obj # NIL THEN
+				DevCPM.err(733)
+			ELSE
+				i := LEN(name$);
+				IF name[i - 1] = "A" THEN
+					n[i - 1] := "W"; n[i] := 0X;
+					FindImport(n, mod, obj);
+					IF obj # NIL THEN
+						DevCPM.err(734)
+					END
+				END
+			END
+		END;
+*)
 	END FindImport;
 
 	PROCEDURE Find*(VAR name: Name; VAR res: Object);
@@ -560,6 +581,7 @@ MODULE DevCPT;
 		BEGIN
 			WHILE (fld # NIL) & (fld.mode = Fld) DO
 				IF (fld.vis # internal) & visible THEN
+					DevCPM.FPrint(pvfp, fld.vis); FPrintName(pvfp, fld.name^); DevCPM.FPrint(pvfp, fld.adr);
 					DevCPM.FPrint(pbfp, fld.vis); FPrintName(pbfp, fld.name^); DevCPM.FPrint(pbfp, fld.adr);
 					FPrintStr(fld.typ); DevCPM.FPrint(pbfp, fld.typ.pbfp); DevCPM.FPrint(pvfp, fld.typ.pvfp)
 				ELSE FPrintHdFld(fld.typ, fld, fld.adr + adr)
@@ -569,20 +591,23 @@ MODULE DevCPT;
 		END FPrintFlds;
 
 		PROCEDURE FPrintTProcs(obj: Object);	(* modifies pbfp and pvfp *)
+			VAR fp: INTEGER;
 		BEGIN
 			IF obj # NIL THEN
 				FPrintTProcs(obj.left);
 				IF obj.mode = TProc THEN
 					IF obj.vis # internal THEN
-						IF obj.vis = externalR THEN DevCPM.FPrint(pbfp, externalR) END;
-						IF limAttr IN obj.conval.setval THEN DevCPM.FPrint(pbfp, limAttr)
-						ELSIF absAttr IN obj.conval.setval THEN DevCPM.FPrint(pbfp, absAttr)
-						ELSIF empAttr IN obj.conval.setval THEN DevCPM.FPrint(pbfp, empAttr)
-						ELSIF extAttr IN obj.conval.setval THEN DevCPM.FPrint(pbfp, extAttr)
+						fp := 0;
+						IF obj.vis = externalR THEN DevCPM.FPrint(fp, externalR) END;
+						IF limAttr IN obj.conval.setval THEN DevCPM.FPrint(fp, limAttr)
+						ELSIF absAttr IN obj.conval.setval THEN DevCPM.FPrint(fp, absAttr)
+						ELSIF empAttr IN obj.conval.setval THEN DevCPM.FPrint(fp, empAttr)
+						ELSIF extAttr IN obj.conval.setval THEN DevCPM.FPrint(fp, extAttr)
 						END;
-						DevCPM.FPrint(pbfp, TProc); DevCPM.FPrint(pbfp, obj.num);
-						FPrintSign(pbfp, obj.typ, obj.link); FPrintName(pbfp, obj.name^);
-						IF obj.entry # NIL THEN FPrintName(pbfp, obj.entry^) END
+						DevCPM.FPrint(fp, TProc); DevCPM.FPrint(fp, obj.num);
+						FPrintSign(fp, obj.typ, obj.link); FPrintName(fp, obj.name^);
+						IF obj.entry # NIL THEN FPrintName(fp, obj.entry^) END;
+						DevCPM.FPrint(pvfp, fp); DevCPM.FPrint(pbfp, fp)
 					ELSIF DevCPM.ExpHdTProc THEN
 						DevCPM.FPrint(pvfp, TProc); DevCPM.FPrint(pvfp, obj.num)
 					END
@@ -612,10 +637,7 @@ MODULE DevCPT;
 				IF btyp # NIL THEN FPrintStr(btyp); DevCPM.FPrint(pbfp, btyp.pbfp); DevCPM.FPrint(pvfp, btyp.pvfp) END ;
 				DevCPM.FPrint(pvfp, typ.size); DevCPM.FPrint(pvfp, typ.align); DevCPM.FPrint(pvfp, typ.n);
 				nofhdfld := 0; FPrintFlds(typ.link, 0, TRUE);
-(*
-				IF nofhdfld > DevCPM.MaxHdFld THEN DevCPM.Mark(225, typ.txtpos) END ;
-*)
-				FPrintTProcs(typ.link); DevCPM.FPrint(pvfp, pbfp); strobj := typ.strobj;
+				FPrintTProcs(typ.link); (* DevCPM.FPrint(pvfp, pbfp); *) strobj := typ.strobj;
 				IF (strobj = NIL) OR (strobj.name = null) THEN pbfp := pvfp END
 			END ;
 			typ.pbfp := pbfp; typ.pvfp := pvfp
@@ -1138,6 +1160,7 @@ MODULE DevCPT;
 				lib := NIL;
 				impProc := SHORT(DevCPM.SymRInt());
 				IF (impProc # 0) & (processor # 0) & (impProc # processor) THEN err(151) END;
+				DevCPM.checksum := 0;	(* start checksum here to avoid problems with proc id fixup *)
 				tag := DevCPM.SymRInt();
 				IF tag < Smname THEN version := tag; tag := DevCPM.SymRInt()
 				ELSE version := 0
@@ -1471,15 +1494,17 @@ MODULE DevCPT;
 	END OutObj;
 
 	PROCEDURE Export*(VAR ext, new: BOOLEAN);
-			VAR i: SHORTINT; nofmod: BYTE; done: BOOLEAN; old: Object;
+			VAR i: SHORTINT; nofmod: BYTE; done: BOOLEAN; old: Object; oldCSum: INTEGER;
 	BEGIN
 		symExtended := FALSE; symNew := FALSE; nofmod := nofGmod;
 		Import("@self", SelfName, done); nofGmod := nofmod;
+		oldCSum := DevCPM.checksum;
 		ASSERT(GlbMod[0].name^ = SelfName);
 		IF DevCPM.noerr THEN	(* ~DevCPM.noerr => ~done *)
 			DevCPM.NewSym(SelfName);
 			IF DevCPM.noerr THEN
 				DevCPM.SymWInt(0);	(* portable symfile *)
+				DevCPM.checksum := 0;	(* start checksum here to avoid problems with proc id fixup *)
 				DevCPM.SymWInt(actVersion);
 				old := GlbMod[0]; portable := TRUE;
  				IF libName # "" THEN
@@ -1494,7 +1519,8 @@ MODULE DevCPT;
 				expCtxt.nofm := 1; expCtxt.locmno[0] := 0;
 				i := 1; WHILE i < maxImps DO expCtxt.locmno[i] := -1; INC(i) END ;
 				OutObj(topScope.right);
-				ext := sfpresent & symExtended; new := ~sfpresent OR symNew;
+				ext := sfpresent & symExtended;
+				new := ~sfpresent OR symNew OR (DevCPM.checksum # oldCSum);
 				IF DevCPM.noerr & ~portable THEN
 					DevCPM.SymReset;
 					DevCPM.SymWInt(processor)	(* nonportable symfile *)

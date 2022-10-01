@@ -56,7 +56,7 @@ Tries to unload the module whose source is in the focus view. Unloading fails if
 
 PROCEDURE UnloadModuleList
 Guard: TextCmds.SelectionGuard
-Tries to unload a list of modules whose names are selected. Unloading may partially or completely fail if one of the specified modules is not loaded yet, or if it is still being importet by at least one client module. Modules must be unloaded from top to bottom.
+Tries to unload a list of modules whose names are selected. Unloading may partially or completely fail if one of the specified modules is not loaded yet, or if it is still being imported by at least one client module. Modules must be unloaded from top to bottom.
 
 PROCEDURE UnloadThis
 Used in a text with a DevCommanders.View. This command takes the text following it and interprets it as a list of modules that should be unloaded. Similar to UnloadModuleList except that no selection is necessary.

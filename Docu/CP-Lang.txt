@@ -1,7 +1,7 @@
 Component Pascal Language Report
 
 
-Copyright © 1994-2005 by Oberon microsystems, Inc., Switzerland.
+Copyright © 1994-2013 by Oberon microsystems, Inc., Switzerland.
 
 All rights reserved. No part of this publication may be reproduced in any form or by any means, without prior written permission by Oberon microsystems except for the free electronic distribution of the unmodified document.
 
@@ -17,7 +17,7 @@ All other trademarks and registered trademarks belong to their respective owners
 
 Authors
 	Oberon microsystems, Inc.
-	March 2001
+	March 2001, last update October 2006
 
 Authors of Oberon-2 report
 	H. Mössenböck, N. Wirth
@@ -89,7 +89,7 @@ An extended Backus-Naur formalism (EBNF) is used to describe the syntax of Compo
 
 3. Vocabulary and Representation
 
-The representation of (terminal) symbols in terms of characters is defined using ISO 8859-1, i.e., the Latin1 extension of the ASCII character set. Symbols are identifiers, numbers, strings, operators, and delimiters. The following lexical rules must be observed: Blanks and line breaks must not occur within symbols (except in comments, and blanks in strings). They are ignored unless they are essential to separate two consecutive symbols. Capital and lower-case letters are considered as distinct.
+The representation of (terminal) symbols in terms of characters is defined using ISO 8859-1, i.e., the Latin1 extension of the ASCII character set. Unicode (16 bit) characters are allowed in string constants only. Symbols are identifiers, numbers, strings, operators, and delimiters. The following lexical rules must be observed: Blanks and line breaks must not occur within symbols (except in comments, and blanks in strings). They are ignored unless they are essential to separate two consecutive symbols. Capital and lower-case letters are considered as distinct.
 
 1. Identifiers are sequences of letters, digits, and underscores. The first character must not be a digit.
 
@@ -120,11 +120,11 @@ Examples:
 
 character  = digit {hexDigit} "X".
 
-4. Strings are sequences of characters enclosed in single (') or double (") quote marks. The opening quote must be the same as the closing quote and must not occur within the string. The number of characters in a string is called its length. A string of length 1 can be used wherever a character constant is allowed and vice versa.
+4. Strings are sequences of characters enclosed in single (') or double (") quote marks. The opening quote must be the same as the closing quote and must not occur within the string. The number of characters in a string is called its length. A string of length 1 can be used wherever a character constant is allowed and vice versa. Characters in string constants are allowed to be Unicode (16 bit) characters.
 
 string  = ' " ' {char} ' " ' | " ' " {char} " ' ".
 
-Examples:     "Component Pascal"     "Don't worry!"     "x"
+Examples:     "Component Pascal"     "Don't worry!"     "x"     "αβ"
 
 5. Operators and delimiters are the special characters, character pairs, or reserved words listed below. The reserved words consist exclusively of capital letters and cannot be used as identifiers.
 
@@ -1150,7 +1150,7 @@ SET	set of 0 .. 31
 
 Appendix D: Mandatory Requirements for Environment
 
-The Component Pascal definition implicitly relies on three fundamental assumptions.
+The Component Pascal definition implicitly relies on four fundamental assumptions.
 
 1) There exists some run-time type information that allows to check the dynamic type of an object. This is necessary to implement type tests and type guards.
 
@@ -1158,5 +1158,7 @@ SET	set of 0 .. 31
 
 3) Modules and at least their exported procedures (commands) and exported types must be retrievable dynamically. If necessary, this may cause modules to be loaded. The programming interface used to load modules or to access the mentioned meta information is not defined by the language, but the language compiler needs to preserve this information when generating code.
 Except for fully linked applications where no modules will ever be added at run-time, a linking loader for modules is required. Embedded systems are important examples of applications that can be fully linked.
+
+4) The environment must provide the ability to display Unicode characters, except for "headless" embedded applications that need no display.
 
 An implementation that doesn't fulfill these compiler and environment requirements is not compliant with Component Pascal.

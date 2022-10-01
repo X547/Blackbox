@@ -57,7 +57,9 @@ MODULE ObxButtons;
 		f.DrawString(x, y, v.color, v.label, v.font)
 	END Restore;
 
-	PROCEDURE (v: View) HandleCtrlMsg (f: Views.Frame; VAR msg: Controllers.Message; VAR focus: Views.View);
+	PROCEDURE (v: View) HandleCtrlMsg (
+		f: Views.Frame; VAR msg: Controllers.Message; VAR focus: Views.View
+	);
 		VAR x, y, w, h, res: INTEGER; modifiers: SET; inside, isDown: BOOLEAN;
 	BEGIN
 		WITH msg: Controllers.TrackMsg DO	(* mouse button was pressed *)

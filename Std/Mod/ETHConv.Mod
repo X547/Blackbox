@@ -151,7 +151,7 @@ MODULE StdETHConv;
 				IF 3 IN opts THEN INCL(p.opts.val, TextRulers.pageBreak) END;
 				INCL(p.opts.val, TextRulers.rightFixed);
 				p.opts.mask := {TextRulers.leftAdjust .. TextRulers.pageBreak, TextRulers.rightFixed};
-				ReadNum(n); p.tabs.len := SHORT(n);
+				ReadNum(n); p.tabs.len := n;
 				i := 0; WHILE i < p.tabs.len DO ReadNum(p.tabs.tab[i].stop); INC(i) END;
 				v := TextRulers.dir.NewFromProp(p);
 				wr.WriteView(v, ew, eh)

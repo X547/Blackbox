@@ -8,7 +8,8 @@ DEFINITION Dialog;
 		pressed = 1; released = 2; changed = 3; included = 5; excluded = 6; set = 7;
 		ok = 1; yes = 2; no = 3; cancel = 4;
 		windows32s = 11; windows95 = 12; windowsNT3 = 13; windowsNT4 = 14; windows2000 = 15;
-		windows98 = 16; macOS = 21; macOSX = 22; linux = 30; tru64 = 40;
+		windows98 = 16; windowsXP = 17; windowsVista = 18;
+		macOS = 21; macOSX = 22; linux = 30; tru64 = 40;
 		firstPos = 0; lastPos = -1;
 		persistent = TRUE; nonPersistent = FALSE;
 
@@ -196,6 +197,12 @@ This is a possible value of variable platform. It indicates that BlackBox is run
 
 CONST windows98
 This is a possible value of variable platform. It indicates that BlackBox is running on one of the Windows 98 flavors (original Windows 98, Windows 98 SE, or Windows 98 ME).
+
+CONST windowsXP
+This is a possible value of variable platform. It indicates that BlackBox is running on Windows XP.
+
+CONST windowsVista
+This is a possible value of variable platform. It indicates that BlackBox is running on Windows Vista.
 
 CONST macOS
 This is a possible value of variable platform. It indicates that BlackBox is running on Mac OS 7.x, 8.x, or 9.x. This platform is not supported anymore.

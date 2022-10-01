@@ -11,7 +11,7 @@ MODULE XYplane;
 
 **)
 
-	IMPORT Ports, Stores, Views, Properties, HostPorts, HostWindows, GDI32, USER32;
+	IMPORT WinApi, Ports, Stores, Views, Properties, HostPorts, HostWindows;
 
 	CONST
 		erase* = 0; draw* = 1;
@@ -19,8 +19,8 @@ MODULE XYplane;
 
 	TYPE
 		View = POINTER TO RECORD (Views.View)
-			dc: GDI32.Handle;
-			map: GDI32.Handle
+			dc: WinApi.HANDLE;
+			map: WinApi.HANDLE
 		END;
 
 	VAR
@@ -31,23 +31,23 @@ MODULE XYplane;
 	PROCEDURE (v: View) FINALIZE;
 		VAR res: INTEGER;
 	BEGIN
-		res := GDI32.DeleteDC(v.dc);
-		res := GDI32.DeleteObject(v.map);
+		res := WinApi.DeleteDC(v.dc);
+		res := WinApi.DeleteObject(v.map);
 		v.dc := 0; v.map := 0
 	END FINALIZE;
 
 	PROCEDURE Open*;
-		VAR res: INTEGER; v: View; dc: GDI32.Handle;
+		VAR res: INTEGER; v: View; dc: WinApi.HANDLE;
 	BEGIN
 		NEW(v);
-		dc := USER32.GetDC(0);
-		v.dc := GDI32.CreateCompatibleDC(dc);
-		v.map := GDI32.CreateCompatibleBitmap(dc, W, H);
-		res := GDI32.SelectObject(v.dc, v.map);
-		res := USER32.ReleaseDC(0, dc);
-		res := GDI32.SelectObject(v.dc, GDI32.GetStockObject(GDI32.WhiteBrush));
-		res := GDI32.SelectObject(v.dc, GDI32.GetStockObject(GDI32.NullPen));
-		res := GDI32.Rectangle(v.dc, 0, 0, W + 1, H + 1);
+		dc := WinApi.GetDC(0);
+		v.dc := WinApi.CreateCompatibleDC(dc);
+		v.map := WinApi.CreateCompatibleBitmap(dc, W, H);
+		res := WinApi.SelectObject(v.dc, v.map);
+		res := WinApi.ReleaseDC(0, dc);
+		res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.WHITE_BRUSH));
+		res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.NULL_PEN));
+		res := WinApi.Rectangle(v.dc, 0, 0, W + 1, H + 1);
 		Views.OpenAux(v, "XYplane");
 		current := v
 	END Open;
@@ -58,10 +58,10 @@ MODULE XYplane;
 		IF (x >= 0) & (x < maxW) & (y >= 0) & (y < maxH) THEN
 			y := maxH - 1 - y;
 			IF mode = draw THEN col := Ports.black ELSE col := Ports.white END;
-			res := GDI32.SetPixel(current.dc, x, y, col);
+			res := WinApi.SetPixel(current.dc, x, y, col);
 			IF (frame # NIL) & (frame.rider # NIL) THEN
 				u := frame.unit; p := frame.rider(HostPorts.Rider).port;
-				res := GDI32.SetPixel(p.dc, frame.gx DIV u + x, frame.gy DIV u + y, col);
+				res := WinApi.SetPixel(p.dc, frame.gx DIV u + x, frame.gy DIV u + y, col);
 				IF res = -1 THEN
 					frame.DrawRect(x * u, y * u, (x + 1) * u, (y + 1) * u, Ports.fill, col)
 				END
@@ -71,18 +71,18 @@ MODULE XYplane;
 
 	PROCEDURE IsDot* (x, y: INTEGER): BOOLEAN;
 	BEGIN
-		RETURN GDI32.GetPixel(current.dc, x, maxH - 1 - y) # Ports.white
+		RETURN WinApi.GetPixel(current.dc, x, maxH - 1 - y) # Ports.white
 	END IsDot;
 
 	PROCEDURE ReadKey* (): CHAR;
-		VAR res: INTEGER; msg: USER32.Message;
+		VAR res: INTEGER; msg: WinApi.MSG;
 	BEGIN
-		IF USER32.PeekMessageA(msg, 0, USER32.WMKeyDown, USER32.WMChar, 1) # 0 THEN
-			IF msg.message = USER32.WMChar THEN
+		IF WinApi.PeekMessageW(msg, 0, WinApi.WM_KEYDOWN, WinApi.WM_CHAR, 1) # 0 THEN
+			IF msg.message = WinApi.WM_CHAR THEN
 				RETURN CHR(msg.wParam)
 			ELSE
-				res := USER32.TranslateMessage(msg);
-				res := USER32.DispatchMessageA(msg)
+				res := WinApi.TranslateMessage(msg);
+				res := WinApi.DispatchMessageW(msg)
 			END
 		END;
 		RETURN 0X
@@ -91,33 +91,33 @@ MODULE XYplane;
 	PROCEDURE Clear*;
 		VAR res: INTEGER;
 	BEGIN
-		res := GDI32.Rectangle(current.dc, 0, 0, W + 1, H + 1);
+		res := WinApi.Rectangle(current.dc, 0, 0, W + 1, H + 1);
 		Views.Update(current, Views.keepFrames)
 	END Clear;
 
 
 	PROCEDURE (v: View) Internalize (VAR rd: Stores.Reader);
-		VAR version: INTEGER; res, x, y, i: INTEGER; dc: GDI32.Handle; s: SET;
+		VAR version: INTEGER; res, x, y, i: INTEGER; dc: WinApi.HANDLE; s: SET;
 	BEGIN
 		v.Internalize^(rd);
 		IF ~rd.cancelled THEN
 			rd.ReadVersion(0, 0, version);
 			IF ~rd.cancelled THEN
-				dc := USER32.GetDC(0);
-				v.dc := GDI32.CreateCompatibleDC(dc);
-				v.map := GDI32.CreateCompatibleBitmap(dc, W, H);
-				res := GDI32.SelectObject(v.dc, v.map);
-				res := USER32.ReleaseDC(0, dc);
-				res := GDI32.SelectObject(v.dc, GDI32.GetStockObject(GDI32.WhiteBrush));
-				res := GDI32.SelectObject(v.dc, GDI32.GetStockObject(GDI32.NullPen));
-				res := GDI32.Rectangle(v.dc, 0, 0, W + 1, H + 1);
+				dc := WinApi.GetDC(0);
+				v.dc := WinApi.CreateCompatibleDC(dc);
+				v.map := WinApi.CreateCompatibleBitmap(dc, W, H);
+				res := WinApi.SelectObject(v.dc, v.map);
+				res := WinApi.ReleaseDC(0, dc);
+				res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.WHITE_BRUSH));
+				res := WinApi.SelectObject(v.dc, WinApi.GetStockObject(WinApi.NULL_PEN));
+				res := WinApi.Rectangle(v.dc, 0, 0, W + 1, H + 1);
 				y := 0;
 				WHILE y < maxH DO
 					x := 0;
 					WHILE x < maxW DO
 						rd.ReadSet(s); i := 0;
 						WHILE i < 32 DO
-							IF i IN s THEN res := GDI32.SetPixel(v.dc, x, y, Ports.black) END;
+							IF i IN s THEN res := WinApi.SetPixel(v.dc, x, y, Ports.black) END;
 							INC(i); INC(x)
 						END
 					END;
@@ -138,7 +138,7 @@ MODULE XYplane;
 			WHILE x < maxW DO
 				i := 0; s := {};
 				WHILE i < 32 DO
-					IF GDI32.GetPixel(v.dc, x, y) # Ports.white THEN INCL(s, i) END;
+					IF WinApi.GetPixel(v.dc, x, y) # Ports.white THEN INCL(s, i) END;
 					INC(i); INC(x)
 				END;
 				wr.WriteSet(s)
@@ -151,10 +151,10 @@ MODULE XYplane;
 		VAR res: INTEGER;
 	BEGIN
 		WITH source: View DO v.dc := source.dc; 
-			v.dc := GDI32.CreateCompatibleDC(source.dc);
-			v.map := GDI32.CreateCompatibleBitmap(source.dc, W, H);
-			res := GDI32.SelectObject(v.dc, v.map);
-			res := GDI32.BitBlt(v.dc, 0, 0, W, H, source.dc, 0, 0, 00CC0020H)
+			v.dc := WinApi.CreateCompatibleDC(source.dc);
+			v.map := WinApi.CreateCompatibleBitmap(source.dc, W, H);
+			res := WinApi.SelectObject(v.dc, v.map);
+			res := WinApi.BitBlt(v.dc, 0, 0, W, H, source.dc, 0, 0, 00CC0020H)
 		END
 	END CopyFromSimpleView;
 
@@ -171,7 +171,7 @@ MODULE XYplane;
 			WHILE y < maxH DO
 				x := 0;
 				WHILE x < maxW DO
-					IF GDI32.GetPixel(v.dc, x, y) # Ports.white THEN
+					IF WinApi.GetPixel(v.dc, x, y) # Ports.white THEN
 						f.DrawRect(x * u, y * u, (x + 1) * u, (y + 1) * u, Ports.fill, Ports.black)
 					END;
 					INC(x)

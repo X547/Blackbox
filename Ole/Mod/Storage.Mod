@@ -148,9 +148,12 @@ MODULE OleStorage;
 		statStg.pwcsName := NIL;
 		statStg.type := WinOle.STGTY_LOCKBYTES;
 		statStg.cbSize := this.len;
-		statStg.mtime := 0;
-		statStg.ctime := 0;
-		statStg.atime := 0;
+		statStg.mtime.dwLowDateTime := 0;
+		statStg.mtime.dwHighDateTime := 0;
+		statStg.ctime.dwLowDateTime := 0;
+		statStg.ctime.dwHighDateTime := 0;
+		statStg.atime.dwLowDateTime := 0;
+		statStg.atime.dwHighDateTime := 0;
 		statStg.grfMode := WinOle.STGM_DIRECT + WinOle.STGM_CREATE + WinOle.STGM_SHARE_EXCLUSIVE;
 		IF this.wr # NIL THEN statStg.grfMode := statStg.grfMode + WinOle.STGM_READWRITE
 		ELSE statStg.grfMode := statStg.grfMode + WinOle.STGM_READ

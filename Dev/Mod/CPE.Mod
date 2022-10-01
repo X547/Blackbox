@@ -2,7 +2,7 @@ MODULE DevCPE;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Robert Campbell"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -32,7 +32,7 @@ MODULE DevCPE;
 		Fld = 4; Typ = 5; Head = 12;
 		
 		(* module visibility of objects *)
-		internal = 0; external = 1; externalR = 2;
+		internal = 0; external = 1; externalR = 2; inPar = 3; outPar = 4;
 
 		(* history of imported objects *)
 		inserted = 0; same = 1; pbmodified = 2; pvmodified = 3; removed = 4; inconsistent = 5;
@@ -46,6 +46,7 @@ MODULE DevCPE;
 		mReal32 = 7; mReal64 = 8; mSet = 9; mInt64 = 10; mAnyRec = 11; mAnyPtr = 12; mSysPtr = 13;
 		mProctyp = 0; mRecord = 1; mArray = 2; mPointer = 3;
 		mInternal = 1; mReadonly = 2; mPrivate = 3; mExported = 4;
+		mValue = 10; mInPar = 11; mOutPar = 12; mVarPar = 13;
 		mInterface = 32; mGuid = 33; mResult = 34;
 
 		(* sysflag *)
@@ -65,7 +66,7 @@ MODULE DevCPE;
 		MaxNameTab = 800000H;
 		
 		useAllRef = FALSE;
-	
+		outSignatures = TRUE;
 	
 	TYPE
 		CodeBlock = POINTER TO ARRAY CodeLength OF SHORTCHAR;
@@ -131,6 +132,11 @@ MODULE DevCPE;
 		IF DevCPM.LEHost THEN hi := a[1]; low := a[0] ELSE hi := a[0]; low := a[1] END
 	END GetRealWords;
 		
+	PROCEDURE IsSame (x, y: REAL): BOOLEAN;
+	BEGIN
+		RETURN  (x = y) & ((x #  0.) OR (1. / x = 1. / y))
+	END IsSame;
+	
 	PROCEDURE AllocConst* (con: DevCPT.Const; form: BYTE; VAR obj: DevCPT.Object; VAR adr: INTEGER);
 		VAR c: DevCPT.Const;
 	BEGIN
@@ -152,11 +158,11 @@ MODULE DevCPE;
 			IF c = NIL THEN con.intval2 := con.intval; adr := idx64; INC(idx64, 8) END
 		| Real32:
 			obj := Const32; c := obj.conval;
-			WHILE (c # NIL) & ((con.setval # c.setval) OR (con.realval # c.realval)) DO c := c.link END;
+			WHILE (c # NIL) & ((con.setval # c.setval) OR ~IsSame(con.realval, c.realval)) DO c := c.link END;
 			IF c = NIL THEN adr := idx32; INC(idx32, 4) END
 		| Real64:
 			obj := Const64; c := obj.conval;
-			WHILE (c # NIL) & ((con.setval # c.setval) OR (con.realval # c.realval)) DO c := c.link END;
+			WHILE (c # NIL) & ((con.setval # c.setval) OR ~IsSame(con.realval, c.realval)) DO c := c.link END;
 			IF c = NIL THEN adr := idx64; INC(idx64, 8) END
 		| Guid:
 			obj := Const32; c := obj.conval;
@@ -583,6 +589,33 @@ MODULE DevCPE;
 		RETURN n
 	END NameIdx;
 	
+	PROCEDURE OutSignature (par: DevCPT.Object; retTyp: DevCPT.Struct; OUT pos: INTEGER);
+		VAR p: DevCPT.Object; n, m: INTEGER;
+	BEGIN
+		pos := DevCPM.ObjLen() - headSize;
+		OutStruct(retTyp, TRUE);
+		p := par; n := 0;
+		WHILE p # NIL DO INC(n); p := p.link END;
+		Out4(n); p := par;
+		WHILE p # NIL DO
+			IF p.mode # VarPar THEN m := mValue
+			ELSIF p.vis = inPar THEN m := mInPar
+			ELSIF p.vis = outPar THEN m := mOutPar
+			ELSE m := mVarPar
+			END;
+			Out4(NameIdx(p) * 256 + m);
+			OutStruct(p.typ, TRUE);
+			p := p.link
+		END
+	END OutSignature;
+	
+	PROCEDURE PrepObject (obj: DevCPT.Object);
+	BEGIN
+		IF (obj.mode IN {LProc, XProc, IProc}) & outSignatures THEN	(* write param list *)
+			OutSignature(obj.link, obj.typ, obj.conval.intval)
+		END
+	END PrepObject;
+	
 	PROCEDURE OutObject (mode, fprint, offs: INTEGER; typ: DevCPT.Struct; obj: DevCPT.Object);
 		VAR vis: INTEGER;
 	BEGIN
@@ -593,7 +626,9 @@ MODULE DevCPE;
 		ELSIF obj.vis = external THEN vis := mExported
 		END;
 		Out4(mode + vis * 16 + NameIdx(obj) * 256);
-		OutStruct(typ, mode = mField)
+		IF (mode = mProc) & outSignatures THEN OutReference(Meta, obj.conval.intval, absolute)	(* ref to par list *)
+		ELSE OutStruct(typ, mode = mField)
+		END
 	END OutObject;
 	
 	PROCEDURE PrepDesc (desc: DevCPT.Struct);
@@ -613,13 +648,15 @@ MODULE DevCPE;
 				END;
 				fld := fld.link
 			END
+		ELSIF (desc.form = ProcTyp) & outSignatures THEN	(* write param list *)
+			OutSignature(desc.link, desc.BaseTyp, desc.n)
 		END;
 		(* assert name and base type are included *)
 		IF desc.untagged THEN n := NameIdx(untgd)
 		ELSE n := NameIdx(desc.strobj)
 		END;
 		IF desc.form # ProcTyp THEN b := desc.BaseTyp;
-			IF (b # NIL) & (b # DevCPT.anytyp) & (b # DevCPT.anyptrtyp) & (b.form IN {Pointer, Comp})
+			IF (b # NIL) & (b # DevCPT.anytyp) & (b # DevCPT.anyptrtyp) & (b.form IN {Pointer, Comp, ProcTyp})
 					& (b.sysflag # interface) & (b # DevCPT.guidtyp)
 					& (~b.untagged OR outURef & (b.form = Comp)) THEN
 				l := OffsetLink(TypeObj(b), 0)
@@ -694,13 +731,15 @@ MODULE DevCPE;
 			ELSIF desc.form = Pointer THEN
 				form := mPointer
 			ELSE ASSERT(desc.form = ProcTyp);
-				DevCPM.FPrint(size, XProc); DevCPT.FPrintSign(size, desc.BaseTyp, desc.link); form := mProctyp
+				DevCPM.FPrint(size, XProc); DevCPT.FPrintSign(size, desc.BaseTyp, desc.link); form := mProctyp;
 			END;
 			Out4(size);
 			OutReference(Mod, 0, absolute);
 			IF desc.untagged THEN m := untgd ELSE m := desc.strobj END;
 			Out4(form + lev * 16 + NameIdx(m) * 256);
-			IF desc.form # ProcTyp THEN OutStruct(desc.BaseTyp, TRUE) END
+			IF desc.form # ProcTyp THEN OutStruct(desc.BaseTyp, TRUE)
+			ELSIF outSignatures THEN OutReference(Meta, desc.n, absolute)	(* ref to par list *)
+			END
 		END
 	END OutDesc;
 
@@ -753,6 +792,17 @@ MODULE DevCPE;
 		END;
 	END OutProcTable;
 
+	PROCEDURE PrepExport (obj: DevCPT.Object);
+	BEGIN
+		IF obj # NIL THEN
+			PrepExport(obj.left);
+			IF (obj.mode IN {LProc, XProc, IProc}) & (obj.history # removed) & (obj.vis # internal) THEN
+				PrepObject(obj)
+			END;
+			PrepExport(obj.right)
+		END
+	END PrepExport;
+	
 	PROCEDURE OutExport (obj: DevCPT.Object);
 		VAR num: INTEGER;
 	BEGIN
@@ -934,6 +984,8 @@ MODULE DevCPE;
 		DevCPM.ObjW(0X); (* end mark *)
 		refSize := DevCPM.ObjLen() - headSize;
 	(* Export *)
+		Align(4);
+		IF outSignatures THEN PrepExport(DevCPT.topScope.right) END;	(* procedure signatures *)
 		Align(8); expPos := DevCPM.ObjLen(); 
 		Out4(0);
 		OutExport(DevCPT.topScope.right);	(* export objects *)

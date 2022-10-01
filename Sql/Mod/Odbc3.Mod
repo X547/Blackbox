@@ -73,8 +73,7 @@ MODULE SqlOdbc3;
 			actStmt: WinSql.HSTMT;
 			actRes: INTEGER;	(* result of async operation *)
 			dbc: WinSql.HDBC;
-			directions: SET;	(* supported Fetch directions *)
-			string: POINTER TO ARRAY OF SHORTCHAR	(* cached temp string *)
+			directions: SET	(* supported Fetch directions *)
 		END;
 
 		Table = POINTER TO RECORD (SqlDrivers.Table)
@@ -95,61 +94,44 @@ MODULE SqlOdbc3;
 
 	(* miscellaneous *)
 
-	PROCEDURE ShortString (IN str: ARRAY OF CHAR; VAR static: ARRAY OF SHORTCHAR): WinApi.PtrSTR;
-		VAR p: WinApi.PtrSTR; sp: POINTER TO ARRAY OF SHORTCHAR;
-	BEGIN	(* use static if it is long enough, otherwise allocate a string variable on the heap *)
-		IF LEN(str) <= LEN(static) THEN
-			static := SHORT(str$); p := static
-		ELSE
-			NEW(sp, LEN(str)); sp^ := SHORT(str$); p := sp^
-		END;
-		RETURN p
-	END ShortString;
-
-	PROCEDURE TempString (d: Driver; len: INTEGER): POINTER TO ARRAY OF SHORTCHAR;
-	BEGIN	(* make d.string large enough, if necessary *)
-		IF (d.string = NIL) OR (LEN(d.string) < len) THEN NEW(d.string, len) END;
-		RETURN d.string
-	END TempString;
-
 	PROCEDURE Check (ret: INTEGER; d: Driver; stmt: WinSql.HSTMT; OUT res: INTEGER);
-		VAR err: INTEGER; len: SHORTINT; state, msg: ARRAY 256 OF SHORTCHAR;
+		VAR err: INTEGER; len: SHORTINT; state, msg: ARRAY 256 OF CHAR;
 	BEGIN
 		CASE ret OF
 		| WinSql.SQL_SUCCESS:
 			res := 0
 		| WinSql.SQL_SUCCESS_WITH_INFO:
-			res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_STMT, stmt, 1, state, err, msg, LEN(msg), len);
+			res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_STMT, stmt, 1, state, err, msg, LEN(msg), len);
 			IF (res = WinSql.SQL_NO_DATA) OR (res = WinSql.SQL_INVALID_HANDLE) OR (msg = "") THEN
 				IF d # NIL THEN 
-					res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_DBC, d.dbc, 1, state, err, msg, LEN(msg), len);
+					res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_DBC, d.dbc, 1, state, err, msg, LEN(msg), len);
 					IF (res = WinSql.SQL_NO_DATA) OR (msg = "") THEN
-						res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_ENV, environment,
+						res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_ENV, environment,
 																		1, state, err, msg, LEN(msg), len)
 					END
 				ELSE
-					res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_ENV, environment,
+					res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_ENV, environment,
 																	1, state, err, msg, LEN(msg), len)
 				END;
 			END;
 			IF debug THEN Log.String(msg$); Log.Ln END;
 			IF state = "01004" THEN res := truncated ELSE res := 0 END
 		| WinSql.SQL_ERROR:
-			res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_STMT, stmt, 1, state, err, msg, LEN(msg), len);
+			res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_STMT, stmt, 1, state, err, msg, LEN(msg), len);
 			IF (res = WinSql.SQL_NO_DATA) OR (res = WinSql.SQL_INVALID_HANDLE) OR (msg = "") THEN
 				IF d # NIL THEN 
-					res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_DBC, d.dbc, 1, state, err, msg, LEN(msg), len);
+					res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_DBC, d.dbc, 1, state, err, msg, LEN(msg), len);
 					IF (res = WinSql.SQL_NO_DATA) OR (msg = "") THEN
-						res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_ENV, environment,
+						res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_ENV, environment,
 																		1, state, err, msg, LEN(msg), len)
 					END
 				ELSE
-					res := WinSql.SQLGetDiagRec(WinSql.SQL_HANDLE_ENV, environment,
+					res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_ENV, environment,
 																	1, state, err, msg, LEN(msg), len)
 				END;
 			END;
 			IF (d # NIL) & d.showErr THEN
-				res := WinApi.MessageBox(0, msg, "ODBC Error", {})
+				res := WinApi.MessageBoxW(0, msg, "ODBC Error", {})
 			ELSIF debug THEN Log.String(msg$); Log.Ln
 			END;			
 			IF state = "01004" THEN res := truncated
@@ -214,7 +196,7 @@ MODULE SqlOdbc3;
 		IF res # 0 THEN
 			Check(WinSql.SQLRowCount(t.stmt, n), NIL, t.stmt, res);
 			IF (res # 0) OR (n < 0) THEN n := MAX(INTEGER) END	(* row count is not known *)
-		END;
+		END
 	END GetTableSize;
 
 	PROCEDURE SetPos (t: Table; row, col: INTEGER; OUT res: INTEGER);
@@ -259,7 +241,7 @@ MODULE SqlOdbc3;
 		VAR res: INTEGER;
 	BEGIN
 		IF d.state = preparing THEN
-			d.actRes := WinSql.SQLPrepare(d.actStmt, "", WinSql.SQL_NTS);
+			d.actRes := WinSql.SQLPrepareW(d.actStmt, "", WinSql.SQL_NTS);
 			IF d.actRes = WinSql.SQL_SUCCESS THEN
 				d.actRes := WinSql.SQLExecute(d.actStmt); d.state := executing
 			ELSIF d.actRes = WinSql.SQL_SUCCESS_WITH_INFO THEN
@@ -284,7 +266,6 @@ MODULE SqlOdbc3;
 	(* Pre: statement # ""	20 *)
 	(* Post: res = 0 <=> execution has started and should be completed later with EndExec *)
 		VAR stmt: WinSql.HSTMT; r: INTEGER; p: SHORTINT;
-			ss: ARRAY 256 OF SHORTCHAR;
 	BEGIN
 		IF debug THEN Log.String(statement); Log.Ln END;
 		ASSERT(statement # "", 20); ASSERT(d.state = connected, 21);
@@ -313,7 +294,7 @@ MODULE SqlOdbc3;
 														WinSql.SQL_IS_INTEGER), NIL, stmt, r)
 			END;*)
 			d.actStmt := stmt;
-			d.actRes := WinSql.SQLPrepare(stmt, ShortString(statement, ss), WinSql.SQL_NTS);
+			d.actRes := WinSql.SQLPrepareW(stmt, statement, WinSql.SQL_NTS);
 			IF d.actRes = WinSql.SQL_STILL_EXECUTING THEN
 				d.state := preparing; res := 0
 			ELSE
@@ -334,7 +315,7 @@ MODULE SqlOdbc3;
 			END
 		ELSE	(* no workspace available *)
 			res := outOfTables
-		END;
+		END
 	END BeginExec;
 
 	PROCEDURE (d: Driver) EndExec (VAR t: SqlDrivers.Table; OUT rows, columns, res: INTEGER);
@@ -355,7 +336,7 @@ MODULE SqlOdbc3;
 						NIL, d.actStmt, res);*)
 				h.stmt := d.actStmt; 
 				GetTableSize(h, h.rows);
-				t := h; columns := h.columns; rows := h.rows; res := 0;
+				t := h; columns := h.columns; rows := h.rows; res := 0
 			ELSE
 				Check(WinSql.SQLRowCount(d.actStmt, rowcount), NIL, d.actStmt, res);
 				Check(WinSql.SQLFreeHandle(WinSql.SQL_HANDLE_STMT, d.actStmt), NIL, d.actStmt, res);
@@ -460,16 +441,16 @@ MODULE SqlOdbc3;
 	END ReadTime;
 
 	PROCEDURE (t: Table) ReadCurrency (row, column: INTEGER; OUT val: Dialog.Currency);
-		VAR res, len, i, j: INTEGER; str: ARRAY 32 OF SHORTCHAR; a, b, c, scale: SHORTINT; x: LONGINT;
+		VAR res, len, i, j: INTEGER; str: ARRAY 32 OF CHAR; a, b, c, scale: SHORTINT; x: LONGINT;
 	BEGIN
 		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
 		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
 		ASSERT(t.stmt # 0, 24);
 		SetPos(t, row, column, res);
 		IF res = 0 THEN
-			Check(WinSql.SQLDescribeCol(t.stmt, SHORT(column + 1), str, LEN(str), a, b, i, scale, c), NIL, t.stmt, res);
+			Check(WinSql.SQLDescribeColW(t.stmt, SHORT(column + 1), str, LEN(str), a, b, i, scale, c), NIL, t.stmt, res);
 			IF scale < 0 THEN scale := 0 END;
-			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_CHAR,
+			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
 														SYSTEM.ADR(str), LEN(str), len), NIL, t.stmt, res);
 			IF len # WinSql.SQL_NULL_DATA THEN
 				x := 0; i := 0;
@@ -493,32 +474,30 @@ MODULE SqlOdbc3;
 	END ReadCurrency;
 
 	PROCEDURE (t: Table) ReadString (row, column: INTEGER; OUT str: ARRAY OF CHAR);
-		VAR res, len: INTEGER; sp: POINTER TO ARRAY OF SHORTCHAR;
+		VAR res, len: INTEGER;
 	BEGIN
 		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
 		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
 		ASSERT(t.stmt # 0, 24);
 		SetPos(t, row, column, res);
 		IF res = 0 THEN
-			sp := TempString(t.driver, LEN(str));
-			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_CHAR,
-														SYSTEM.ADR(sp^), LEN(str), len),
+			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
+														SYSTEM.ADR(str), LEN(str), len),
 					NIL, t.stmt, res);
-			IF (len = 0) OR (len = WinSql.SQL_NULL_DATA) THEN str := "" ELSE str := sp$ END
+			IF (len = 0) OR (len = WinSql.SQL_NULL_DATA) THEN str := "" END
 		END;
 		t.res := res
 	END ReadString;
 
 	PROCEDURE (t: Table) ReadVarString (row, column: INTEGER; OUT str: SqlDrivers.String);
-		VAR res, len: INTEGER; s: ARRAY 257 OF SHORTCHAR;	(* odd for correct conversion of binary data *)
-			sp: POINTER TO ARRAY OF SHORTCHAR;
+		VAR res, len: INTEGER; s: ARRAY 257 OF CHAR;	(* odd for correct conversion of binary data *)
 	BEGIN
 		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
 		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
 		ASSERT(t.stmt # 0, 24);
 		SetPos(t, row, column, res);
 		IF res = 0 THEN
-			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_CHAR,
+			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
 														SYSTEM.ADR(s), LEN(s), len),
 					NIL, t.stmt, res);
 			IF res # noData THEN
@@ -532,10 +511,9 @@ MODULE SqlOdbc3;
 				ELSE
 					IF (str = NIL) OR (LEN(str^) < len + 1) THEN NEW(str, len + 1) END;
 					IF len >= LEN(s) THEN
-						sp := TempString(t.driver, LEN(str^)); sp^ := s$;
-						Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_CHAR,
-												SYSTEM.ADR(sp^) + (LEN(s) - 1), LEN(str^) - (LEN(s) - 1), len), NIL, t.stmt, res);
-						str^ := sp$
+						str^ := s$;
+						Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
+												SYSTEM.ADR(str^) + (LEN(s) - 1), LEN(str^) - (LEN(s) - 1), len), NIL, t.stmt, res);
 					ELSE
 						str^ := s$
 					END
@@ -590,21 +568,18 @@ MODULE SqlOdbc3;
 	END ReadBlob;
 
 	PROCEDURE (t: Table) ReadName (column: INTEGER; OUT str: SqlDrivers.String);
-		VAR res, len: INTEGER; nlen, sqlType, scale, null: SHORTINT; name: ARRAY 64 OF SHORTCHAR;
-			ss: POINTER TO ARRAY OF SHORTCHAR;
+		VAR res, len: INTEGER; nlen, sqlType, scale, null: SHORTINT; name: ARRAY 64 OF CHAR;
 	BEGIN
 		ASSERT(column >= 0, 20); ASSERT(column < t.columns, 21);
 		ASSERT(t.stmt # 0, 22);
-		Check(WinSql.SQLDescribeCol(t.stmt, SHORT(column + 1), name, LEN(name), nlen,
+		Check(WinSql.SQLDescribeColW(t.stmt, SHORT(column + 1), name, LEN(name), nlen,
 														sqlType, len, scale, null), NIL, t.stmt, res);
 		IF (nlen = 0) OR (res = noData) THEN nlen := 0; name := "" END;
 		IF (str = NIL) OR (LEN(str^) < nlen + 1) THEN NEW(str, nlen + 1) END;
 		IF nlen >= LEN(name) THEN
-			ss := TempString(t.driver, LEN(str));
-			Check(WinSql.SQLDescribeCol(t.stmt, SHORT(column + 1), ss^, SHORT(LEN(str^)),
+			Check(WinSql.SQLDescribeColW(t.stmt, SHORT(column + 1), str^, SHORT(LEN(str^)),
 															nlen, sqlType, len, scale, null),
 					NIL, t.stmt, res);
-			str^ := ss$
 		ELSE str^ := name$
 		END;
 		t.res := res
@@ -616,7 +591,7 @@ MODULE SqlOdbc3;
 		ASSERT(column >= 0, 20); ASSERT(column < t.columns, 21);
 		ASSERT(t.stmt # 0, 22);
 		IF (str = NIL) OR (LEN(str^) < 10) THEN NEW(str, 10) END;
-		Check(WinSql.SQLDescribeCol(t.stmt, SHORT(column + 1), NIL, 0, nlen, sqlType, len, scale, null),
+		Check(WinSql.SQLDescribeColW(t.stmt, SHORT(column + 1), NIL, 0, nlen, sqlType, len, scale, null),
 														NIL, t.stmt, res);
 		IF res # noData THEN
 			CASE sqlType OF
@@ -631,7 +606,8 @@ MODULE SqlOdbc3;
 			| WinSql.SQL_REAL: str^ := "SHORTREAL"
 			| WinSql.SQL_DOUBLE, WinSql.SQL_FLOAT: str^ := "REAL"
 			| WinSql.SQL_DECIMAL, WinSql.SQL_NUMERIC: str^ := "Currency"
-			| WinSql.SQL_CHAR, WinSql.SQL_VARCHAR, WinSql.SQL_LONGVARCHAR: str^ := "String"
+			| WinSql.SQL_CHAR, WinSql.SQL_VARCHAR, WinSql.SQL_LONGVARCHAR,
+				WinSql.SQL_WCHAR, WinSql.SQL_WVARCHAR, WinSql.SQL_WLONGVARCHAR: str^ := "String"
 			| WinSql.SQL_BINARY, WinSql.SQL_VARBINARY, WinSql.SQL_LONGVARBINARY: str^ := "Binary"
 			ELSE str^ := "unknown"
 			END
@@ -648,8 +624,7 @@ MODULE SqlOdbc3;
 
 	PROCEDURE Open* (id, password, datasource: ARRAY OF CHAR; async, showErr: BOOLEAN;
 											OUT d: SqlDrivers.Driver; OUT res: INTEGER);
-		VAR h: Driver; ss1, ss2, ss3: ARRAY 256 OF SHORTCHAR; r: INTEGER; len: SHORTINT;
-			sstr: ARRAY 26 OF SHORTCHAR;
+		VAR h: Driver; r: INTEGER; len: SHORTINT; str: ARRAY 26 OF CHAR;
 	BEGIN
 		NEW(h); d := NIL; h.showErr := showErr;
 		res := WinSql.SQL_SUCCESS;
@@ -665,9 +640,9 @@ MODULE SqlOdbc3;
 		IF res = WinSql.SQL_SUCCESS THEN
 			Check(WinSql.SQLAllocHandle(WinSql.SQL_HANDLE_DBC, environment, h.dbc), h, 0, res);
 			IF res = 0 THEN
-				Check(WinSql.SQLConnect(h.dbc, ShortString(datasource, ss1), WinSql.SQL_NTS,
-													ShortString(id, ss2), WinSql.SQL_NTS,
-													ShortString(password, ss3), WinSql.SQL_NTS), h, 0, res);
+				Check(WinSql.SQLConnectW(h.dbc, datasource, WinSql.SQL_NTS,
+													id, WinSql.SQL_NTS,
+													password, WinSql.SQL_NTS), h, 0, res);
 				IF res = 0 THEN
 					IF showErr THEN
 						Check(WinSql.SQLSetConnectAttr(h.dbc, WinSql.SQL_QUIET_MODE, HostWindows.main, 0), h, 0, r)
@@ -675,15 +650,16 @@ MODULE SqlOdbc3;
 						r := WinSql.SQLSetConnectAttr(h.dbc, WinSql.SQL_QUIET_MODE, WinApi.NULL, 0)
 					END;
 					h.Init("?");
-					Check(WinSql.SQLGetInfo(h.dbc, WinSql.SQL_FETCH_DIRECTION, SYSTEM.ADR(h.directions), 4, len),
-															h, 0, r);
+					Check(WinSql.SQLGetInfoW(h.dbc,
+																WinSql.SQL_FETCH_DIRECTION, SYSTEM.ADR(h.directions), 4, len),
+																h, 0, r);
 					(* ODBC default is SQL_AUTOCOMMIT_ON *) 
 					IF ~autoCommit THEN
 						Check(WinSql.SQLSetConnectAttr(h.dbc, WinSql.SQL_AUTOCOMMIT,
 																			WinSql.SQL_AUTOCOMMIT_OFF, 0), h, 0, r)
 					END;
-					Check(WinSql.SQLGetInfo(h.dbc, WinSql.SQL_DBMS_NAME, SYSTEM.ADR(sstr), 255, len), h, 0, r);
-					IF sstr = "Microsoft SQL Server" THEN
+					Check(WinSql.SQLGetInfoW(h.dbc, WinSql.SQL_DBMS_NAME, SYSTEM.ADR(str), 255, len), h, 0, r);
+					IF str = "Microsoft SQL Server" THEN
 						(* If SQLServer is used Preserve Cursors must be set to ON.
 						Other drivers probably don't support this. *)
 						Check(WinSql.SQLSetConnectAttr(h.dbc, WinSql.SQL_PRESERVE_CURSORS,

@@ -253,10 +253,6 @@ PROCEDURE (s: Setter) ConnectTo (text: TextModels.Model; defRuler: TextRulers.Ru
 NEW, EXTENSIBLE
 Disconnect setter from the text it was previously connected to (if any), and connect setter to given text (if any) using default ruler defRuler and hiding marks if requested by hideMarks. vw is the width against which text should be set.
 
-Pre
-text # NIL	20
-defRuler # NIL	21
-
 Post
 text = NIL
 	s.text = NIL
@@ -518,6 +514,4 @@ Pre
 d # NIL	20
 
 Post
-stdDir' = NIL
-	stdDir = d
 dir = d

@@ -25,11 +25,9 @@ MODULE CommV24;
 
 	PROCEDURE Open* (device: ARRAY OF CHAR; baud: INTEGER; opts: SET; OUT conn: Connection);
 		VAR c: Connection; h: WinApi.HANDLE; res: INTEGER; dcb: WinApi.DCB; to: WinApi.COMMTIMEOUTS;
-			ss: ARRAY 256 OF SHORTCHAR;
 	BEGIN
-		ss := SHORT(device$);
-		h := WinApi.CreateFile(
-			ss,  WinApi.GENERIC_READ +  WinApi.GENERIC_WRITE, {}, NIL,  WinApi.OPEN_EXISTING, {}, 0);
+		h := WinApi.CreateFileW(
+			device,  WinApi.GENERIC_READ +  WinApi.GENERIC_WRITE, {}, NIL,  WinApi.OPEN_EXISTING, {}, 0);
 		IF h # -1 THEN
 			dcb.DCBlength := SIZE(WinApi.DCB);
 			res := WinApi.GetCommState(h, dcb);

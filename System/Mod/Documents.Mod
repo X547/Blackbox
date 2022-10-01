@@ -221,6 +221,13 @@ MODULE Documents;
 
 	(* printing support for StdDocument *)
 
+	PROCEDURE CheckOrientation (d: Document; prt: Printers.Printer);
+		VAR w, h, l, t, r, b: INTEGER; decorate: BOOLEAN;
+	BEGIN
+		d.PollPage(w, h, l, t, r, b, decorate);
+		prt.SetOrientation(w > h)
+	END CheckOrientation;
+
 	PROCEDURE NewPrinterContext (d: Document; prt: Printers.Printer; p: Printing.Par): PrinterContext;
 		VAR c: PrinterContext;
 			pw, ph,  x0, y0, x1, y1, l, t, r, b: INTEGER; decorate: BOOLEAN;
@@ -580,6 +587,7 @@ MODULE Documents;
 		IF d.context # NIL THEN Stores.Join(d, view) END;
 		IF Printers.dir # NIL THEN prt := Printers.dir.Current() ELSE prt := NIL END;
 		IF prt # NIL THEN
+			prt.SetOrientation(FALSE);
 			port := prt.ThisPort(); prt.GetRect(l, t, r, b);
 			port.GetSize(pw, ph); u := port.unit;
 			paperW := r - l; paperH := b - t;
@@ -663,19 +671,20 @@ MODULE Documents;
 	END SetRect;
 
 	PROCEDURE (d: StdDocument) SetPage (pw, ph, pl, pt, pr, pb: INTEGER; decorate: BOOLEAN);
-		VAR op: SetPageOp;
+		VAR op: SetPageOp; doc: StdDocument;
 	BEGIN
-		IF (d.pw # pw) OR (d.ph # ph) OR (d.decorate # decorate)
-		OR (d.pl # pl) OR (d.pt # pt) OR (d.pr # pr) OR (d.pb # pb) THEN
+		IF d.original = NIL THEN doc := d ELSE doc := d.original END;
+		IF (doc.pw # pw) OR (doc.ph # ph) OR (doc.decorate # decorate)
+		OR (doc.pl # pl) OR (doc.pt # pt) OR (doc.pr # pr) OR (doc.pb # pb) THEN
 			ASSERT(0 <= pw, 20);
 			ASSERT(0 <= ph, 22);
 			ASSERT(0 <= pl, 24); ASSERT(pl < pr, 25); ASSERT(pr <= pw, 26);
 			ASSERT(0 <= pt, 27); ASSERT(pt < pb, 28); ASSERT(pb <= ph, 29);
 			NEW(op);
-			IF d.original = NIL THEN op.d := d ELSE op.d := d.original END;
+			op.d := doc;
 			op.pw := pw; op.ph := ph; op.pl := pl; op.pt := pt; op.pr := pr; op.pb := pb;
 			op.decorate := decorate;
-			Views.Do(d, pageSetupKey, op)
+			Views.Do(doc, pageSetupKey, op)
 		END
 	END SetPage;
 
@@ -1120,12 +1129,14 @@ MODULE Documents;
 		IF par.page.title = "" THEN title := "(" + Dialog.appName + ")" ELSE title := par.page.title END;
 		from := par.page.from; to := par.page.to;
 		copies := par.copies;
+		CheckOrientation(d, p);
 		p.OpenJob(copies, title);
 		IF p.res = 0 THEN
 			dom := d.Domain();
 			ASSERT(dom # NIL, 100);
 			c := NewPrinterContext(d, p, par);
 			d1 := PrinterDoc(d, c);
+			CheckOrientation(d, p);	(* New in PrinterDoc resets printer orientation *)
 			d1.GetNewFrame(g); f := g(Views.RootFrame); f.ConnectTo(p.ThisPort());
 			Views.SetRoot(f, d1, FALSE, {}); Views.AdaptRoot(f);
 			current := 0; (*par.page.current := 0; *)
@@ -1196,6 +1207,7 @@ MODULE Documents;
 		IF (v.context # NIL) & (v.context IS Context) THEN
 			Print(v.context(Context).ThisDoc(), p, par); RETURN
 		END;
+		p.SetOrientation(FALSE);
 		IF par.page.title = "" THEN title := "(" + Dialog.appName + ")" ELSE title := par.page.title END;
 		copies := par.copies;
 		p.OpenJob(copies, title);

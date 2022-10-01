@@ -11,18 +11,7 @@ MODULE Init;
 
 **)
 
-	IMPORT Kernel, Dialog, Files, Converters, HostMenus;
-
-	PROCEDURE Splash;	(* Splash screen for educational and evaluation releases *)
-		VAR f: Files.File; res: INTEGER;
-	BEGIN
-		IF Files.dir # NIL THEN
-			f := Files.dir.Old(Files.dir.This('System/Rsrc'), 'Open.odc', Files.shared);
-			IF f # NIL THEN
-				Dialog.Call("StdCmds.OpenToolDialog('System/Rsrc/Open.odc', 'BlackBox Component Builder')", "", res)
-			END
-		END
-	END Splash;
+	IMPORT Kernel, Dialog, Converters, HostMenus;
 
 	PROCEDURE Init;
 		VAR res: INTEGER; m: Kernel.Module;
@@ -34,7 +23,6 @@ MODULE Init;
 		Dialog.Call("StdMenuTool.UpdateAllMenus", "", res);
 		Kernel.LoadMod("OleServer");
 		Dialog.Call("Config.Setup", "", res);
-		Splash;
 		HostMenus.Run
 	END Init;
 

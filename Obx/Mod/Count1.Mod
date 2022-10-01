@@ -25,7 +25,7 @@ MODULE ObxCount1;
 			s.SetPos(from);	(* set the reader to beginning of selection *)
 			s.Scan;				(* read the first symbol of the text selection *)
 			ints := 0; reals := 0; strings := 0;	(* counter variables *)
-			WHILE s.Pos() < to DO	(* read all symbols starting in the text selection *)
+			WHILE s.start < to DO	(* read all symbols starting in the text selection *)
 				IF s.type = TextMappers.int THEN	(* symbol is an integer number *)
 					INC(ints)
 				ELSIF s.type = TextMappers.real THEN	(* symbol is a real number *)

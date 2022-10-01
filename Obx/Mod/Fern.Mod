@@ -38,8 +38,8 @@ MODULE ObxFern;
 				ELSE
 					x := a4 * X + b4 * Y + e4; y := c4 * X + d4 * Y + f4
 				END;
-				X := x; xi := x0 + SHORT(SHORT(ENTIER(X * e)));
-				Y := y; eta := y0 + SHORT(SHORT(ENTIER(Y * e)));
+				X := x; xi := x0 + SHORT(ENTIER(X * e));
+				Y := y; eta := y0 + SHORT(ENTIER(Y * e));
 				XYplane.Dot(xi, eta, XYplane.draw)
 			UNTIL "s" = XYplane.ReadKey()
 		END

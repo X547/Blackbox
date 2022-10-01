@@ -116,31 +116,31 @@ MODULE DevComInterfaceGen;
 	PROCEDURE InitDialog*;
 		VAR tlKey, gKey, vKey, lidKey, fKey: WinApi.HKEY; guid: COM.GUID; e: Entry;
 			i, j, k, res, idx, lcid, len: INTEGER; ver: REAL;
-			name: ARRAY 256 OF SHORTCHAR; wstr: ARRAY 256 OF CHAR; nstr: ARRAY 16 OF CHAR;
+			wstr: ARRAY 256 OF CHAR; nstr: ARRAY 16 OF CHAR;
 	BEGIN
 		NEW(dialog.list); dialog.list.next := NIL;
 		dialog.list.index := 0;
 		dialog.list.title := " "; dialog.list.file := "";
 		dialog.current := dialog.list;
-		res := WinApi.RegOpenKey(WinApi.HKEY_CLASSES_ROOT, "TypeLib", tlKey);
+		res := WinApi.RegOpenKeyW(WinApi.HKEY_CLASSES_ROOT, "TypeLib", tlKey);
 		idx := 1;
-		i := 0; res := WinApi.RegEnumKey(tlKey, i, name, LEN(name)); wstr := name$;
+		i := 0; res := WinApi.RegEnumKeyW(tlKey, i, wstr, LEN(wstr));
 		WHILE res = 0 DO
 			res := WinOle.CLSIDFromString(wstr, guid);
 			IF res = 0 THEN
-				res := WinApi.RegOpenKey(tlKey, name, gKey);
-				j := 0; res := WinApi.RegEnumKey(gKey, j, name, LEN(name)); wstr := name$;
+				res := WinApi.RegOpenKeyW(tlKey, wstr, gKey);
+				j := 0; res := WinApi.RegEnumKeyW(gKey, j, wstr, LEN(wstr));
 				WHILE res = 0 DO
 					Strings.StringToReal(wstr, ver, res);
 					IF res = 0 THEN
-						res := WinApi.RegOpenKey(gKey, name, vKey);
-						k := 0; res := WinApi.RegEnumKey(vKey, k, name, LEN(name)); wstr := name$;
+						res := WinApi.RegOpenKeyW(gKey, wstr, vKey);
+						k := 0; res := WinApi.RegEnumKeyW(vKey, k, wstr, LEN(wstr));
 						WHILE res  = 0 DO
 							Strings.StringToInt(wstr, lcid, res);
 							IF res = 0 THEN
-								res := WinApi.RegOpenKey(vKey, name, lidKey);
-								res := WinApi.RegOpenKey(lidKey, "Win32", fKey);
-								IF res # 0 THEN res := WinApi.RegOpenKey(lidKey, "Win16", fKey) END;
+								res := WinApi.RegOpenKeyW(vKey, wstr, lidKey);
+								res := WinApi.RegOpenKeyW(lidKey, "Win32", fKey);
+								IF res # 0 THEN res := WinApi.RegOpenKeyW(lidKey, "Win16", fKey) END;
 								IF res = 0 THEN
 									NEW(e); e.next := dialog.list; dialog.list := e;
 									e.index := idx; INC(idx);
@@ -149,21 +149,21 @@ MODULE DevComInterfaceGen;
 									e.minor := SHORT(SHORT(ENTIER(ver * 100)) MOD 100);
 									e.lcid := lcid;
 									len := LEN(e.title);
-									res := WinApi.RegQueryValue(vKey, NIL, name, len); e.title := name$;
+									res := WinApi.RegQueryValueW(vKey, NIL, e.title, len);
 									Strings.RealToString(ver, wstr);
 									Strings.IntToString(lcid, nstr);
 									e.title := e.title + " (" + wstr + ", " + nstr + ")";
 									len := LEN(e.file);
-									res := WinApi.RegQueryValue(fKey, NIL, name, len); e.file := name$
+									res := WinApi.RegQueryValueW(fKey, NIL, e.file, len)
 								END
 							END;
-							INC(k); res := WinApi.RegEnumKey(vKey, k, name, LEN(name)); wstr := name$
+							INC(k); res := WinApi.RegEnumKeyW(vKey, k, wstr, LEN(wstr))
 						END
 					END;
-					INC(j); res := WinApi.RegEnumKey(gKey, j, name, LEN(name)); wstr := name$
+					INC(j); res := WinApi.RegEnumKeyW(gKey, j, wstr, LEN(wstr))
 				END
 			END;
-			INC(i); res := WinApi.RegEnumKey(tlKey, i, name, LEN(name)); wstr := name$
+			INC(i); res := WinApi.RegEnumKeyW(tlKey, i, wstr, LEN(wstr))
 		END;
 		dialog.library.SetLen(idx); e := dialog.list;
 		WHILE e # NIL DO dialog.library.SetItem(e.index, e.title); e := e.next END;

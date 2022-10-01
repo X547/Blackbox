@@ -26,6 +26,7 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_NO_DATA_FOUND* = 100;
 		SQL_NO_DATA* = 100;
 		SQL_CHAR* = 1;
+		SQL_WCHAR* = -8;
 		SQL_NUMERIC* = 2;
 		SQL_DECIMAL* = 3;
 		SQL_INTEGER* = 4;
@@ -34,6 +35,7 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_REAL* = 7;
 		SQL_DOUBLE* = 8;
 		SQL_VARCHAR* = 12;
+		SQL_WVARCHAR* = -9;
 		SQL_TYPE_NULL* = 0;
 		SQL_TYPE_MAX* = 12;
 		SQL_C_CHAR* = 1;
@@ -55,6 +57,8 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_RESET_PARAMS* = 3;
 		SQL_COMMIT* = 0;
 		SQL_ROLLBACK* = 1;
+		SQL_CD_TRUE* = 1;
+		SQL_CD_FALSE* = 0;
 		SQL_COLUMN_COUNT* = 0;
 		SQL_COLUMN_NAME* = 1;
 		SQL_COLUMN_TYPE* = 2;
@@ -77,6 +81,7 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_COLATT_OPT_MAX* = 18;
 		SQL_COLUMN_DRIVER_START* = 1000;
 		SQL_COLATT_OPT_MIN* = 0;
+		SQL_ATTR_CONNECTION_DEAD* = 1209;
 		SQL_ATTR_READONLY* = 0;
 		SQL_ATTR_WRITE* = 1;
 		SQL_ATTR_READWRITE_UNKNOWN* = 2;
@@ -94,6 +99,7 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_TIME* = 10;
 		SQL_TIMESTAMP* = 11;
 		SQL_LONGVARCHAR* = -1;
+		SQL_WLONGVARCHAR* = -10;
 		SQL_BINARY* = -2;
 		SQL_VARBINARY* = -3;
 		SQL_LONGVARBINARY* = -4;
@@ -114,8 +120,11 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_INTERVAL_HOUR_TO_SECOND* = -91;
 		SQL_INTERVAL_MINUTE_TO_SECOND* = -92;
 		SQL_UNICODE* = -95;
+		SQL_TYPE_DATE* = 91;
 		SQL_TYPE_DRIVER_START* = -80;
 		SQL_TYPE_DRIVER_END* = -95;
+		SQL_TYPE_TIME* = 92;
+		SQL_TYPE_TIMESTAMP* = 93;
 		SQL_SIGNED_OFFSET* = -20;
 		SQL_UNSIGNED_OFFSET* = -22;
 		SQL_C_DATE* = 9;
@@ -684,8 +693,50 @@ MODULE WinSql ["ODBC32.dll"];
 		SQL_PRESERVE_CURSORS* = 1204;
 		SQL_PC_OFF* = 0;
 		SQL_PC_ON* = 1;
-
-
+		SQL_DYNAMIC_CURSOR_ATTRIBUTES1* = 144;
+		SQL_DYNAMIC_CURSOR_ATTRIBUTES2* = 145;
+		SQL_FORWARD_ONLY_CURSOR_ATTRIBUTES1* = 146;
+		SQL_FORWARD_ONLY_CURSOR_ATTRIBUTES2* = 147;
+		SQL_KEYSET_CURSOR_ATTRIBUTES1* = 150;
+		SQL_KEYSET_CURSOR_ATTRIBUTES2* = 151;
+		SQL_STATIC_CURSOR_ATTRIBUTES1* = 167;
+		SQL_STATIC_CURSOR_ATTRIBUTES2* = 168;
+		SQL_CA1_NEXT* = 0;
+		SQL_CA1_ABSOLUTE* = 1;
+		SQL_CA1_RELATIVE* = 2;
+		SQL_CA1_BOOKMARK* = 3;
+		SQL_CA1_LOCK_NO_CHANGE* = 6;
+		SQL_CA1_LOCK_EXCLUSIVE* = 7;
+		SQL_CA1_LOCK_UNLOCK* = 8;
+		SQL_CA1_POS_POSITION* = 9;
+		SQL_CA1_POS_UPDATE* = 10;
+		SQL_CA1_POS_DELETE* = 11;
+		SQL_CA1_POS_REFRESH* = 12;
+		SQL_CA1_POS_POSITIONED_UPDATE* = 13;
+		SQL_CA1_POS_POSITIONED_DELETE* = 14;
+		SQL_CA1_POS_SELECT_FOR_UPDATE* = 15;
+		SQL_CA1_POS_BULK_ADD* = 16;
+		SQL_CA1_POS_BULK_UPDATE_BY_BOOKMARK* = 17;
+		SQL_CA1_POS_BULK_DELETE_BY_BOOKMARK* = 18;
+		SQL_CA1_POS_BULK_FETCH_BY_BOOKMARK* = 19;
+		SQL_CA2_READ_ONLY_CONCURRENCY* = 0;
+		SQL_CA2_LOCK_CONCURRENCY* = 1;
+		SQL_CA2_OPT_ROWVER_CONCURRENCY* = 2;
+		SQL_CA2_OPT_VALUES_CONCURRENCY* = 3;
+		SQL_CA2_SENSITIVITY_ADDITIONS* = 4;
+		SQL_CA2_SENSITIVITY_DELETIONS* = 5;
+		SQL_CA2_SENSITIVITY_UPDATES* = 6;
+		SQL_CA2_MAX_ROWS_SELECT* = 7;
+		SQL_CA2_MAX_ROWS_INSERT* = 8;
+		SQL_CA2_MAX_ROWS_DELETE* = 9;
+		SQL_CA2_MAX_ROWS_UPDATE* = 10;
+		SQL_CA2_MAX_ROWS_CATALOG* = 11;
+		SQL_CA2_CRC_EXACT* = 12;
+		SQL_CA2_CRC_APPROXIMATE* = 13;
+		SQL_CA2_SIMULATE_NON_UNIQUE* = 14;
+		SQL_CA2_SIMULATE_TRY_UNIQUE* = 15;
+		SQL_CA2_SIMULATE_UNIQUE* = 16;
+
 	TYPE
 		PTR* = INTEGER;
 		HENV* = INTEGER;
@@ -744,7 +795,13 @@ MODULE WinSql ["ODBC32.dll"];
 	PROCEDURE SQLConnect* (hdbc: HDBC; szDSN: PSTR; cbDSN: SHORTINT; szUID: PSTR; cbUID: SHORTINT; szAuthStr: PSTR; cbAuthStr: SHORTINT): RETCODE;
 	(*END SQLConnect;*)
 
+	PROCEDURE SQLConnectW* (hdbc: HDBC; szDSN: PWSTR; cbDSN: SHORTINT; szUID: PWSTR; cbUID: SHORTINT; szAuthStr: PWSTR; cbAuthStr: SHORTINT): RETCODE;
+	(*END SQLConnect;*)
+
 	PROCEDURE SQLDescribeCol* (hstmt: HSTMT; icol: SHORTINT; szColName: PSTR; cbColNameMax: SHORTINT; VAR [nil] pcbColName: SHORTINT; VAR [nil] pfSqlType: SHORTINT; VAR [nil] pcbColDef: INTEGER; VAR [nil] pibScale: SHORTINT; VAR [nil] pfNullable: SHORTINT): RETCODE;
+	(*END SQLDescribeCol;*)
+
+	PROCEDURE SQLDescribeColW* (hstmt: HSTMT; icol: SHORTINT; szColName: PWSTR; cbColNameMax: SHORTINT; VAR [nil] pcbColName: SHORTINT; VAR [nil] pfSqlType: SHORTINT; VAR [nil] pcbColDef: INTEGER; VAR [nil] pibScale: SHORTINT; VAR [nil] pfNullable: SHORTINT): RETCODE;
 	(*END SQLDescribeCol;*)
 
 	PROCEDURE SQLDisconnect* (hdbc: HDBC): RETCODE;
@@ -753,8 +810,14 @@ MODULE WinSql ["ODBC32.dll"];
 	PROCEDURE SQLError* (henv: HENV; hdbc: HDBC; hstmt: HSTMT; szSqlState: PSTR; VAR [nil] pfNativeError: INTEGER; szErrorMsg: PSTR; cbErrorMsgMax: SHORTINT; VAR [nil] pcbErrorMsg: SHORTINT): RETCODE;
 	(*END SQLError;*)
 	
+	PROCEDURE SQLErrorW* (henv: HENV; hdbc: HDBC; hstmt: HSTMT; szSqlState: PWSTR; VAR [nil] pfNativeError: INTEGER; szErrorMsg: PWSTR; cbErrorMsgMax: SHORTINT; VAR [nil] pcbErrorMsg: SHORTINT): RETCODE;
+	(*END SQLError;*)
+	
 	(* Replaces SQLError in ODBC 3.0 *)
 	PROCEDURE SQLGetDiagRec* (handletype: SHORTINT; hstmt: HSTMT; recnumber: SHORTINT; szSqlState: PSTR; VAR [nil] pfNativeError: INTEGER; szErrorMsg: PSTR; cbErrorMsgMax: SHORTINT; VAR [nil] pcbErrorMsg: SHORTINT): RETCODE;
+	(*END SQLGetDiagRec;*)
+
+	PROCEDURE SQLGetDiagRecW* (handletype: SHORTINT; hstmt: HSTMT; recnumber: SHORTINT; szSqlState: PWSTR; VAR [nil] pfNativeError: INTEGER; szErrorMsg: PWSTR; cbErrorMsgMax: SHORTINT; VAR [nil] pcbErrorMsg: SHORTINT): RETCODE;
 	(*END SQLGetDiagRec;*)
 
 	PROCEDURE SQLExecDirect* (hstmt: HSTMT; szSqlStr: PSTR; cbSqlStr: INTEGER): RETCODE;
@@ -812,6 +875,9 @@ MODULE WinSql ["ODBC32.dll"];
 
 	PROCEDURE SQLDriverConnect* (hdbc: HDBC; hwnd: HWND; szConnStrIn: PSTR; cbConnStrIn: SHORTINT; szConnStrOut: PSTR; cbConnStrOutMax: SHORTINT; VAR [nil] pcbConnStrOut: SHORTINT; fDriverCompletion: SHORTINT): RETCODE;
 	(*END SQLDriverConnect;*)
+	
+	PROCEDURE SQLGetConnectAttr* (connectionHandle: HDBC; attribute : INTEGER; valuePtr : PTR; bufferLength : INTEGER; VAR [nil] stringLengthPtr : INTEGER) : RETCODE;
+	(*END SQLGetConnectAttr;*)
 
 	PROCEDURE SQLGetConnectOption* (hdbc: HDBC; fOption: SHORTINT; pvParam: PTR): RETCODE;
 	(*END SQLGetConnectOption;*)
@@ -823,6 +889,9 @@ MODULE WinSql ["ODBC32.dll"];
 	(*END SQLGetFunctions;*)
 
 	PROCEDURE SQLGetInfo* (hdbc: HDBC; fInfoType: SHORTINT; rgbInfoValue: PTR; cbInfoValueMax: SHORTINT; VAR [nil] pcbInfoValue: SHORTINT): RETCODE;
+	(*END SQLGetInfo;*)
+
+	PROCEDURE SQLGetInfoW* (hdbc: HDBC; fInfoType: SHORTINT; rgbInfoValue: PTR; cbInfoValueMax: SHORTINT; VAR [nil] pcbInfoValue: SHORTINT): RETCODE;
 	(*END SQLGetInfo;*)
 
 	PROCEDURE SQLGetStmtOption* (hstmt: HSTMT; fOption: SHORTINT; pvParam: PTR): RETCODE;
@@ -838,6 +907,9 @@ MODULE WinSql ["ODBC32.dll"];
 	(*END SQLPutData;*)
 
 	PROCEDURE SQLSetConnectOption* (hdbc: HDBC; fOption: SHORTINT; vParam: INTEGER): RETCODE;
+	(*END SQLSetConnectOption;*)
+	
+	PROCEDURE SQLSetConnectOptionW* (hdbc: HDBC; fOption: SHORTINT; vParam: INTEGER): RETCODE;
 	(*END SQLSetConnectOption;*)
 	
 	(* To replace SQLSetConnectOption in ODBC 3.0 *)

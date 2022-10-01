@@ -2,7 +2,7 @@ MODULE DevCommanders;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Alexander Iljin"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -291,7 +291,7 @@ MODULE DevCommanders;
 		END;
 		font.GetBounds(asc, dsc, fw);
 		size := asc + dsc;
-		points[0].x := l; points[0].y := size;
+		points[0].x := 0; points[0].y := size;
 		points[1].x := u + (size DIV 2); points[1].y := size DIV 2;
 		points[2].x := u + (size DIV 2); points[2].y := size;     
 		f.DrawPath(points, 3, Ports.fill, color, Ports.closedPoly)

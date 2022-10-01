@@ -83,7 +83,7 @@ MODULE DevMarkers;
 	END InitErr;
 
 	PROCEDURE (v: View) InitMsg* (msg: ARRAY OF CHAR), NEW, EXTENSIBLE;
-		VAR i: INTEGER; str: ARRAY 256 OF CHAR;
+		VAR i: INTEGER; str: ARRAY 1024 OF CHAR;
 	BEGIN
 		ASSERT(v.msg = NIL, 20);
 		Dialog.MapString(msg, str);
@@ -146,7 +146,7 @@ MODULE DevMarkers;
 	PROCEDURE Load (v: StdView);
 		VAR view: Views.View; t: TextModels.Model; s: TextMappers.Scanner;
 			err: INTEGER; i: INTEGER; ch: CHAR; loc: Files.Locator;
-			msg: ARRAY 256 OF CHAR;
+			msg: ARRAY 1024 OF CHAR;
 	BEGIN
 		err := ABS(v.err); NumToStr(err, msg, i);
 		loc := Files.dir.This("Dev"); IF loc = NIL THEN RETURN END;

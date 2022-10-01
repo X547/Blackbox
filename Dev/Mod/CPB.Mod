@@ -2,7 +2,7 @@ MODULE DevCPB;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Robert Campbell"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -340,18 +340,22 @@ MODULE DevCPB;
 			Prepare(x); Prepare(y);
 			z.intval := x.intval + y.intval; z.realval := x.realval + y.realval
 		ELSIF type.form IN realSet THEN
-			IF ABS(x.realval) = DevCPM.InfReal THEN
-				IF y.realval # -x.realval THEN z.realval := x.realval ELSE err(212) END
-			ELSIF ABS(y.realval) = DevCPM.InfReal THEN z.realval := y.realval
-			ELSIF (y.realval >= 0) & (x.realval <= MAX(REAL) - y.realval)
-					OR (y.realval < 0) & (x.realval >= -MAX(REAL) - y.realval) THEN
-				z.realval := x.realval + y.realval
-			ELSE err(206)
+			IF (ABS(x.realval) = DevCPM.InfReal) & (x.realval = - y.realval) THEN err(212)
+			ELSE z.realval := x.realval + y.realval
 			END
 		ELSE HALT(100)
 		END;
 		GetConstType(z, type.form, 206, type)
 	END AddConst;
+	
+	PROCEDURE NegateConst (y, z: DevCPT.Const; VAR type: DevCPT.Struct);	(* z := - y *)
+	BEGIN
+		IF type.form IN intSet THEN Prepare(y); z.intval :=  -y.intval; z.realval := -y.realval
+		ELSIF type.form IN realSet THEN z.realval := -y.realval
+		ELSE HALT(100)
+		END;
+		GetConstType(z, type.form, 207, type)
+	END NegateConst;
 	
 	PROCEDURE SubConst (x, y, z: DevCPT.Const; VAR type: DevCPT.Struct);	(* z := x - y *)
 	BEGIN
@@ -359,13 +363,8 @@ MODULE DevCPB;
 			Prepare(x); Prepare(y);
 			z.intval := x.intval - y.intval; z.realval := x.realval - y.realval
 		ELSIF type.form IN realSet THEN
-			IF ABS(x.realval) = DevCPM.InfReal THEN
-				IF y.realval # x.realval THEN z.realval := x.realval ELSE err(212) END
-			ELSIF ABS(y.realval) = DevCPM.InfReal THEN z.realval := -y.realval
-			ELSIF (y.realval >= 0) & (x.realval >= -MAX(REAL) + y.realval)
-					OR (y.realval < 0) & (x.realval <= MAX(REAL) + y.realval) THEN
-				z.realval := x.realval - y.realval
-			ELSE err(207)
+			IF (ABS(x.realval) = DevCPM.InfReal) & (x.realval =  y.realval) THEN err(212)
+			ELSE z.realval := x.realval - y.realval
 			END
 		ELSE HALT(100)
 		END;
@@ -379,19 +378,9 @@ MODULE DevCPB;
 			z.realval := x.realval * y.realval + x.intval * y.realval + x.realval * y.intval;
 			z.intval := x.intval * y.intval
 		ELSIF type.form IN realSet THEN
-			IF ABS(x.realval) = DevCPM.InfReal THEN
-				IF y.realval > 0 THEN z.realval := x.realval
-				ELSIF y.realval < 0 THEN z.realval := -x.realval
-				ELSE err(212)
-				END
-			ELSIF ABS(y.realval) = DevCPM.InfReal THEN
-				IF x.realval > 0 THEN z.realval := y.realval
-				ELSIF x.realval < 0 THEN z.realval := -y.realval
-				ELSE err(212)
-				END
-			ELSIF (ABS(y.realval) <= 1) OR (ABS(x.realval) <= MAX(REAL) / ABS(y.realval)) THEN
-				z.realval := x.realval * y.realval
-			ELSE err(204)
+			IF (ABS(x.realval) = DevCPM.InfReal) & ( y.realval = 0.0) THEN err(212)
+			ELSIF (ABS(y.realval) = DevCPM.InfReal) & (x.realval = 0.0) THEN err(212)
+			ELSE z.realval := x.realval * y.realval
 			END
 		ELSE HALT(100)
 		END;
@@ -401,18 +390,9 @@ MODULE DevCPB;
 	PROCEDURE DivConst (x, y, z: DevCPT.Const; VAR type: DevCPT.Struct);	(* z := x / y *)
 	BEGIN
 		IF type.form IN realSet THEN
-			IF y.realval # 0.0 THEN
-				IF ABS(x.realval) = DevCPM.InfReal THEN
-					IF ABS(y.realval) = DevCPM.InfReal THEN err(212)
-					ELSIF y.realval >= 0 THEN z.realval := x.realval
-					ELSE z.realval := -x.realval
-					END
-				ELSIF ABS(y.realval) = DevCPM.InfReal THEN z.realval := 0
-				ELSIF (ABS(y.realval) >= 1) OR (ABS(x.realval) <= MAX(REAL) * ABS(y.realval)) THEN
-					z.realval := x.realval / y.realval
-				ELSE err(204)
-				END
-			ELSE err(205)
+			IF (x.realval = 0.0) & (y.realval = 0.0) THEN err(212)
+			ELSIF (ABS(x.realval) =  DevCPM.InfReal) & (ABS(y.realval) =  DevCPM.InfReal) THEN err(212)
+			ELSE z.realval := x.realval / y.realval
 			END
 		ELSE HALT(100)
 		END;
@@ -473,6 +453,17 @@ MODULE DevCPB;
 		RETURN res
 	END LessConst;
 	
+	PROCEDURE IsNegConst (x: DevCPT.Const; form: INTEGER): BOOLEAN;	(* x < 0  OR x = (-0.0) *)
+		VAR res: BOOLEAN;
+	BEGIN
+		CASE form OF
+		| Int8..Int32: res := x.intval < 0
+		| Int64: Prepare(x); res := x.realval + x.intval < 0
+		| Real32, Real64: res := (x.realval <= 0.) & (1. / x.realval <= 0.)
+		END;
+		RETURN res
+	END IsNegConst;
+
 
 	PROCEDURE NewIntConst*(intval: INTEGER): DevCPT.Node;
 		VAR x: DevCPT.Node;
@@ -498,11 +489,19 @@ MODULE DevCPB;
 		RETURN x
 	END NewRealConst;
 	
-	PROCEDURE NewString*(str: DevCPT.String; len: INTEGER): DevCPT.Node;
-		VAR x: DevCPT.Node;
+	PROCEDURE NewString*(str: DevCPT.String; lstr: POINTER TO ARRAY OF CHAR; len: INTEGER): DevCPT.Node;
+		VAR i, j, c: INTEGER; x: DevCPT.Node; ext: DevCPT.ConstExt;
 	BEGIN
-		x := DevCPT.NewNode(Nconst); x.conval := DevCPT.NewConst(); x.typ := DevCPT.string8typ;
-		x.conval.intval := DevCPM.ConstNotAlloc; x.conval.intval2 := len; x.conval.ext := str;
+		x := DevCPT.NewNode(Nconst); x.conval := DevCPT.NewConst();
+		IF lstr # NIL THEN
+			x.typ := DevCPT.string16typ;
+			NEW(ext, 3 * len); i := 0; j := 0;
+			REPEAT c := ORD(lstr[i]); INC(i); DevCPM.PutUtf8(ext^, c, j) UNTIL c = 0;
+			x.conval.ext := ext
+		ELSE
+			x.typ := DevCPT.string8typ; x.conval.ext := str
+		END;
+		x.conval.intval := DevCPM.ConstNotAlloc; x.conval.intval2 := len;
 		RETURN x
 	END NewString;
 	
@@ -848,7 +847,7 @@ MODULE DevCPB;
 				IF f IN intSet + realSet + {Set} THEN
 					IF z.class = Nconst THEN
 						IF f = Set THEN z.conval.setval := -z.conval.setval
-						ELSE SubConst(zero, z.conval, z.conval, z.typ)
+						ELSE NegateConst(z.conval, z.conval, z.typ)
 						END;
 						z.obj := NIL
 					ELSE
@@ -860,7 +859,7 @@ MODULE DevCPB;
 			| abs:
 				IF f IN intSet + realSet THEN
 					IF z.class = Nconst THEN
-						IF LessConst(z.conval, zero, f) THEN SubConst(zero, z.conval, z.conval, z.typ) END;
+						IF IsNegConst(z.conval, f) THEN NegateConst(z.conval, z.conval, z.typ) END;
 						z.obj := NIL
 					ELSE
 						IF f < Int32 THEN Convert(z, DevCPT.int32typ) END;
@@ -984,7 +983,8 @@ MODULE DevCPB;
 			| geq: xval.intval := BoolToInt(~LessConst(xval, yval, f)); x.typ := DevCPT.booltyp
 			END
 		ELSE err(100)
-		END
+		END;
+		x.obj := NIL
 	END ConstOp;
 	
 	PROCEDURE Op*(op: BYTE; VAR x: DevCPT.Node; y: DevCPT.Node);
@@ -1001,7 +1001,7 @@ MODULE DevCPB;
 		IF (z.class = Ntype) OR (z.class = Nproc) OR (y.class = Ntype) OR (y.class = Nproc) THEN err(126)
 		ELSE
 			Promote(z, y, op);
-			IF (z.class = Nconst) & (y.class = Nconst) THEN ConstOp(op, z, y); z.obj := NIL
+			IF (z.class = Nconst) & (y.class = Nconst) THEN ConstOp(op, z, y)
 			ELSE
 				typ := z.typ; f := typ.form; g := y.typ.form;
 				CASE op OF
@@ -1030,8 +1030,7 @@ MODULE DevCPB;
 					END ;
 					IF do THEN NewOp(op, typ, z, y) END;
 				| slash:
-					IF f IN realSet THEN
-						IF (y.class = Nconst) & (y.conval.realval = 0) THEN err(205) END
+					IF f IN realSet THEN (* OK *)
 					ELSIF (f # Set) & (f # Undef) THEN err(102); typ := DevCPT.undftyp
 					END ;
 					NewOp(op, typ, z, y)
@@ -1237,8 +1236,11 @@ MODULE DevCPB;
 				IF ynode.obj.mode = LProc THEN
 					IF ynode.obj.mnolev = 0 THEN ynode.obj.mode := XProc ELSE err(73) END
 				END;
-				IF DevCPT.EqualType(x.BaseTyp, ynode.obj.typ) THEN CheckParameters(x.link, ynode.obj.link, FALSE)
-				ELSE err(117)
+				IF (x.sysflag = 0) & (ynode.obj.sysflag >= 0) OR (x.sysflag = ynode.obj.sysflag) THEN
+					IF DevCPT.EqualType(x.BaseTyp, ynode.obj.typ) THEN CheckParameters(x.link, ynode.obj.link, FALSE)
+					ELSE err(117)
+					END
+				ELSE err(113)
 				END
 			ELSE err(113)
 			END
@@ -1448,6 +1450,11 @@ MODULE DevCPB;
 				(* ELSIF x.typ.sysflag = jstr THEN StrDeref(x) *)
 				ELSE
 					IF x.typ.form = Pointer THEN DeRef(x) END;
+					IF x.class = Nconst THEN
+						IF x.typ.form = Char8 THEN CharToString8(x)
+						ELSIF x.typ.form = Char16 THEN CharToString16(x)
+						END
+					END;
 					IF ~(x.typ.comp IN {DynArr, Array}) & ~(x.typ.form IN {String8, String16}) THEN err(131) END
 				END
 		| copyfn: (*COPY*)

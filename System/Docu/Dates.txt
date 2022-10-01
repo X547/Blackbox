@@ -35,7 +35,7 @@ Module Dates provides basic procedures to work with dates. It covers the Julian 
 CONST monday, tuesday, wednesday, thursday, friday, saturday, sunday
 Possible return value of procedure DayOfWeek.
 
-CONST short,  long, abbreviated, longPlain, abbreviatedPlain
+CONST short,  long, abbreviated, plainLong, plainAbbreviated
 Possible value for parameter format of DateToString to specify the format.
 
 

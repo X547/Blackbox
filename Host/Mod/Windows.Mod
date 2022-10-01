@@ -2,7 +2,7 @@ MODULE HostWindows;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Alexander Iljin, Josef Templ"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -12,9 +12,9 @@ MODULE HostWindows;
 **)
 
 	IMPORT Log,
-		SYSTEM, KERNEL32, GDI32, USER32, Services,
+		SYSTEM, WinApi, Services,
 		Kernel, Meta, Files, HostFiles, Ports, HostRegistry, HostPorts, Properties,
-		Views, Controllers, Containers, Dialog, Converters, Documents, Windows, WinApi,
+		Views, Controllers, Containers, Dialog, Converters, Documents, Windows,
 		HostMechanisms (* don't remove *);
 
 	CONST
@@ -28,7 +28,6 @@ MODULE HostWindows;
 		borderW = 5 * Ports.point;
 		guardCheck = 4;
 		useSeparators = TRUE; noSeparators = FALSE; 	(* parameters to be used with AppendInt *)
-		minimized = MAX(INTEGER);
 
 		ENTER = 0DX; ESC = 1BX;
 		TAB = 09X; LTAB = 0AX; RDEL = 07X; LDEL = 08X;
@@ -43,7 +42,7 @@ MODULE HostWindows;
 
 		Window* = POINTER TO EXTENSIBLE RECORD (Windows.Window)
 			hook*: Hook;
-			wnd-: USER32.Handle;
+			wnd-: WinApi.HANDLE;
 			child-: BOOLEAN;	(* if window is a child of the application window *)
 			dlg: BOOLEAN;	(* if window has a 3d dialog border *)
 			fix: BOOLEAN;	(* window is opened with fix coordinates *)
@@ -55,7 +54,8 @@ MODULE HostWindows;
 			dw, dh: INTEGER;	(* window size correction for tools *)
 			mw, mh: INTEGER;	(* max window size *)
 			destroyed: BOOLEAN;
-			wheelPos: SHORTINT;
+			minimized: BOOLEAN;
+			wheelPos: INTEGER;
 			title: Views.Title
 		END;
 
@@ -81,9 +81,9 @@ MODULE HostWindows;
 		noClientScroll*: BOOLEAN; (* If true the client window of the application window doesn't display scroll bars*)
 		fullSize*: BOOLEAN; (* If true the client window of the application window doesn't display scroll bars*)
 		dir-: Directory;
-		main-, client-, status-: USER32.Handle;	(* main windows *)
+		main-, client-, status-: WinApi.HANDLE;	(* main windows *)
 		unit-: INTEGER;	(* resolution of main window *)
-		ctl3d-: USER32.Handle;
+		ctl3d-: WinApi.HANDLE;
 		scW-, scH-: INTEGER;	(* screen width and height *)
 		mainW-, mainH-: INTEGER;	(* main window client area size *)
 		mainHook*: Hook;
@@ -93,22 +93,16 @@ MODULE HostWindows;
 		newNumber: INTEGER;	(* number for next untitled document *)
 		winAnchor: Window;	(* list of all windows, from top to bottom, first is dumy header *)
 		bgWindow: Window; 	(* current background window, if any *)
-		whiteBrush, nullPen: GDI32.Handle;
-		docIcon, dirtyIcon: USER32.Handle;
-		instance: USER32.Handle;	(* application instance *)
+		whiteBrush, nullPen: WinApi.HANDLE;
+		docIcon, dirtyIcon: WinApi.HANDLE;
+		instance: WinApi.HANDLE;	(* application instance *)
 		cbViewer: Window;	(* pseudo window for clipboard drawing *)
 		cbValid: BOOLEAN;	(* clipboard contents is valid *)
 		mainActive: BOOLEAN;	(* main is active window *)
 		activating: BOOLEAN;	(* used for mouse window activation *)
 		actMod: Kernel.Module;
-		FramePaint*: PROCEDURE(
-			wnd: USER32.Handle; msg, wPar, lPar: INTEGER): INTEGER;
-		GetScrollInfo*: PROCEDURE(
-			wnd: USER32.Handle; bar: INTEGER; VAR info: ScrollInfo): INTEGER;
-		SetScrollInfo*: PROCEDURE(
-			wnd: USER32.Handle; bar: INTEGER; VAR info: ScrollInfo; redraw: INTEGER): INTEGER;
 
-		font, info: USER32.Handle;
+		font, info: WinApi.HANDLE;
 		statusH, alloc, total: INTEGER;
 		allocStr, totalStr, byteStr: ARRAY 256 OF CHAR;
 		idleTraped: BOOLEAN;
@@ -116,10 +110,13 @@ MODULE HostWindows;
 
 		lBorder, tBorder, rBorder, bBorder: INTEGER;	(* space for tools in main window *)
 
+		hookDocWinHandler*: PROCEDURE (
+			wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER; VAR res: INTEGER): BOOLEAN;
+			(* hook for handling application specific messages; returns TRUE iff handled *)
 
 	PROCEDURE ScrollModPressed (): BOOLEAN;
 	BEGIN
-		RETURN USER32.GetAsyncKeyState(11H) < 0
+		RETURN WinApi.GetAsyncKeyState(11H) < 0
 	END ScrollModPressed;
 
 	(* auxiliary portable prcedures *)
@@ -170,7 +167,7 @@ MODULE HostWindows;
 
 	(** miscellaneous procedures **)
 
-	PROCEDURE ActualWnd* (): USER32.Handle;
+	PROCEDURE ActualWnd* (): WinApi.HANDLE;
 	BEGIN
 (*
 		IF (fWindow # NIL) & ~fWindow.child & fWindow.used THEN RETURN fWindow.wnd
@@ -178,16 +175,16 @@ MODULE HostWindows;
 		END
 *)
 		IF (fWindow # NIL) & ~fWindow.child & fWindow.used THEN RETURN fWindow.wnd
-		ELSIF USER32.IsWindowVisible(main) # 0 THEN RETURN main
+		ELSIF WinApi.IsWindowVisible(main) # 0 THEN RETURN main
 		ELSE RETURN 0
 		END
 	END ActualWnd;
 
-	PROCEDURE ThisWindow (wnd: USER32.Handle): Window;
+	PROCEDURE ThisWindow (wnd: WinApi.HANDLE): Window;
 	(* determine window by its WindowPtr *)
 	BEGIN
 		IF wnd = cbViewer.wnd THEN RETURN cbViewer
-		ELSE RETURN SYSTEM.VAL(Window, USER32.GetWindowLongA(wnd, 0))
+		ELSE RETURN SYSTEM.VAL(Window, WinApi.GetWindowLongW(wnd, 0))
 		END
 	END ThisWindow;
 
@@ -294,32 +291,32 @@ MODULE HostWindows;
 
 	PROCEDURE OpenDoc (w: Window; l, t, r, b: INTEGER; min, max: BOOLEAN);
 		(* first part of Open, called from directory.open *)
-		VAR dw, dh, res: INTEGER; wnd: GDI32.Handle; m: USER32.MDICreateStruct; c: Containers.Controller;
+		VAR dw, dh, res: INTEGER; wnd: WinApi.HANDLE; m: WinApi.MDICREATESTRUCTW; c: Containers.Controller;
 	BEGIN
 		ASSERT(~(Windows.isTool IN w.flags), 20);
-		m.title := "";
-		IF Windows.isAux IN w.flags THEN m.class := "Oberon Aux"
-		ELSE m.class := "Oberon Doc"
+		m.szTitle := "";
+		IF Windows.isAux IN w.flags THEN m.szClass := "Oberon Aux"
+		ELSE m.szClass := "Oberon Doc"
 		END;
-		m.instance := instance;
-		m.x := USER32.CWUseDefault;
-		m.y := USER32.CWUseDefault;
-		m.w := USER32.CWUseDefault;
-		m.h := USER32.CWUseDefault;
+		m.hOwner := instance;
+		m.x := WinApi.CW_USEDEFAULT;
+		m.y := WinApi.CW_USEDEFAULT;
+		m.cx := WinApi.CW_USEDEFAULT;
+		m.cy := WinApi.CW_USEDEFAULT;
 		IF (l >= 0) & (t >= 0) & ~((l = 0) & (t = 0) & (r = 0) & (b = 0)) THEN
 			m.x := l; m.y := t;
 			IF (r > l) & (b > t) THEN
-				m.w := r - l; m.h := b - t; w.fix := TRUE
+				m.cx := r - l; m.cy := b - t; w.fix := TRUE
 			END
 		END;
 (*
 		IF (l < r) & (t < b) THEN
 			m.x := l; m.w := r - l; m.y := t; m.h := b - t; w.fix := TRUE
 		ELSE
-			m.x := USER32.CWUseDefault;
-			m.y := USER32.CWUseDefault;
-			m.w := USER32.CWUseDefault;
-			m.h := USER32.CWUseDefault
+			m.x := WinApi.CWUseDefault;
+			m.y := WinApi.CWUseDefault;
+			m.w := WinApi.CWUseDefault;
+			m.h := WinApi.CWUseDefault
 		END;
 *)
 		m.style := ThisStyle({}, w.flags);
@@ -336,44 +333,46 @@ MODULE HostWindows;
 		IF dir.background THEN
 			w.doc.PollRect(l, t, r, b);
 			dw := (r - l ) DIV w.frame.unit; dh := (b - t) DIV w.frame.unit; (* TODO: Correct this *)
-			IF Documents.winWidth IN c.opts THEN m.w := mainW ELSE m.w := dw END;
-			IF Documents.winHeight IN c.opts THEN m.h := mainH ELSE m.h := dh END;
+			IF Documents.winWidth IN c.opts THEN m.cx := mainW ELSE m.cx := dw END;
+			IF Documents.winHeight IN c.opts THEN m.cy := mainH ELSE m.cy := dh END;
 			m.x := 0; m.y := 0;
 			w.fix := TRUE;
 			m.style := {}
 		END;
-		wnd := USER32.SendMessageA(client, USER32.WMMDICreate, 0, SYSTEM.ADR(m));
+		wnd := WinApi.SendMessageW(client, WinApi.WM_MDICREATE, 0, SYSTEM.ADR(m));
 		IF dir.background THEN
 			res := WinApi.SetWindowPos(
 				wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0, WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE)
 		END;
 		IF ~(Windows.noResize IN w.flags) THEN
 (*
-			IF max THEN res := USER32.ShowWindow(wnd, 3) END;	(* maximized *)
+			IF max THEN res := WinApi.ShowWindow(wnd, 3) END;	(* maximized *)
 *)
-			IF min THEN res := USER32.ShowWindow(wnd, 6) END	(* minimized *)
+			IF min THEN res := WinApi.ShowWindow(wnd, 6) END	(* minimized *)
 		END;
 		c.SetFocus(w.doc.ThisView());
-		res := USER32.SetFocus(wnd);
-		res := USER32.UpdateWindow(wnd)
+		res := WinApi.SetFocus(wnd);
+		res := WinApi.UpdateWindow(wnd)
 	END OpenDoc;
 
-	PROCEDURE CreateDoc (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE CreateDoc (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		(* second part of Open, called from window handler *)
 		VAR res, cw, ch, u, dl, dt, dr, db: INTEGER; w: Window; style, f: SET; v: Views.View; col: Ports.Color;
-			dc: USER32.Handle; rect, crect: USER32.Rect; cs: USER32.PCreateStruct; c: Containers.Controller;
+			dc: WinApi.HANDLE; rect, crect: WinApi.RECT; c: Containers.Controller;
+			cs: WinApi.PtrCREATESTRUCTW; mdics: WinApi.PtrMDICREATESTRUCTW;
 	BEGIN
-		cs := SYSTEM.VAL(USER32.PCreateStruct, lParam);
-		w := SYSTEM.VAL(Window, cs.params.lParam);
-		res := USER32.SetWindowLongA(wnd, 0, SYSTEM.VAL(INTEGER, w));
+		cs := SYSTEM.VAL(WinApi.PtrCREATESTRUCTW, lParam);
+		mdics := SYSTEM.VAL(WinApi.PtrMDICREATESTRUCTW, cs.lpCreateParams);
+		w := SYSTEM.VAL(Window, mdics.lParam);
+		res := WinApi.SetWindowLongW(wnd, 0, SYSTEM.VAL(INTEGER, w));
 		w.wnd := wnd;
-		dc := USER32.GetDC(wnd);
+		dc := WinApi.GetDC(wnd);
 		w.port(HostPorts.Port).SetDC(dc, wnd);
 		IF ~(Windows.noHScroll IN w.flags) THEN
-			res := USER32.SetScrollRange(wnd, USER32.SBHorz, 0, scrollRange, 1)
+			res := WinApi.SetScrollRange(wnd, WinApi.SB_HORZ, 0, scrollRange, 1)
 		END;
 		IF ~(Windows.noVScroll IN w.flags) THEN
-			res := USER32.SetScrollRange(wnd, USER32.SBVert, 0, scrollRange, 1)
+			res := WinApi.SetScrollRange(wnd, WinApi.SB_VERT, 0, scrollRange, 1)
 		END;
 		v := w.doc.ThisView(); f := {};
 		WITH v: Containers.View DO
@@ -385,7 +384,7 @@ MODULE HostWindows;
 		w.dlg := ({Containers.noCaret, Containers.noSelection} - f = {})	(* mask mode *)
 				& (col = Ports.dialogBackground);	(* dialog background *)
 
-		style := BITS(USER32.GetWindowLongA(wnd, -16));
+		style := BITS(WinApi.GetWindowLongW(wnd, -16));
 		style := ThisStyle(style - {20, 21, 18}, w.flags);
 		IF Windows.noResize IN w.flags THEN
 			style := style - (WinApi.WS_THICKFRAME + WinApi.WS_MAXIMIZEBOX) + WinApi.WS_BORDER
@@ -399,15 +398,15 @@ MODULE HostWindows;
 			res := WinApi.ShowScrollBar(wnd, WinApi.SB_BOTH, WinApi.FALSE)
 		END;
 
-		res := USER32.SetWindowLongA(wnd, -16, ORD(style));
-		style := BITS(USER32.GetWindowLongA(wnd, -20));
+		res := WinApi.SetWindowLongW(wnd, -16, ORD(style));
+		style := BITS(WinApi.GetWindowLongW(wnd, -20));
 		IF ~dir.background THEN INCL(style, 8) ELSE EXCL(style, 8) END;	(* window edge *)
 		IF w.dlg THEN (* INCL(style, 0) *) ELSE INCL(style, 9) END;	(* dialog modal frame, client edge *)
 
-		res := USER32.SetWindowLongA(wnd, -20, ORD(style));
-		res := USER32.SetWindowPos(w.wnd, 0, 0, 0, 0, 0, {0, 1, 2, 3, 5});
+		res := WinApi.SetWindowLongW(wnd, -20, ORD(style));
+		res := WinApi.SetWindowPos(w.wnd, 0, 0, 0, 0, 0, {0, 1, 2, 3, 5});
 			(* no size, no move, no z order, no redraw, frame changed *)
-		res := USER32.GetClientRect(wnd, rect);
+		res := WinApi.GetClientRect(wnd, rect);
 		u := w.frame.unit; cw := rect.right; ch := rect.bottom;
 		w.port.SetSize(0, 0);
 		w.doc.PollRect(dl, dt, dr, db);
@@ -424,7 +423,7 @@ MODULE HostWindows;
 			ch := (db - dt) DIV u;
 			w.doc.SetRect(0, 0, dr - dl, db - dt)
 		ELSE
-			res := USER32.GetClientRect(client, crect);
+			res := WinApi.GetClientRect(client, crect);
 			cw := (dr - dl + 2 * borderW) DIV u + 1;
 			ch := (db - dt + 2 * borderW) DIV u + 1;
 			IF ~(Windows.noHScroll IN w.flags) & (cw > crect.right - 40) THEN cw := crect.right - 80 END;
@@ -442,7 +441,7 @@ MODULE HostWindows;
 		w.Update;
 		w.UpdateScrollbars(FALSE);
 		IF ~w.fix THEN w.SetSize(cw, ch) END;
-		res := USER32.GetWindowRect(wnd, rect);
+		res := WinApi.GetWindowRect(wnd, rect);
 		w.mw := rect.right - rect.left; w.mh := rect.bottom - rect.top;
 		HostMechanisms.InstallDropTarget(wnd, w);
 		w.setup := TRUE
@@ -450,13 +449,13 @@ MODULE HostWindows;
 
 	PROCEDURE OpenDlg (w: Window; l, t, r, b: INTEGER; min, max: BOOLEAN);
 		(* first part of Open, called from directory.open *)
-		VAR res, cx, cy, cw, ch: INTEGER; wnd: GDI32.Handle; style: SET;
-			rect: USER32.Rect; c: Containers.Controller;
+		VAR res, cx, cy, cw, ch: INTEGER; wnd: WinApi.HANDLE; style: SET;
+			rect: WinApi.RECT; c: Containers.Controller;
 	BEGIN
 		ASSERT(Windows.isTool IN w.flags, 20);
 		style := ThisStyle({7, 19, 22, 23, (*25,*) 31}, w.flags);	(* dialog, sysmenu, border, clipchildren, popup *)
 		w.child := FALSE; w.dlg := TRUE;
-		res := USER32.GetWindowRect(main, rect);
+		res := WinApi.GetWindowRect(main, rect);
 		cw := (rect.right - rect.left) DIV 2;
 		cx := rect.left + cw DIV 2;
 		ch := (rect.bottom - rect.top) DIV 2;
@@ -471,7 +470,7 @@ MODULE HostWindows;
 		IF (l < r) & (t < b) THEN
 			cx := l; cw := r - l; cy := t; ch := b - t; w.fix := TRUE
 		ELSE
-			res := USER32.GetWindowRect(main, rect);
+			res := WinApi.GetWindowRect(main, rect);
 			cw := (rect.right - rect.left) DIV 2;
 			cx := rect.left + cw DIV 2;
 			ch := (rect.bottom - rect.top) DIV 2;
@@ -480,49 +479,50 @@ MODULE HostWindows;
 *)
 		IF noAppWin THEN
 			style := style + WinApi.WS_MINIMIZEBOX;
-			wnd := USER32.CreateWindowExA(WinApi.WS_EX_APPWINDOW + WinApi.WS_EX_DLGMODALFRAME,
+			wnd := WinApi.CreateWindowExW(WinApi.WS_EX_APPWINDOW + WinApi.WS_EX_DLGMODALFRAME,
 															"Oberon Dlg", "", style, cx, cy, cw, ch,
 															ActualWnd(), 0, instance, SYSTEM.VAL(INTEGER, w))
 		ELSE
-			wnd := USER32.CreateWindowExA({0}, "Oberon Dlg", "", style, cx, cy, cw, ch,
+			wnd := WinApi.CreateWindowExW({0}, "Oberon Dlg", "", style, cx, cy, cw, ch,
 															ActualWnd(), 0, instance, SYSTEM.VAL(INTEGER, w))
 		END;
-		res := USER32.ShowWindow(wnd, 1);
+		res := WinApi.ShowWindow(wnd, 1);
 		c := w.doc.ThisController();
 		c.SetFocus(w.doc.ThisView());
-		res := USER32.SetFocus(wnd);
-		res := USER32.UpdateWindow(wnd)
+		res := WinApi.SetFocus(wnd);
+		res := WinApi.UpdateWindow(wnd)
 	END OpenDlg;
 
-	PROCEDURE CreateDlg (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE CreateDlg (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		(* second part of Open, called from window handler *)
 		VAR res, cw, ch, dl, dt, dr, db: INTEGER; w: Window;
-			dc, menu: USER32.Handle; rect: USER32.Rect; cs: USER32.PCreateStruct;
+			dc, menu: WinApi.HANDLE; rect: WinApi.RECT;
+			cs: WinApi.PtrCREATESTRUCTW;
 	BEGIN
-		cs := SYSTEM.VAL(USER32.PCreateStruct, lParam);
-		w := SYSTEM.VAL(Window, cs.params);
-		res := USER32.SetWindowLongA(wnd, 0, SYSTEM.VAL(INTEGER, w));
+		cs := SYSTEM.VAL(WinApi.PtrCREATESTRUCTW, lParam);
+		w := SYSTEM.VAL(Window, cs.lpCreateParams);
+		res := WinApi.SetWindowLongW(wnd, 0, SYSTEM.VAL(INTEGER, w));
 		w.wnd := wnd; w.child := FALSE; w.dlg := TRUE;
 		IF ~(inPlace IN w.flags) THEN
 
-			menu := USER32.GetSystemMenu(wnd, 0);
-			res := USER32.RemoveMenu(menu, 0F000H, {});	(* SC_SIZE *)
-			IF ~noAppWin THEN res := USER32.RemoveMenu(menu, 0F020H, {}) END;	(* SC_MINIMIZE *)
-			res := USER32.RemoveMenu(menu, 0F030H, {});	(* SC_MAXIMIZE *)
-			res := USER32.RemoveMenu(menu, 0F120H, {});	(* SC_RESTORE *)
+			menu := WinApi.GetSystemMenu(wnd, 0);
+			res := WinApi.RemoveMenu(menu, 0F000H, {});	(* SC_SIZE *)
+			IF ~noAppWin THEN res := WinApi.RemoveMenu(menu, 0F020H, {}) END;	(* SC_MINIMIZE *)
+			res := WinApi.RemoveMenu(menu, 0F030H, {});	(* SC_MAXIMIZE *)
+			res := WinApi.RemoveMenu(menu, 0F120H, {});	(* SC_RESTORE *)
 			IF dir.unmoveable THEN
-				res := USER32.RemoveMenu(menu, 0F010H, {})	(* SC_MOVE *)
+				res := WinApi.RemoveMenu(menu, 0F010H, {})	(* SC_MOVE *)
 			END;
 
-			dc := USER32.GetDC(wnd);
+			dc := WinApi.GetDC(wnd);
 			w.port(HostPorts.Port).SetDC(dc, wnd);
 			IF ~(Windows.noHScroll IN w.flags) THEN
-				res := USER32.SetScrollRange(wnd, USER32.SBHorz, 0, scrollRange, 1)
+				res := WinApi.SetScrollRange(wnd, WinApi.SB_HORZ, 0, scrollRange, 1)
 			END;
 			IF ~(Windows.noVScroll IN w.flags) THEN
-				res := USER32.SetScrollRange(wnd, USER32.SBVert, 0, scrollRange, 1)
+				res := WinApi.SetScrollRange(wnd, WinApi.SB_VERT, 0, scrollRange, 1)
 			END;
-			res := USER32.GetClientRect(wnd, rect);
+			res := WinApi.GetClientRect(wnd, rect);
 			IF w.fix THEN
 				cw := rect.right; ch := rect.bottom;
 				w.doc.SetRect(0, 0, cw * w.frame.unit, ch * w.frame.unit)
@@ -561,31 +561,34 @@ MODULE HostWindows;
 			IF (w.flags * {Windows.isAux, Windows.isTool} = {}) & (w.seq # NIL) THEN
 				d := ~(Windows.neverDirty IN w.flags) & w.seq.Dirty();
 				IF (d # w.dirty) & (w = aWindow) THEN
-					res := USER32.SendMessageA(w.wnd, USER32.WMNCActivate, 1, 0);
-					IF USER32.IsZoomed(w.wnd) # 0 THEN res := USER32.DrawMenuBar(main) END
+					res := WinApi.SendMessageW(w.wnd, WinApi.WM_NCACTIVATE, 1, 0);
+					IF WinApi.IsZoomed(w.wnd) # 0 THEN res := WinApi.DrawMenuBar(main) END
 				END
 			END
 		END
 	END ForwardCtrlMsg;
 
 	PROCEDURE (w: Window) SetSize* (width, height: INTEGER);
-		VAR res, x, y, dw, dh: INTEGER; cr, wr: USER32.Rect; p: USER32.Point;
+		VAR res, x, y, dw, dh: INTEGER; cr, wr: WinApi.RECT; p: WinApi.POINT;
 	BEGIN
 		IF w.port # NIL THEN
-			IF (width = 0) & (height = 0) THEN w.SetSize^(minimized, minimized)
+			IF (width = 0) & (height = 0) THEN
+				w.minimized := TRUE
+				(* no SetSize^ call *)
 			ELSE
+				w.minimized := FALSE;
 				w.SetSize^(width, height);
-				res := USER32.GetClientRect(w.wnd, cr);
+				res := WinApi.GetClientRect(w.wnd, cr);
 				dw := width - cr.right; dh := height - cr.bottom;
 				IF ~(inPlace IN w.flags) & (w # cbViewer) & ((dw # 0) OR (dh # 0)) THEN
-					res := USER32.GetWindowRect(w.wnd, wr);
+					res := WinApi.GetWindowRect(w.wnd, wr);
 					p.x := wr.left; p.y := wr.top;
-					IF ~(Windows.isTool IN w.flags) THEN res := USER32.ScreenToClient(client, p) END;
+					IF ~(Windows.isTool IN w.flags) THEN res := WinApi.ScreenToClient(client, p) END;
 					x := p.x; y := p.y;
 					IF Windows.isTool IN w.flags THEN DEC(x, dw DIV 2); DEC(y, dh DIV 2) END;
 					width := wr.right - wr.left + dw; height := wr.bottom - wr.top + dh;
 					IF w.child THEN
-						res := USER32.GetClientRect(client, cr);
+						res := WinApi.GetClientRect(client, cr);
 						dw := cr.right; dh := cr.bottom
 					ELSE
 						dw := scW; dh := scH
@@ -599,7 +602,7 @@ MODULE HostWindows;
 					IF x + width > dw THEN width := dw - x END;
 					IF y + height > dh THEN height := dh - y END;
 	*)
-					res := USER32.SetWindowPos(w.wnd, 0, x, y, width, height,
+					res := WinApi.SetWindowPos(w.wnd, 0, x, y, width, height,
 						WinApi.SWP_FRAMECHANGED + WinApi.SWP_NOZORDER + WinApi.SWP_NOACTIVATE)
 				END
 			END
@@ -608,14 +611,14 @@ MODULE HostWindows;
 
 	PROCEDURE (w: Window) SetTitle2* (title: Views.Title), NEW;
 	(* assign name of window, generate title out of name, and update window title bar *)
-		VAR res: INTEGER; h: Window; t: ARRAY 256 OF CHAR; st: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; h: Window; t: ARRAY 256 OF CHAR;
 	BEGIN
 		ASSERT(w.wnd # 0, 20);
 		StripTitle(title);
 		h := w;
 		REPEAT
-			GenTitle(h, title, t); st := SHORT(t$);
-			res := USER32.SetWindowTextA(h.wnd, st);
+			GenTitle(h, title, t);
+			res := WinApi.SetWindowTextW(h.wnd, t);
 			h := h.link(Window)
 		UNTIL h = w
 	END SetTitle2;
@@ -637,13 +640,13 @@ MODULE HostWindows;
 
 	PROCEDURE (w: Window) GetTitle* (OUT title: Views.Title);
 	(* get name of window *)
-		VAR res: INTEGER; st: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER;
 	BEGIN
 		ASSERT(w.wnd # 0, 20);
 		title := w.title;
 		IF title = "" THEN
-			res := USER32.GetWindowTextA(w.wnd, st, LEN(title));
-			title := st$; StripTitle(title)
+			res := WinApi.GetWindowTextW(w.wnd, title, LEN(title));
+			StripTitle(title)
 		END
 	END GetTitle;
 
@@ -682,32 +685,28 @@ MODULE HostWindows;
 
 
 	PROCEDURE UpdateScrollbar (w: Window; vertical, focus: BOOLEAN);
-		VAR res, size, sect, pos, type, p, q, m: INTEGER; valid: BOOLEAN; i: ScrollInfo;
+		VAR res, size, sect, pos, type, p, q, m: INTEGER; valid: BOOLEAN; i: WinApi.SCROLLINFO;
 			msg: Controllers.PollSectionMsg; f: Views.Frame;
 	BEGIN
 		IF w.frame = NIL THEN RETURN END;
-		IF vertical THEN type := USER32.SBVert ELSE type := USER32.SBHorz END;
+		IF vertical THEN type := WinApi.SB_VERT ELSE type := WinApi.SB_HORZ END;
 		GetSection(w, focus, vertical, size, sect, pos, valid);
 		IF valid THEN
-			res := USER32.ShowScrollBar(w.wnd, type, 1);
-			res := USER32.EnableScrollBar(w.wnd, type, USER32.ESBEnableBoth);
-			p := KERNEL32.MulDiv(pos, scrollRange, size - sect);
-			IF (Dialog.platform # 11) & (GetScrollInfo # NIL) THEN
-				i.size := SIZE(ScrollInfo); i.mask := {0, 1, 2};	(* range, page, pos *)
-				res := GetScrollInfo(w.wnd, type, i);
-				IF (res # 0) THEN
-					IF sect > 0 THEN q := KERNEL32.MulDiv(sect, scrollRange, size - sect); m := scrollRange + q
-					ELSE q := -1; m := scrollRange
-					END;
-					IF (i.pos # p) OR (i.page # q + 1) THEN
-						i.pos := p; i.page := q + 1; i.max := m;
-						res := SetScrollInfo(w.wnd, type, i, 1)
-					END
-				ELSIF p # USER32.GetScrollPos(w.wnd, type) THEN
-					res := USER32.SetScrollPos(w.wnd, type, p, 1)
+			res := WinApi.ShowScrollBar(w.wnd, type, 1);
+			res := WinApi.EnableScrollBar(w.wnd, type, WinApi.ESB_ENABLE_BOTH);
+			p := WinApi.MulDiv(pos, scrollRange, size - sect);
+			i.cbSize := SIZE(WinApi.SCROLLINFO); i.fMask := {0, 1, 2};	(* range, page, pos *)
+			res := WinApi.GetScrollInfo(w.wnd, type, i);
+			IF res # 0 THEN
+				IF sect > 0 THEN q := WinApi.MulDiv(sect, scrollRange, size - sect); m := scrollRange + q
+				ELSE q := -1; m := scrollRange
+				END;
+				IF (i.nPos # p) OR (i.nPage # q + 1) THEN
+					i.nPos := p; i.nPage := q + 1; i.nMax := m;
+					res := WinApi.SetScrollInfo(w.wnd, type, i, 1)
 				END
-			ELSIF p # USER32.GetScrollPos(w.wnd, type) THEN
-				res := USER32.SetScrollPos(w.wnd, type, p, 1)
+			ELSIF p # WinApi.GetScrollPos(w.wnd, type) THEN
+				res := WinApi.SetScrollPos(w.wnd, type, p, 1)
 			END
 		ELSIF ~focus THEN
 			msg.focus := FALSE; msg.vertical := vertical; msg.done := FALSE;
@@ -715,11 +714,11 @@ MODULE HostWindows;
 			IF f # NIL THEN
 				Views.ForwardCtrlMsg(f, msg);
 				IF msg.done THEN
-					res := USER32.ShowScrollBar(w.wnd, type, 1);
-					res := USER32.EnableScrollBar(w.wnd, type, USER32.ESBDisableBoth)
-				ELSE res := USER32.ShowScrollBar(w.wnd, type, 0)
+					res := WinApi.ShowScrollBar(w.wnd, type, 1);
+					res := WinApi.EnableScrollBar(w.wnd, type, WinApi.ESB_DISABLE_BOTH)
+				ELSE res := WinApi.ShowScrollBar(w.wnd, type, 0)
 				END
-			ELSE res := USER32.ShowScrollBar(w.wnd, type, 0)
+			ELSE res := WinApi.ShowScrollBar(w.wnd, type, 0)
 			END
 		END
 	END UpdateScrollbar;
@@ -730,23 +729,23 @@ MODULE HostWindows;
 		GetSection(w, focus, vertical, size, sect, pos, valid);
 		IF valid THEN
 			noBuf := HostPorts.noBuffer; HostPorts.noBuffer := TRUE;
-			IF code = USER32.SBThumbPos THEN
-				SetOrigin(w, focus, vertical, KERNEL32.MulDiv(p, size - sect, scrollRange))
-			ELSIF visualScroll & (code = USER32.SBThumbTrack) THEN
-				SetOrigin(w, focus, vertical, KERNEL32.MulDiv(p, size - sect, scrollRange));
-				res := USER32.UpdateWindow(w.wnd);
+			IF code = WinApi.SB_THUMBPOSITION THEN
+				SetOrigin(w, focus, vertical, WinApi.MulDiv(p, size - sect, scrollRange))
+			ELSIF visualScroll & (code = WinApi.SB_THUMBTRACK) THEN
+				SetOrigin(w, focus, vertical, WinApi.MulDiv(p, size - sect, scrollRange));
+				res := WinApi.UpdateWindow(w.wnd);
 				dir.Update(w)
-			ELSIF code = USER32.SBLineUp THEN Scroll(w, focus, vertical, Controllers.decLine)
-			ELSIF code = USER32.SBLineDown THEN Scroll(w, focus, vertical, Controllers.incLine)
-			ELSIF code = USER32.SBPageUp THEN Scroll(w, focus, vertical, Controllers.decPage)
-			ELSIF code = USER32.SBPageDown THEN Scroll(w, focus, vertical, Controllers.incPage)
+			ELSIF code = WinApi.SB_LINEUP THEN Scroll(w, focus, vertical, Controllers.decLine)
+			ELSIF code = WinApi.SB_LINEDOWN THEN Scroll(w, focus, vertical, Controllers.incLine)
+			ELSIF code = WinApi.SB_PAGEUP THEN Scroll(w, focus, vertical, Controllers.decPage)
+			ELSIF code = WinApi.SB_PAGEDOWN THEN Scroll(w, focus, vertical, Controllers.incPage)
 			END;
 (*
 			UpdateScrollbar(w, vertical, focus);
 *)
 			GetSection(w, focus, vertical, size, sect, pos, valid);
-			IF vertical THEN type := USER32.SBVert ELSE type := USER32.SBHorz END;
-			res := USER32.SetScrollPos(w.wnd, type, KERNEL32.MulDiv(pos, scrollRange, size - sect), 1);
+			IF vertical THEN type := WinApi.SB_VERT ELSE type := WinApi.SB_HORZ END;
+			res := WinApi.SetScrollPos(w.wnd, type, WinApi.MulDiv(pos, scrollRange, size - sect), 1);
 			dir.Update(w);
 			HostPorts.noBuffer := noBuf
 		END
@@ -754,9 +753,9 @@ MODULE HostWindows;
 
 	PROCEDURE (w: Window) UpdateScrollbars (focus: BOOLEAN), NEW;
 	BEGIN
-		IF (USER32.GetAsyncKeyState(1) >= 0)
-				& (USER32.GetAsyncKeyState(4) >= 0)
-				& (USER32.GetAsyncKeyState(2) >= 0) THEN
+		IF (WinApi.GetAsyncKeyState(1) >= 0)
+				& (WinApi.GetAsyncKeyState(4) >= 0)
+				& (WinApi.GetAsyncKeyState(2) >= 0) THEN
 			IF ~(Windows.noHScroll IN w.flags) THEN UpdateScrollbar(w, FALSE, focus) END;
 			IF ~(Windows.noVScroll IN w.flags) THEN UpdateScrollbar(w, TRUE, focus) END
 		END
@@ -819,12 +818,12 @@ MODULE HostWindows;
 		IF ~w.destroyed THEN
 			w.destroyed := TRUE;
 			IF w.child THEN
-				IF USER32.IsZoomed(w.wnd) # 0 THEN
-					res := USER32.SendMessageA(client, USER32.WMMDIRestore, w.wnd, 0)
+				IF WinApi.IsZoomed(w.wnd) # 0 THEN
+					res := WinApi.SendMessageW(client, WinApi.WM_MDIRESTORE, w.wnd, 0)
 				END;
-				res := USER32.SendMessageA(client, USER32.WMMDIDestroy, w.wnd, 0)
+				res := WinApi.SendMessageW(client, WinApi.WM_MDIDESTROY, w.wnd, 0)
 			ELSE
-				res := USER32.DestroyWindow(w.wnd)
+				res := WinApi.DestroyWindow(w.wnd)
 			END;
 			w.trapped := TRUE; w.wnd := 0
 		END;
@@ -840,9 +839,9 @@ MODULE HostWindows;
 			menu := WinApi.GetSystemMenu(main, 0);
 			res := WinApi.RemoveMenu(menu, WinApi.SC_MOVE, {})
 		END;
-		res := USER32.ShowWindow(main, showState);
-		res := USER32.UpdateWindow(main);
-		showState := USER32.SWShow
+		res := WinApi.ShowWindow(main, showState);
+		res := WinApi.UpdateWindow(main);
+		showState := WinApi.SW_SHOW
 	END ShowMain;
 
 
@@ -881,14 +880,14 @@ MODULE HostWindows;
 					IF Windows.isTool IN flags THEN
 						OpenDlg(w, d.l, d.t, d.r, d.b, d.minimized, d.maximized)
 					ELSE
-						IF ~d.invisible & (USER32.IsWindowVisible(main) = 0) THEN ShowMain END;
+						IF ~d.invisible & (WinApi.IsWindowVisible(main) = 0) THEN ShowMain END;
 						OpenDoc(w, d.l, d.t, d.r, d.b, d.minimized, d.maximized)
 					END;
 					IF (loc # NIL) & (name = fname) THEN GenPathTitle(w, name) END;
 					w.SetTitle(name);
 					IF Windows.isTool IN flags THEN
-						res := USER32.SendMessageA(w.wnd, USER32.WMNCActivate, 0, 0);
-						res := USER32.SendMessageA(w.wnd, USER32.WMNCActivate, 1, 0)
+						res := WinApi.SendMessageW(w.wnd, WinApi.WM_NCACTIVATE, 0, 0);
+						res := WinApi.SendMessageW(w.wnd, WinApi.WM_NCACTIVATE, 1, 0)
 					END;
 					ASSERT(w.frame # NIL, 60)
 				END
@@ -931,36 +930,37 @@ MODULE HostWindows;
 	BEGIN
 		WITH w: Window DO
 			IF ~(inPlace IN w.flags) THEN
-				res := USER32.SetForegroundWindow(main);
-				IF res = 0 THEN res := USER32.SetActiveWindow(main) END;	(* win32s *)
-				IF w.child THEN res := USER32.BringWindowToTop(main) END
+				res := WinApi.SetForegroundWindow(main);
+				IF w.child THEN res := WinApi.BringWindowToTop(main) END
 			END;
-			IF USER32.IsIconic(w.wnd) # 0 THEN
-				res := USER32.ShowWindow(w.wnd, 9);	(* restore *)
-				res := USER32.InvalidateRect(w.wnd, NIL, 0)
+			IF WinApi.IsIconic(w.wnd) # 0 THEN
+				res := WinApi.ShowWindow(w.wnd, 9);	(* restore *)
+				res := WinApi.InvalidateRect(w.wnd, NIL, 0)
 			END;
-			IF USER32.GetTopWindow(main) # w.wnd THEN
-				res := USER32.BringWindowToTop(w.wnd)
+			IF WinApi.GetTopWindow(main) # w.wnd THEN
+				res := WinApi.BringWindowToTop(w.wnd)
 			END;
 (*
-			res := USER32.UpdateWindow(w.wnd);
+			res := WinApi.UpdateWindow(w.wnd);
 *)
-			res := USER32.SetFocus(w.wnd)
+			res := WinApi.SetFocus(w.wnd)
 		END
 	END Select;
 
 	PROCEDURE (d: Directory) GetThisWindow* (p: Ports.Port; px, py: INTEGER;
 																		OUT x, y: INTEGER; OUT w: Windows.Window);
-		VAR res: INTEGER; wnd: USER32.Handle; pt: USER32.Point; s: ARRAY 32 OF SHORTCHAR;
+		VAR res: INTEGER; wnd: WinApi.HANDLE; pt: WinApi.POINT; s: ARRAY 32 OF CHAR;
 	BEGIN
-		wnd := p(HostPorts.Port).wnd;
 		pt.x := px; pt.y := py;
-		res := USER32.ClientToScreen(wnd, pt);
-		wnd := USER32.WindowFromPoint(pt);
+		IF p # NIL THEN
+			wnd := p(HostPorts.Port).wnd;
+			res := WinApi.ClientToScreen(wnd, pt)
+		END;
+		wnd := WinApi.WindowFromPoint(pt);
 		IF wnd # 0 THEN
-			res := USER32.GetClassNameA(wnd, s, LEN(s));
+			res := WinApi.GetClassNameW(wnd, s, LEN(s));
 			IF (s = "Oberon Doc") OR (s = "Oberon Aux") OR (s = "Oberon Dlg") THEN
-				res := USER32.ScreenToClient(wnd, pt);
+				res := WinApi.ScreenToClient(wnd, pt);
 				x := pt.x; y := pt.y; w := ThisWindow(wnd)
 			ELSE
 				w := NIL
@@ -984,9 +984,9 @@ MODULE HostWindows;
 	END Close;
 
 	PROCEDURE (d: Directory) GetBounds* (OUT w, h: INTEGER);
-		VAR rect: USER32.Rect; res: INTEGER;
+		VAR rect: WinApi.RECT; res: INTEGER;
 	BEGIN
-		res := USER32.GetClientRect(client, rect);
+		res := WinApi.GetClientRect(client, rect);
 		w := rect.right; h := rect.bottom
 	END GetBounds;
 
@@ -1010,17 +1010,17 @@ MODULE HostWindows;
 		VAR b: SET;
 	BEGIN
 		b := {};
-		IF USER32.GetKeyState(10H) < 0 THEN INCL(b, Controllers.extend); INCL(b, HostPorts.shift) END;
-		IF USER32.GetKeyState(11H) < 0 THEN INCL(b, Controllers.modify); INCL(b, HostPorts.ctrl) END;
+		IF WinApi.GetKeyState(10H) < 0 THEN INCL(b, Controllers.extend); INCL(b, HostPorts.shift) END;
+		IF WinApi.GetKeyState(11H) < 0 THEN INCL(b, Controllers.modify); INCL(b, HostPorts.ctrl) END;
 		IF ODD(data DIV 20000000H) THEN INCL(b, HostPorts.alt) END;
 		RETURN b
 	END KeyModifiers;
 
-	PROCEDURE HandleKey (wnd: USER32.Handle; code, ext: INTEGER);
+	PROCEDURE HandleKey (wnd: WinApi.HANDLE; code, ext: INTEGER);
 		VAR b: SET; w: Window; pmsg: Controllers.PollFocusMsg; scroll: BOOLEAN; c: Containers.Controller;
 	BEGIN
 		w := ThisWindow(wnd); b := KeyModifiers(ext); w.used := TRUE;
-		scroll := ODD(USER32.GetKeyState(91H)) (* scroll lock *);
+		scroll := ODD(WinApi.GetKeyState(91H)) (* scroll lock *);
 		pmsg.focus := NIL; w.ForwardCtrlMsg(pmsg);
 		IF (pmsg.focus # NIL) & (pmsg.focus.view IS Containers.View) THEN
 			c := pmsg.focus.view(Containers.View).ThisController();
@@ -1037,7 +1037,7 @@ MODULE HostWindows;
 		| 1BH: w.KeyDown(ESC, b)	(* escape *)
 		| 21H:	(* page up *)
 			IF scroll THEN
-				w.Scroll(USER32.SBPageUp, 0, TRUE, ~(Controllers.modify IN b))
+				w.Scroll(WinApi.SB_PAGEUP, 0, TRUE, ~(Controllers.modify IN b))
 			ELSIF Controllers.modify IN b THEN (* move caret left one page *)
 				w.KeyDown(PL, b - {Controllers.modify})
 			ELSE (* move caret up one page *)
@@ -1045,7 +1045,7 @@ MODULE HostWindows;
 			END
 		| 22H: (* page down *)
 			IF scroll THEN
-				w.Scroll(USER32.SBPageDown, 0, TRUE, ~(Controllers.modify IN b))
+				w.Scroll(WinApi.SB_PAGEDOWN, 0, TRUE, ~(Controllers.modify IN b))
 			ELSIF Controllers.modify IN b THEN (* move caret right one page *)
 				w.KeyDown(PR, b - {Controllers.modify})
 			ELSE (* move caret down one page *)
@@ -1053,7 +1053,7 @@ MODULE HostWindows;
 			END
 		| 23H: (* end *)
 			IF scroll THEN
-				w.Scroll(USER32.SBThumbPos, scrollRange, TRUE, Controllers.modify IN b)
+				w.Scroll(WinApi.SB_THUMBPOSITION, scrollRange, TRUE, Controllers.modify IN b)
 			ELSIF Controllers.modify IN b THEN (* move caret to doc end *)
 				w.KeyDown(DD, b - {Controllers.modify})
 			ELSE (* move caret to line end *)
@@ -1061,7 +1061,7 @@ MODULE HostWindows;
 			END
 		| 24H: (* home *)
 			IF scroll THEN
-				w.Scroll(USER32.SBThumbPos, 0, TRUE, Controllers.modify IN b)
+				w.Scroll(WinApi.SB_THUMBPOSITION, 0, TRUE, Controllers.modify IN b)
 			ELSIF Controllers.modify IN b THEN (* move caret to doc start *)
 				w.KeyDown(DU, b - {Controllers.modify})
 			ELSE (* move caret to line start *)
@@ -1069,25 +1069,25 @@ MODULE HostWindows;
 			END
 		| 25H: (* left *)
 			IF scroll THEN
-				w.Scroll(USER32.SBLineUp, 0, TRUE, FALSE)
+				w.Scroll(WinApi.SB_LINEUP, 0, TRUE, FALSE)
 			ELSE
 				w.KeyDown(AL, b)
 			END
 		| 26H: (* up *)
 			IF scroll THEN
-				w.Scroll(USER32.SBLineUp, 0, TRUE, TRUE)
+				w.Scroll(WinApi.SB_LINEUP, 0, TRUE, TRUE)
 			ELSE
 				w.KeyDown(AU, b)
 			END
 		| 27H: (* right *)
 			IF scroll THEN
-				w.Scroll(USER32.SBLineDown, 0, TRUE, FALSE)
+				w.Scroll(WinApi.SB_LINEDOWN, 0, TRUE, FALSE)
 			ELSE
 				w.KeyDown(AR, b)
 			END
 		| 28H: (* down *)
 			IF scroll THEN
-				w.Scroll(USER32.SBLineDown, 0, TRUE, TRUE)
+				w.Scroll(WinApi.SB_LINEDOWN, 0, TRUE, TRUE)
 			ELSE
 				w.KeyDown(AD, b)
 			END
@@ -1096,45 +1096,17 @@ MODULE HostWindows;
 		Properties.IncEra
 	END HandleKey;
 
-	PROCEDURE HandleChar (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE HandleChar (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR w: Window; mod: SET; ch: CHAR;
 	BEGIN
 		IF (wParam >= 20H) & (wParam # 7FH) THEN
 			w := ThisWindow(wnd); mod := KeyModifiers(lParam); w.used := TRUE;
-			IF USER32.VkKeyScanA(SHORT(CHR(wParam))) >= 4 * 256 THEN EXCL(mod, HostPorts.alt) END;
-			CASE wParam OF
-			| 80H: ch := 20ACX	(* euro *)
-			| 82H: ch := 201AX
-			| 83H: ch := 0192X
-			| 84H: ch := 201EX
-			| 85H: ch := 2026X
-			| 86H: ch := 2020X
-			| 87H: ch := 2021X
-			| 88H: ch := 02C6X
-			| 89H: ch := 2030X
-			| 8AH: ch := 0160X
-			| 8BH: ch := 2039X
-			| 8CH: ch := 0152X
-			| 91H: ch := 2018X
-			| 92H: ch := 2019X
-			| 93H: ch := 201CX
-			| 94H: ch := 201DX
-			| 95H: ch := 2022X
-			| 96H: ch := 2013X
-			| 97H: ch := 2014X
-			| 98H: ch := 02DCX
-			| 99H: ch := 2122X
-			| 9AH: ch := 0161X
-			| 9BH: ch := 203AX
-			| 9CH: ch := 0153X
-			| 9FH: ch := 0178X
-			ELSE ch := CHR(wParam)
-			END;
-			w.KeyDown(ch, mod)
+			IF WinApi.VkKeyScanW(CHR(wParam)) >= 4 * 256 THEN EXCL(mod, HostPorts.alt) END;
+			w.KeyDown(CHR(wParam), mod)
 		END
 	END HandleChar;
 
-	PROCEDURE HandleMouse (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE HandleMouse (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR w: Window; isDown: BOOLEAN; x, y: INTEGER; b: SET; f, g: Views.Frame;
 	BEGIN
 		w := ThisWindow(wnd); b := {}; w.used := TRUE;
@@ -1144,7 +1116,7 @@ MODULE HostWindows;
 		isDown := b # {};
 		IF ODD(wParam DIV 4) THEN INCL(b, HostPorts.shift); INCL(b, Controllers.extend) END;
 		IF ODD(wParam DIV 8) THEN INCL(b, HostPorts.ctrl); INCL(b, Controllers.modify) END;
-		IF USER32.GetAsyncKeyState(12H) < 0 THEN INCL(b, HostPorts.alt) END;
+		IF WinApi.GetAsyncKeyState(12H) < 0 THEN INCL(b, HostPorts.alt) END;
 		IF ODD(wParam DIV 128) THEN INCL(b, Controllers.doubleClick) END;
 		x := lParam MOD 65536;
 		y := lParam DIV 65536;
@@ -1166,7 +1138,7 @@ MODULE HostWindows;
 		Properties.IncEra
 	END HandleMouse;
 
-	PROCEDURE DeactivateWin (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE DeactivateWin (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR w: Window;
 	BEGIN
 		w := ThisWindow(wnd);
@@ -1179,7 +1151,7 @@ MODULE HostWindows;
 		END
 	END DeactivateWin;
 
-	PROCEDURE ActivateWin (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE ActivateWin (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR res: INTEGER; w: Window;
 	BEGIN
 		w := ThisWindow(wnd);
@@ -1188,7 +1160,7 @@ MODULE HostWindows;
 				DeactivateWin(fWindow.wnd, 0, 0)
 			END;
 			w.PutOnTop;
-			res := USER32.UpdateWindow(wnd);
+			res := WinApi.UpdateWindow(wnd);
 			IF (inPlace IN w.flags) OR ~(Windows.isTool IN w.flags) THEN
 				w.Mark(FALSE, TRUE);
 				tWindow := w
@@ -1222,7 +1194,7 @@ MODULE HostWindows;
 		END
 	END ActivateWindow;
 
-	PROCEDURE SizeWin (wnd: USER32.Handle; w, h: INTEGER);
+	PROCEDURE SizeWin (wnd: WinApi.HANDLE; w, h: INTEGER);
 		VAR v: Window;
 	BEGIN
 		v := ThisWindow(wnd);
@@ -1232,7 +1204,7 @@ MODULE HostWindows;
 		IF v.hook # NIL THEN v.hook.Resize(w, h) END
 	END SizeWin;
 
-	PROCEDURE ScrollWin (wnd: USER32.Handle; wParam, vertical: INTEGER);
+	PROCEDURE ScrollWin (wnd: WinApi.HANDLE; wParam, vertical: INTEGER);
 		VAR w: Window;
 	BEGIN
 		w := ThisWindow(wnd);
@@ -1240,14 +1212,14 @@ MODULE HostWindows;
 		END
 	END ScrollWin;
 
-	PROCEDURE WheelScroll (wnd: USER32.Handle; wParam, lParam: INTEGER);
+	PROCEDURE WheelScroll (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR w: Window; res, lines, delta, keys: INTEGER; msg: Controllers.WheelMsg;
 			p: WinApi.POINT;
 	BEGIN
 		delta := wParam DIV 10000H; keys := wParam MOD 10000H;
 		w := ThisWindow(wnd);
 		lines := 3;
-		res := WinApi.SystemParametersInfo(104 (*SPI_GETWHEELSCROLLLINES*), 0, SYSTEM.ADR(lines), 0);
+		res := WinApi.SystemParametersInfoW(104 (*SPI_GETWHEELSCROLLLINES*), 0, SYSTEM.ADR(lines), 0);
 		p.x := lParam MOD 65536; p.y := lParam DIV 65536;
 		res := WinApi.ScreenToClient(wnd, p);
 		msg.x := p.x * w.port.unit; msg.y := p.y * w.port.unit;
@@ -1279,17 +1251,17 @@ MODULE HostWindows;
 		IF ~msg.done THEN (* scroll document *)
 			CASE msg.op OF
 			| Controllers.decPage:
-				w.Scroll(USER32.SBPageUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4))
+				w.Scroll(WinApi.SB_PAGEUP, 0, ODD(keys DIV 8), ~ODD(keys DIV 4))
 			| Controllers.incPage:
-				w.Scroll(USER32.SBPageDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4))
+				w.Scroll(WinApi.SB_PAGEDOWN, 0, ODD(keys DIV 8), ~ODD(keys DIV 4))
 			| Controllers.decLine:
 				WHILE msg.nofLines > 0 DO
-					w.Scroll(USER32.SBLineUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SB_LINEUP, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					DEC(msg.nofLines)
 				END
 			| Controllers.incLine:
 				WHILE msg.nofLines > 0 DO
-					w.Scroll(USER32.SBLineDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SB_LINEDOWN, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					DEC(msg.nofLines)
 				END
 			ELSE
@@ -1298,20 +1270,20 @@ MODULE HostWindows;
 			IF lines > 10 THEN	(* scroll pages *)
 				INC(w.wheelPos, delta);
 				IF w.wheelPos >= 120 THEN
-					w.Scroll(USER32.SBPageUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SBPageUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					DEC(w.wheelPos, 120)
 				ELSIF w.wheelPos <= -120 THEN
-					w.Scroll(USER32.SBPageDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SBPageDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					INC(w.wheelPos, 120)
 				END
 			ELSIF lines > 0 THEN
 				INC(w.wheelPos, delta * lines);
 				WHILE w.wheelPos >= 120 DO
-					w.Scroll(USER32.SBLineUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SBLineUp, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					DEC(w.wheelPos, 120)
 				END;
 				WHILE w.wheelPos <= -120 DO
-					w.Scroll(USER32.SBLineDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
+					w.Scroll(WinApi.SBLineDown, 0, ODD(keys DIV 8), ~ODD(keys DIV 4));
 					INC(w.wheelPos, 120)
 				END
 			END
@@ -1319,8 +1291,8 @@ MODULE HostWindows;
 		END
 	END WheelScroll;
 
-	PROCEDURE InvalidateWin (wnd, dc: USER32.Handle; paint: INTEGER);
-		TYPE RectPtr = POINTER TO USER32.Rect;
+	PROCEDURE InvalidateWin (wnd, dc: WinApi.HANDLE; paint: INTEGER);
+		TYPE RectPtr = POINTER TO WinApi.RECT;
 		VAR w: Window; rp: RectPtr;
 	BEGIN
 		w := ThisWindow(wnd);
@@ -1329,27 +1301,31 @@ MODULE HostWindows;
 		w.Restore(rp.left, rp.top, rp.right, rp.bottom)
 	END InvalidateWin;
 
-	PROCEDURE PaintWin (wnd: USER32.Handle; a, b: INTEGER);
+	PROCEDURE PaintWin (wnd: WinApi.HANDLE; a, b: INTEGER);
 		VAR w: Window;
 	BEGIN
 		w := ThisWindow(wnd);
 		w.Update
 	END PaintWin;
 
-	PROCEDURE [2] DocWinHandler (wnd: USER32.Handle; message, wParam, lParam: INTEGER): INTEGER;
-		VAR res, x, dx, dy: INTEGER; w: Window; ps: USER32.PaintStruct;
-			(* pm: USER32.PMinMaxInfo; *)
-			rec: USER32.Rect; style, st: SET; wp: WinApi.WINDOWPOS;
+	PROCEDURE [2] DocWinHandler (wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER): INTEGER;
+		VAR res, x, dx, dy: INTEGER; w: Window; ps: WinApi.PAINTSTRUCT;
+			(* pm: WinApi.PMinMaxInfo; *)
+			rec: WinApi.RECT; style, st: SET; wp: WinApi.WINDOWPOS;
 	BEGIN
 		Controllers.SetCurrentPath(Controllers.targetPath);
+		IF (hookDocWinHandler # NIL) & hookDocWinHandler(wnd, message, wParam, lParam, res) THEN
+			Controllers.ResetCurrentPath();
+			RETURN res
+		END;
 		CASE message OF
-		| USER32.WMCreate:
+		| WinApi.WM_CREATE:
 			Kernel.Try(CreateDoc, wnd, wParam, lParam)
-		| USER32.WMClose:
-			res := USER32.SendMessageA(main, USER32.WMCommand, iClose, 0);
+		| WinApi.WM_CLOSE:
+			res := WinApi.SendMessageW(main, WinApi.WM_COMMAND, iClose, 0);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMDestroy:
+		| WinApi.WM_DESTROY:
 			w := ThisWindow(wnd);
 			IF ~w.destroyed THEN
 				w.destroyed := TRUE;
@@ -1357,11 +1333,11 @@ MODULE HostWindows;
 			END;
 			IF w = aWindow THEN aWindow := NIL END;
 			IF w = tWindow THEN tWindow := NIL END
-		| USER32.WMChildActivate:
+		| WinApi.WM_CHILDACTIVATE:
 			w := ThisWindow(wnd);
 			w.PutOnTop; aWindow := w;
 			tWindow := w
-		| USER32.WMSetFocus:
+		| WinApi.WM_SETFOCUS:
 			w := ThisWindow(wnd);
 			IF debug THEN
 				Log.String("Doc: SetFocus ");
@@ -1379,7 +1355,7 @@ MODULE HostWindows;
 			END;
 			Kernel.Try(ActivateWin, wnd, wParam, lParam);
 			IF w.hook # NIL THEN w.hook.Focus(TRUE) END
-		| USER32.WMKillFocus:
+		| WinApi.WM_KILLFOCUS:
 			w := ThisWindow(wnd);
 			IF debug THEN
 				Log.String("Doc: KillFocus ");
@@ -1392,7 +1368,7 @@ MODULE HostWindows;
 			END;
 			IF wParam # main THEN Kernel.Try(DeactivateWin, wnd, wParam, lParam) END;
 			IF w.hook # NIL THEN w.hook.Focus(FALSE) END
-		| USER32.WMSize:
+		| WinApi.WM_SIZE:
 			w := ThisWindow(wnd);
 			IF (w = bgWindow) & ((wParam = WinApi.SIZE_MAXHIDE) OR (wParam = WinApi.SIZE_MAXSHOW)) THEN
 				Controllers.ResetCurrentPath();
@@ -1400,90 +1376,111 @@ MODULE HostWindows;
 			ELSE
 				Kernel.Try(SizeWin, wnd, lParam MOD 65536, lParam DIV 65536)
 			END
-		| USER32.WMHScroll:
+		| WinApi.WM_HSCROLL:
 			Kernel.Try(ScrollWin, wnd, wParam, 0);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMVScroll:
+		| WinApi.WM_VSCROLL:
 			Kernel.Try(ScrollWin, wnd, wParam, 1);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| 020AH: (* WM_MOUSEWHEEL *)
+		| WinApi.WM_MOUSEWHEEL:
 			Kernel.Try(WheelScroll, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMPaint:
+		| WinApi.WM_PAINT:
 			w := ThisWindow(wnd);
 			w.GetSize(dx, dy);
-			IF (dx # minimized) & (dy # minimized) THEN
+			IF ~w.minimized THEN
 				(* clip region must be reset to ensure correct ps.paint ! *)
-				res := GDI32.SelectClipRgn(w.port(HostPorts.Port).dc, 0);
-				x := USER32.BeginPaint(w.wnd, ps);
-				Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.paint));
-				res := USER32.EndPaint(w.wnd, ps);
-				Kernel.Try(PaintWin, wnd, 0, 0)
+				res := WinApi.SelectClipRgn(w.port(HostPorts.Port).dc, 0);
+				x := WinApi.BeginPaint(w.wnd, ps);
+				Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.rcPaint));
+				res := WinApi.EndPaint(w.wnd, ps);
+				Kernel.Try(PaintWin, wnd, 0, 0);
+				Controllers.ResetCurrentPath();
+				RETURN 0
 			END
-		| USER32.WMLButtonDown, USER32.WMRButtonDown, USER32.WMMButtonDown:
-			IF wnd # USER32.GetFocus() THEN
-				res := USER32.SendMessageA(client, USER32.WMMDIActivate, wnd, 0);
-				res := USER32.SetFocus(wnd)
+		| WinApi.WM_LBUTTONDOWN, WinApi.WM_RBUTTONDOWN, WinApi.WM_MBUTTONDOWN:
+			IF wnd # WinApi.GetFocus() THEN
+				res := WinApi.SendMessageW(client, WinApi.WM_MDIACTIVATE, wnd, 0);
+				res := WinApi.SetFocus(wnd)
 			END;
-			res := USER32.SetCapture(wnd);
+			res := WinApi.SetCapture(wnd);
 			Kernel.Try(HandleMouse, wnd, wParam + 256, lParam);
-			IF USER32.GetCapture() = wnd THEN res := USER32.ReleaseCapture() END;
+			IF WinApi.GetCapture() = wnd THEN res := WinApi.ReleaseCapture() END;
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMLButtonDblClk, USER32.WMRButtonDblClk, USER32.WMMButtonDblClk:
-			res := USER32.SetCapture(wnd);
+		| WinApi.WM_LBUTTONDBLCLK, WinApi.WM_RBUTTONDBLCLK, WinApi.WM_MBUTTONDBLCLK:
+			res := WinApi.SetCapture(wnd);
 			Kernel.Try(HandleMouse, wnd, wParam + (128 + 256), lParam);
-			IF USER32.GetCapture() = wnd THEN res := USER32.ReleaseCapture() END;
+			IF WinApi.GetCapture() = wnd THEN res := WinApi.ReleaseCapture() END;
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMLButtonUp, USER32.WMRButtonUp, USER32.WMMButtonUp:
+		| WinApi.WM_LBUTTONUP, WinApi.WM_RBUTTONUP, WinApi.WM_MBUTTONUP:
 			Kernel.Try(HandleMouse, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMMouseMove:
+		| WinApi.WM_MOUSEMOVE:
 			Kernel.Try(HandleMouse, wnd, wParam + (2 * 256), lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMKeyDown:
-			Kernel.Try(HandleKey, wnd, wParam, lParam)
-		| USER32.WMChar:
+		| WinApi.WM_KEYDOWN:
+			Kernel.Try(HandleKey, wnd, wParam, lParam);
+			IF (wParam = WinApi.VK_TAB)
+				OR (wParam = WinApi.VK_LEFT) OR (wParam = WinApi.VK_UP)
+				OR (wParam = WinApi.VK_RIGHT) OR (wParam = WinApi.VK_DOWN)
+			THEN
+				res := WinApi.SendMessageW(wnd, 0127H (* WM_CHANGEUISTATE *),
+							2 (* UIS_CLEAR *) + 10000H (* UISF_HIDEFOCUS *), 0)
+			END
+		| WinApi.WM_SYSKEYDOWN:
+			IF wParam = WinApi.VK_MENU THEN
+				res := WinApi.SendMessageW(wnd, 0127H (* WM_CHANGEUISTATE *),
+							2 (* UIS_CLEAR *) + 10000H (* UISF_HIDEFOCUS *) + 20000H (* UISF_HIDEACCEL *), 0)
+			END
+		| WinApi.WM_CHAR:
 			Kernel.Try(HandleChar, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMNCLButtonDown:
+(*
+		| WinApi.WM_UNICHAR:
+			IF wParam = WinApi.UNICODE_NOCHAR THEN RETURN 1 END;
+			Kernel.Try(HandleChar, wnd, wParam, lParam);
+			Controllers.ResetCurrentPath();
+			RETURN 0
+*)
+		| WinApi.WM_NCLBUTTONDOWN:
 			IF activating & ((wParam = 6) OR (wParam = 7) OR (wParam = 20)) THEN	(* in scrollbar, close *)
 				Controllers.ResetCurrentPath();
 				RETURN 0
 			END
-		| USER32.WMNCLButtonUp, USER32.WMNCRButtonUp:
+		| WinApi.WM_NCLBUTTONUP, WinApi.WM_NCRBUTTONUP:
 			activating := FALSE
-		| USER32.WMMDIActivate:
+		| WinApi.WM_MDIACTIVATE:
 			w := ThisWindow(wnd);
 			IF w.hook # NIL THEN w.hook.Activate(wnd = lParam) END
-		| USER32.WMNCActivate:
+		| WinApi.WM_NCACTIVATE:
 			w := ThisWindow(wnd);
 			IF (w = bgWindow) OR ((bgWindow # NIL) & (wParam MOD 65536 = WinApi.FALSE)) THEN
 				res := WinApi.SetWindowPos(bgWindow.wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0,
 					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOACTIVATE)
 			END;
-			style := BITS(USER32.GetWindowLongA(wnd, -16));
+			style := BITS(WinApi.GetWindowLongW(wnd, -16));
 			IF wParam MOD 65536 # 0 THEN
 				IF ~mainActive & (w # tWindow) & (tWindow # NIL) THEN
-					st := BITS(USER32.GetWindowLongA(tWindow.wnd, -16));
+					st := BITS(WinApi.GetWindowLongW(tWindow.wnd, -16));
 					st := st - {16, 17, 19};	(* minimize box, maximize box, sysmenu *)
-					res := USER32.SetWindowLongA(tWindow.wnd, -16, ORD(st));
-					res := USER32.GetWindowRect(tWindow.wnd, rec);
-					x := GDI32.CreateRectRgnIndirect(rec);
-					res := USER32.SendMessageA(tWindow.wnd, USER32.WMNCPaint, x, 0)
+					res := WinApi.SetWindowLongW(tWindow.wnd, -16, ORD(st));
+					res := WinApi.GetWindowRect(tWindow.wnd, rec);
+					x := WinApi.CreateRectRgnIndirect(rec);
+					res := WinApi.SendMessageW(tWindow.wnd, WinApi.WM_NCPAINT, x, 0)
 				END;
 				IF (w.flags * {Windows.isAux, Windows.isTool} = {}) THEN
 					IF ~(Windows.neverDirty IN w.flags) & w.seq.Dirty() THEN
-						res := USER32.SetClassLongA(wnd, -14, dirtyIcon); w.dirty := TRUE
+						res := WinApi.SetClassLongW(wnd, -14, dirtyIcon); w.dirty := TRUE
 					ELSE
-						res := USER32.SetClassLongA(wnd, -14, docIcon); w.dirty := FALSE
+						res := WinApi.SetClassLongW(wnd, -14, docIcon); w.dirty := FALSE
 					END
 				END;
 				style := style + WinApi.WS_MINIMIZEBOX + WinApi.WS_SYSMENU;
@@ -1491,24 +1488,19 @@ MODULE HostWindows;
 			ELSIF mainActive THEN
 				style := style - {16, 17, 19}	(* minimize box, maximize box, sysmenu *)
 			END;
-			res := USER32.SetWindowLongA(wnd, -16, ORD(style))
+			res := WinApi.SetWindowLongW(wnd, -16, ORD(style))
 		| WinApi.WM_WINDOWPOSCHANGED:
 			w := ThisWindow(wnd);
 			wp := SYSTEM.VAL(WinApi.WINDOWPOS, lParam);
 			IF (w = bgWindow) & (wp.hwndInsertAfter # 1 (* HWND_BOTTOM *)) THEN
 				res := WinApi.SetWindowPos(wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0,
-					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOACTIVATE);
-				Controllers.ResetCurrentPath();
-				RETURN USER32.DefMDIChildProcA(wnd, message, wParam, lParam)
-			ELSE
-				Controllers.ResetCurrentPath();
-				RETURN USER32.DefMDIChildProcA(wnd, message, wParam, lParam)
+					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOACTIVATE)
 			END
 (*
-		| USER32.WMGetMinMaxInfo:
+		| WinApi.WM_GETMINMAXINFO:
 			w := ThisWindow(wnd);
 			IF (w # NIL) & (w.mw > 0) & (Windows.noResize IN w.flags) THEN
-				pm := SYSTEM.VAL(USER32.PMinMaxInfo, lParam);
+				pm := SYSTEM.VAL(WinApi.PMinMaxInfo, lParam);
 				pm.maxTrackSize.x := w.mw;
 				pm.maxTrackSize.y := w.mh;
 				Controllers.ResetCurrentPath();
@@ -1518,27 +1510,27 @@ MODULE HostWindows;
 		ELSE
 		END;
 		Controllers.ResetCurrentPath();
-		RETURN USER32.DefMDIChildProcA(wnd, message, wParam, lParam)
+		RETURN WinApi.DefMDIChildProcW(wnd, message, wParam, lParam)
 	END DocWinHandler;
 
-	PROCEDURE [2] DialogHandler (wnd: USER32.Handle; message, wParam, lParam: INTEGER): INTEGER;
-		VAR res, x, dx, dy: INTEGER; w: Window; ps: USER32.PaintStruct;
+	PROCEDURE [2] DialogHandler (wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER): INTEGER;
+		VAR res, x, dx, dy: INTEGER; w: Window; ps: WinApi.PAINTSTRUCT;
 	BEGIN
 		Controllers.SetCurrentPath(Controllers.targetPath);
 		CASE message OF
-		| USER32.WMCreate:
+		| WinApi.WM_CREATE:
 			Kernel.Try(CreateDlg, wnd, wParam, lParam)
-		| USER32.WMClose:
-			res := USER32.SendMessageA(main, USER32.WMCommand, iClose, 0);
+		| WinApi.WM_CLOSE:
+			res := WinApi.SendMessageW(main, WinApi.WM_COMMAND, iClose, 0);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMDestroy:
+		| WinApi.WM_DESTROY:
 			w := ThisWindow(wnd);
 			IF ~w.destroyed THEN
 				w.destroyed := TRUE;
 				w.Close
 			END
-		| USER32.WMSetFocus:
+		| WinApi.WM_SETFOCUS:
 			w := ThisWindow(wnd);
 			IF debug THEN
 				Log.String("Dlg: SetFocus ");
@@ -1551,7 +1543,7 @@ MODULE HostWindows;
 			END;
 			Kernel.Try(ActivateWin, wnd, wParam, lParam);
 			IF w.hook # NIL THEN w.hook.Focus(TRUE) END
-		| USER32.WMKillFocus:
+		| WinApi.WM_KILLFOCUS:
 			w := ThisWindow(wnd);
 			IF debug THEN
 				Log.String("Dlg: KillFocus ");
@@ -1564,70 +1556,79 @@ MODULE HostWindows;
 			END;
 			IF ~(inPlace IN w.flags) THEN Kernel.Try(DeactivateWin, wnd, wParam, lParam) END;
 			IF w.hook # NIL THEN w.hook.Focus(FALSE) END
-		| USER32.WMSize:
+		| WinApi.WM_SIZE:
 			w := ThisWindow(wnd);
 			Kernel.Try(SizeWin, wnd, lParam MOD 65536 + w.dw, lParam DIV 65536 + w.dh)
-		| USER32.WMHScroll:
+		| WinApi.WM_HSCROLL:
 			Kernel.Try(ScrollWin, wnd, wParam, 0);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMVScroll:
+		| WinApi.WM_VSCROLL:
 			Kernel.Try(ScrollWin, wnd, wParam, 1);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| 020AH: (* WM_MOUSEWHEEL *)
+		| WinApi.WM_MOUSEWHEEL:
 			Kernel.Try(WheelScroll, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMPaint:
+		| WinApi.WM_PAINT:
 			w := ThisWindow(wnd);
 			w.GetSize(dx, dy);
-			IF (dx # minimized) & (dy # minimized) THEN
+			IF ~w.minimized THEN
 				(* clip region must be reset to ensure correct ps.paint ! *)
-				res := GDI32.SelectClipRgn(w.port(HostPorts.Port).dc, 0);
-				x := USER32.BeginPaint(w.wnd, ps);
-				Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.paint));
-				res := USER32.EndPaint(w.wnd, ps);
-				Kernel.Try(PaintWin, wnd, 0, 0)
+				res := WinApi.SelectClipRgn(w.port(HostPorts.Port).dc, 0);
+				x := WinApi.BeginPaint(w.wnd, ps);
+				Kernel.Try(InvalidateWin, wnd, x, SYSTEM.ADR(ps.rcPaint));
+				res := WinApi.EndPaint(w.wnd, ps);
+				Kernel.Try(PaintWin, wnd, 0, 0);
+				Controllers.ResetCurrentPath();
+				RETURN 0
 			END
-		| USER32.WMLButtonDown, USER32.WMRButtonDown, USER32.WMMButtonDown:
-			res := USER32.SetCapture(wnd);
+		| WinApi.WM_LBUTTONDOWN, WinApi.WM_RBUTTONDOWN, WinApi.WM_MBUTTONDOWN:
+			res := WinApi.SetCapture(wnd);
 			Kernel.Try(HandleMouse, wnd, wParam + 256, lParam);
-			IF USER32.GetCapture() = wnd THEN res := USER32.ReleaseCapture() END;
+			IF WinApi.GetCapture() = wnd THEN res := WinApi.ReleaseCapture() END;
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMLButtonDblClk, USER32.WMRButtonDblClk, USER32.WMMButtonDblClk:
-			res := USER32.SetCapture(wnd);
+		| WinApi.WM_LBUTTONDBLCLK, WinApi.WM_RBUTTONDBLCLK, WinApi.WM_MBUTTONDBLCLK:
+			res := WinApi.SetCapture(wnd);
 			Kernel.Try(HandleMouse, wnd, wParam + (128 + 256), lParam);
-			IF USER32.GetCapture() = wnd THEN res := USER32.ReleaseCapture() END;
+			IF WinApi.GetCapture() = wnd THEN res := WinApi.ReleaseCapture() END;
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMLButtonUp, USER32.WMRButtonUp, USER32.WMMButtonUp:
+		| WinApi.WM_LBUTTONUP, WinApi.WM_RBUTTONUP, WinApi.WM_MBUTTONUP:
 			Kernel.Try(HandleMouse, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMMouseMove:
+		| WinApi.WM_MOUSEMOVE:
 			Kernel.Try(HandleMouse, wnd, wParam + (2 * 256), lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMKeyDown:
-			Kernel.Try(HandleKey, wnd, wParam, lParam)
-		| USER32.WMChar, USER32.WMSysChar:
+		| WinApi.WM_KEYDOWN:
+			Kernel.Try(HandleKey, wnd, wParam, lParam);
+			IF (wParam = WinApi.VK_TAB)
+				OR (wParam = WinApi.VK_LEFT) OR (wParam = WinApi.VK_UP)
+				OR (wParam = WinApi.VK_RIGHT) OR (wParam = WinApi.VK_DOWN)
+			THEN
+				res := WinApi.SendMessageW(wnd, 0127H (* WM_CHANGEUISTATE *),
+							2 (* UIS_CLEAR *) + 10000H (* UISF_HIDEFOCUS *), 0)
+			END
+		| WinApi.WM_SYSKEYDOWN:
+			IF wParam = WinApi.VK_MENU THEN
+				res := WinApi.SendMessageW(wnd, 0127H (* WM_CHANGEUISTATE *),
+							2 (* UIS_CLEAR *) + 10000H (* UISF_HIDEFOCUS *) + 20000H (* UISF_HIDEACCEL *), 0)
+			END
+		| WinApi.WM_CHAR, WinApi.WM_SYSCHAR:
 			Kernel.Try(HandleChar, wnd, wParam, lParam);
 			Controllers.ResetCurrentPath();
 			RETURN 0
-		| USER32.WMActivate:
+		| WinApi.WM_ACTIVATE:
 			w := ThisWindow(wnd);
 			IF w.hook # NIL THEN w.hook.Activate(wParam # 0) END
-		| USER32.WMNCPaint, USER32.WMNCActivate:
-			IF FramePaint # NIL THEN
-				Controllers.ResetCurrentPath();
-				RETURN FramePaint(wnd, message, wParam, lParam)
-			END
 		ELSE
 		END;
 		Controllers.ResetCurrentPath();
-		RETURN USER32.DefWindowProcA(wnd, message, wParam, lParam)
+		RETURN WinApi.DefWindowProcW(wnd, message, wParam, lParam)
 	END DialogHandler;
 
 
@@ -1640,45 +1641,45 @@ MODULE HostWindows;
 		dir.Open(cbViewer, doc, {Windows.neverDirty}, "Clipboard", NIL, "", NIL)
 	END OpenClipboard;
 (*
-	PROCEDURE SizeClipboard* (wnd: USER32.Handle; w, h: LONGINT);
-		VAR res: LONGINT; dc: USER32.Handle;
+	PROCEDURE SizeClipboard* (wnd: WinApi.Handle; w, h: LONGINT);
+		VAR res: LONGINT; dc: WinApi.Handle;
 	BEGIN
 		cbViewer.wnd := wnd;
-		dc := USER32.GetDC(wnd);
+		dc := WinApi.GetDC(wnd);
 		cbViewer.port(HostPorts.Port).SetDC(dc, wnd);
 (*
-		res := USER32.ShowScrollBar(wnd, USER32.SBHorz, 1);
-		res := USER32.SetScrollRange(wnd, USER32.SBHorz, 0, scrollRange, 1);
-		res := USER32.ShowScrollBar(wnd, USER32.SBVert, 1);
-		res := USER32.SetScrollRange(wnd, USER32.SBVert, 0, scrollRange, 1);
+		res := WinApi.ShowScrollBar(wnd, WinApi.SBHorz, 1);
+		res := WinApi.SetScrollRange(wnd, WinApi.SBHorz, 0, scrollRange, 1);
+		res := WinApi.ShowScrollBar(wnd, WinApi.SBVert, 1);
+		res := WinApi.SetScrollRange(wnd, WinApi.SBVert, 0, scrollRange, 1);
 *)
 		Kernel.Try(SizeWin, wnd, w, h);
 (*
 		cbViewer.UpdateScrollbars(FALSE);
 *)
-		res := USER32.ReleaseDC(wnd, dc);
+		res := WinApi.ReleaseDC(wnd, dc);
 	END SizeClipboard;
 
-	PROCEDURE PaintClipboard* (wnd: USER32.Handle; VAR ps: USER32.PaintStruct);
-		VAR res: LONGINT; dc: USER32.Handle;
+	PROCEDURE PaintClipboard* (wnd: WinApi.Handle; VAR ps: WinApi.PaintStruct);
+		VAR res: LONGINT; dc: WinApi.Handle;
 	BEGIN
 		cbViewer.wnd := wnd;
-		res := GDI32.SelectClipRgn(ps.dc, 0);
+		res := WinApi.SelectClipRgn(ps.dc, 0);
 		Kernel.Try(InvalidateWin, wnd, ps.dc, ADR(ps.paint));
 		Kernel.Try(PaintWin, wnd, 0, 0)
 	END PaintClipboard;
 
-	PROCEDURE ScrollClipboard* (wnd: USER32.Handle; code, pos: LONGINT; vertical: BOOLEAN);
-		VAR res: LONGINT; dc: USER32.Handle;
+	PROCEDURE ScrollClipboard* (wnd: WinApi.Handle; code, pos: LONGINT; vertical: BOOLEAN);
+		VAR res: LONGINT; dc: WinApi.Handle;
 	BEGIN
 		cbViewer.wnd := wnd;
 (*
-		dc := USER32.GetDC(wnd);
+		dc := WinApi.GetDC(wnd);
 		cbViewer.port(HostPorts.Port).SetDC(dc, wnd);
 		cbViewer.Scroll(code, pos, vertical);
 		cbViewer.SetSize(cbViewer.port.w, cbViewer.port.h);
 		cbViewer.UpdateScrollbars(FALSE);
-		res := USER32.ReleaseDC(wnd, dc)
+		res := WinApi.ReleaseDC(wnd, dc)
 *)
 	END ScrollClipboard;
 *)
@@ -1686,7 +1687,7 @@ MODULE HostWindows;
 	(** miscellaneous **)
 
 	PROCEDURE UpdateInfo;
-		VAR res: INTEGER; str: ARRAY 256 OF CHAR; sstr: ARRAY 256 OF SHORTCHAR;
+		VAR res: INTEGER; str: ARRAY 256 OF CHAR;
 	BEGIN
 		IF memInStatus & ((alloc # Kernel.Allocated()) (* OR (total # Kernel.Used()) *) ) THEN
 			alloc := Kernel.Allocated(); total := Kernel.Used();
@@ -1694,8 +1695,7 @@ MODULE HostWindows;
 (*
 			Append(str, totalStr); AppendInt(str, total, useSeparators); Append(str, byteStr);
 *)
-			sstr := SHORT(str$);
-			res := USER32.SetWindowTextA(info, sstr)
+			res := WinApi.SetWindowTextW(info, str)
 		END
 	END UpdateInfo;
 (*
@@ -1731,7 +1731,7 @@ MODULE HostWindows;
 		IF (w # NIL) & ~w.trapped THEN
 			w.trapped := TRUE;
 			IF w.frame # NIL THEN
-				tick.tick := KERNEL32.GetTickCount();
+				tick.tick := WinApi.GetTickCount();
 				w.ForwardCtrlMsg(tick)
 			END;
 			w.trapped := FALSE
@@ -1747,8 +1747,8 @@ MODULE HostWindows;
 		END;
 		IF ~idleTraped THEN
 			idleTraped := TRUE;
-			IF USER32.GetAsyncKeyState(1) >= 0 THEN activating := FALSE END;
-			IF USER32.GetAsyncKeyState(2) >= 0 THEN activating := FALSE END;
+			IF WinApi.GetAsyncKeyState(1) >= 0 THEN activating := FALSE END;
+			IF WinApi.GetAsyncKeyState(2) >= 0 THEN activating := FALSE END;
 			UpdateInfo;
 (*
 			Check;
@@ -1772,219 +1772,217 @@ MODULE HostWindows;
 		mainH := h - tBorder - bBorder;
 		IF Dialog.showsStatus THEN DEC(mainH, statusH) END;
 (*
-		res := USER32.DefFrameProcA(main, client, USER32.WMSize, type, mainW + mainH * 65536);
+		res := WinApi.DefFrameProcW(main, client, WinApi.WMSize, type, mainW + mainH * 65536);
 *)
 		IF debug THEN Log.String("resize main window"); Log.Ln END;
-		res := USER32.MoveWindow(client, lBorder, tBorder, mainW, mainH, 1);
+		res := WinApi.MoveWindow(client, lBorder, tBorder, mainW, mainH, 1);
 		IF Dialog.showsStatus THEN
 			IF memInStatus THEN
-				res := USER32.MoveWindow(status, 0, h - statusH, m + 1, statusH, 1);
-				res := USER32.MoveWindow(info, m, h - statusH, w - m, statusH, 1);
-				res := USER32.ShowWindow(info, 1)
+				res := WinApi.MoveWindow(status, 0, h - statusH, m + 1, statusH, 1);
+				res := WinApi.MoveWindow(info, m, h - statusH, w - m, statusH, 1);
+				res := WinApi.ShowWindow(info, 1)
 			ELSE
-				res := USER32.MoveWindow(status, 0, h - statusH, w, statusH, 1);
-				res := USER32.ShowWindow(info, 0)
+				res := WinApi.MoveWindow(status, 0, h - statusH, w, statusH, 1);
+				res := WinApi.ShowWindow(info, 0)
 			END;
-			res := USER32.ShowWindow(status, 1)
+			res := WinApi.ShowWindow(status, 1)
 		ELSE
-			res := USER32.ShowWindow(status, 0);
-			res := USER32.ShowWindow(info, 0)
+			res := WinApi.ShowWindow(status, 0);
+			res := WinApi.ShowWindow(info, 0)
 		END
 	END ResizeMainWindow;
 
 	PROCEDURE SetMainBorderWidth* (l, t, r, b: INTEGER);
-		VAR res: INTEGER; rect: USER32.Rect;
+		VAR res: INTEGER; rect: WinApi.RECT;
 	BEGIN
 		lBorder := l; tBorder := t; rBorder := r; bBorder := b;
-		res := USER32.GetClientRect(main, rect);
+		res := WinApi.GetClientRect(main, rect);
 		ResizeMainWindow(0, rect.right, rect.bottom)
 	END SetMainBorderWidth;
 
 	PROCEDURE GetMainBorder* (VAR l, t, r, b: INTEGER);
-		VAR res: INTEGER; rect: USER32.Rect;
+		VAR res: INTEGER; rect: WinApi.RECT;
 	BEGIN
-		res := USER32.GetClientRect(main, rect);
+		res := WinApi.GetClientRect(main, rect);
 		l := 0; t := 0; r := rect.right; b := rect.bottom;
 		IF Dialog.showsStatus THEN DEC(b, statusH) END
 	END GetMainBorder;
 
 	PROCEDURE SaveWindowState*;
-		VAR res: INTEGER; wp: USER32.WindowPlacement; list: ARRAY 10 OF INTEGER;
+		VAR res: INTEGER; wp: WinApi.WINDOWPLACEMENT; list: ARRAY 10 OF INTEGER;
 	BEGIN
 		IF ~fullSize THEN
-			wp.len := SIZE(USER32.WindowPlacement);
-			res := USER32.GetWindowPlacement(main, wp);
+			wp.length := SIZE(WinApi.WINDOWPLACEMENT);
+			res := WinApi.GetWindowPlacement(main, wp);
 			IF res # 0 THEN
-				list[0] := wp.normPos.left;
-				list[1] := wp.normPos.top;
-				list[2] := wp.normPos.right;
-				list[3] := wp.normPos.bottom;
-				list[4] := wp.minPos.x;
-				list[5] := wp.minPos.y;
-				list[6] := wp.maxPos.x;
-				list[7] := wp.maxPos.y;
+				list[0] := wp.rcNormalPosition.left;
+				list[1] := wp.rcNormalPosition.top;
+				list[2] := wp.rcNormalPosition.right;
+				list[3] := wp.rcNormalPosition.bottom;
+				list[4] := wp.ptMinPosition.x;
+				list[5] := wp.ptMinPosition.y;
+				list[6] := wp.ptMaxPosition.x;
+				list[7] := wp.ptMaxPosition.y;
 				list[8] := wp.showCmd;
 				IF 1 IN wp.flags THEN list[9] := 1 ELSE list[9] := 0 END;
 				HostRegistry.WriteIntList("MainWindow", list)
 			ELSE
-				res := KERNEL32.GetLastError(); HALT(120)
+				res := WinApi.GetLastError(); HALT(120)
 			END
 		END
 	END SaveWindowState;
 
 	PROCEDURE LoadWindowState ();
-		VAR res: INTEGER; wp: USER32.WindowPlacement; list: ARRAY 10 OF INTEGER;
-			si: KERNEL32.StartupInfo; rect: WinApi.RECT;
+		VAR res: INTEGER; wp: WinApi.WINDOWPLACEMENT; list: ARRAY 10 OF INTEGER;
+			si: WinApi.STARTUPINFOW; rect: WinApi.RECT;
 	BEGIN
 		list[8] := 0; list[9] := 0;
 		IF fullSize THEN
-			wp.len := SIZE(USER32.WindowPlacement);
+			wp.length := SIZE(WinApi.WINDOWPLACEMENT);
 			wp.flags := WinApi.WPF_SETMINPOSITION + WinApi.WPF_RESTORETOMAXIMIZED;
-			res := WinApi.SystemParametersInfo(WinApi.SPI_GETWORKAREA, 0, SYSTEM.ADR(rect), 0);
-			wp.normPos.left := rect.left;
-			wp.normPos.top := rect.top;
-			wp.normPos.right := rect.right;
-			wp.normPos.bottom := rect.bottom;
-			wp.minPos.x := rect.left;
-			wp.minPos.y := rect.top;
-			wp.maxPos.x := rect.left;
-			wp.maxPos.y := rect.top;
-			wp.showCmd := USER32.SWHide;
+			res := WinApi.SystemParametersInfoW(WinApi.SPI_GETWORKAREA, 0, SYSTEM.ADR(rect), 0);
+			wp.rcNormalPosition.left := rect.left;
+			wp.rcNormalPosition.top := rect.top;
+			wp.rcNormalPosition.right := rect.right;
+			wp.rcNormalPosition.bottom := rect.bottom;
+			wp.ptMinPosition.x := rect.left;
+			wp.ptMinPosition.y := rect.top;
+			wp.ptMaxPosition.x := rect.left;
+			wp.ptMaxPosition.y := rect.top;
+			wp.showCmd := WinApi.SW_HIDE;
 			showState := WinApi.SW_SHOW;
-			res := USER32.SetWindowPlacement(main, wp)
+			res := WinApi.SetWindowPlacement(main, wp)
 		ELSE
 			HostRegistry.ReadIntList("MainWindow", list, res);
 			IF res = 0 THEN
-				wp.len := SIZE(USER32.WindowPlacement);
+				wp.length := SIZE(WinApi.WINDOWPLACEMENT);
 				wp.flags := {0}; 	(* set min pos *)
-				wp.normPos.left := list[0];
-				wp.normPos.top := list[1];
-				wp.normPos.right := list[2];
-				wp.normPos.bottom := list[3];
-				wp.minPos.x := list[4];
-				wp.minPos.y := list[5];
+				wp.rcNormalPosition.left := list[0];
+				wp.rcNormalPosition.top := list[1];
+				wp.rcNormalPosition.right := list[2];
+				wp.rcNormalPosition.bottom := list[3];
+				wp.ptMinPosition.x := list[4];
+				wp.ptMinPosition.y := list[5];
 				IF list[8] = 0 THEN	(* v1.0..v1.1 *)
 					wp.showCmd := list[6];
-					wp.maxPos.x := -1;
-					wp.maxPos.y := -1
+					wp.ptMaxPosition.x := -1;
+					wp.ptMaxPosition.y := -1
 				ELSE	(* v1.11.. *)
-					wp.maxPos.x := list[6];
-					wp.maxPos.y := list[7];
+					wp.ptMaxPosition.x := list[6];
+					wp.ptMaxPosition.y := list[7];
 					wp.showCmd := list[8];
 					IF list[9] > 0 THEN INCL(wp.flags, 1) END	(* restore maximized *)
 				END;
-				si.size := SIZE(KERNEL32.StartupInfo);
-				KERNEL32.GetStartupInfoA(si);
-				IF 0 IN si.flags THEN	(* showWindow valid *)
-					IF si.showWindow > 1 THEN wp.showCmd := si.showWindow
+				si.cb := SIZE(WinApi.STARTUPINFOW);
+				WinApi.GetStartupInfoW(si);
+				IF 0 IN si.dwFlags THEN	(* showWindow valid *)
+					IF si.wShowWindow > 1 THEN wp.showCmd := si.wShowWindow
 					ELSIF wp.showCmd = 2 THEN	(* restore minimized *)
 						IF 1 IN wp.flags THEN wp.showCmd := 3 ELSE wp.showCmd := 9 END
 					END
 				END;
-				showState := wp.showCmd; wp.showCmd := USER32.SWHide;
-				res := USER32.SetWindowPlacement(main, wp)
+				showState := wp.showCmd; wp.showCmd := WinApi.SW_HIDE;
+				res := WinApi.SetWindowPlacement(main, wp)
 			END
 		END
 	END LoadWindowState;
 
-	PROCEDURE CreateMainWindows* (menuBar, winMenu: USER32.Handle; Handler: USER32.WndProc);
-		VAR res: INTEGER; class: USER32.WndClass; ccs: USER32.ClientCreateStruct;
-			dc: USER32.Handle; tm: GDI32.TextMetric; str: ARRAY 256 OF CHAR; ver: ARRAY 8 OF CHAR;
-			sstr: ARRAY 64 OF SHORTCHAR;
+	PROCEDURE CreateMainWindows* (menuBar, winMenu: WinApi.HANDLE; Handler: WinApi.WNDPROC);
+		VAR res: INTEGER; class: WinApi.WNDCLASSW; ccs: WinApi.CLIENTCREATESTRUCT;
+			dc: WinApi.HANDLE; tm: WinApi.TEXTMETRICW; str: ARRAY 256 OF CHAR; ver: ARRAY 8 OF CHAR;
 	BEGIN
 		(* init window classes *)
-		class.cursor := USER32.LoadCursorA(0, USER32.MakeIntRsrc(USER32.IDCArrow));
-		class.icon := USER32.LoadIconA(instance, USER32.MakeIntRsrc(1));
-		IF (class.icon = 0) OR (class.icon = 1) THEN
-			class.icon := USER32.LoadIconA(0, USER32.MakeIntRsrc(USER32.IDIApplication))
+		class.hCursor := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW));
+		class.hIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 1));
+		IF (class.hIcon = 0) OR (class.hIcon = 1) THEN
+			class.hIcon := WinApi.LoadIconW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDI_APPLICATION))
 		END;
-		class.menuName := NIL;
-		class.className := "Oberon App";
-		class.backgnd := 0; (* 12 + 1; *)	(* application workspace color *)
+		class.lpszMenuName := NIL;
+		class.lpszClassName := "Oberon App";
+		class.hbrBackground := 0; (* 12 + 1; *)	(* application workspace color *)
 		class.style := {3, 5};	(* doubleclicks, privat dc *)
-		class.instance := instance;
-		class.wndProc := Handler;
-		class.clsExtra := 0;
-		class.wndExtra := 4;
-		USER32.RegisterClassA(class);
-		class.cursor := 0;	(* no class cursor *)
-		class.menuName := NIL;
-		class.backgnd := 0;	(* no background *)
-		class.className := "Oberon Dlg";
-		class.wndProc := DialogHandler;
-		USER32.RegisterClassA(class);
-		class.className := "Oberon Aux";
-		class.wndProc := DocWinHandler;
-		USER32.RegisterClassA(class);
-		docIcon := USER32.LoadIconA(instance, USER32.MakeIntRsrc(2));
+		class.hInstance := instance;
+		class.lpfnWndProc := Handler;
+		class.cbClsExtra := 0;
+		class.cbWndExtra := 4;
+		res := WinApi.RegisterClassW(class);
+		class.hCursor := 0;	(* no class cursor *)
+		class.lpszMenuName := NIL;
+		class.hbrBackground := 0;	(* no background *)
+		class.lpszClassName := "Oberon Dlg";
+		class.lpfnWndProc := DialogHandler;
+		res := WinApi.RegisterClassW(class);
+		class.lpszClassName := "Oberon Aux";
+		class.lpfnWndProc := DocWinHandler;
+		res := WinApi.RegisterClassW(class);
+		docIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 2));
 		IF (docIcon = 0) OR (docIcon = 1) THEN
-			docIcon := USER32.LoadIconA(0, USER32.MakeIntRsrc(USER32.IDIApplication))
+			docIcon := WinApi.LoadIconW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDI_APPLICATION))
 		END;
-		dirtyIcon := USER32.LoadIconA(instance, USER32.MakeIntRsrc(5));
+		dirtyIcon := WinApi.LoadIconW(instance, SYSTEM.VAL(WinApi.PtrWSTR, 5));
 		IF (dirtyIcon = 0) OR (dirtyIcon = 1) THEN dirtyIcon := docIcon END;
-		class.icon := docIcon;
-		class.className := "Oberon Doc";
-		class.wndProc := DocWinHandler;
-		USER32.RegisterClassA(class);
+		class.hIcon := docIcon;
+		class.lpszClassName := "Oberon Doc";
+		class.lpfnWndProc := DocWinHandler;
+		res := WinApi.RegisterClassW(class);
 		(* open main windows *)
-		sstr := SHORT(Dialog.appName$);
 		IF ~fullSize THEN
-			main := USER32.CreateWindowExA({8, 9}, "Oberon App", sstr,
+			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", Dialog.appName,
 													{16..19, 22, 23},	(* maxbox, minbox, frame, sysmenu, title, border *)
-													USER32.CWUseDefault, USER32.CWUseDefault,
-													USER32.CWUseDefault, USER32.CWUseDefault,
+													WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
+													WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
 													0, menuBar, instance, 0)
 		ELSE
-			main := USER32.CreateWindowExA({8, 9}, "Oberon App", sstr,
+			main := WinApi.CreateWindowExW({8, 9}, "Oberon App", Dialog.appName,
 													WinApi.WS_MINIMIZEBOX + WinApi.WS_SYSMENU + WinApi.WS_CAPTION,
-													USER32.CWUseDefault, USER32.CWUseDefault,
-													USER32.CWUseDefault, USER32.CWUseDefault,
+													WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
+													WinApi.CW_USEDEFAULT, WinApi.CW_USEDEFAULT,
 													0, menuBar, instance, 0)
 		END;
-		ccs.windowMenu := winMenu;
-		ccs.firstChild := 10000;
+		ccs.hWindowMenu := winMenu;
+		ccs.idFirstChild := 10000;
 		IF noClientScroll THEN
-			client := USER32.CreateWindowExA({}, "MDICLIENT", NIL,
+			client := WinApi.CreateWindowExW({}, "MDICLIENT", NIL,
 													{25, 30},	(* clipchildren, child *)
 													0, 0, 0, 0,
 													main, 32767, instance, SYSTEM.ADR(ccs))
 		ELSE
-			client := USER32.CreateWindowExA({}, "MDICLIENT", NIL,
+			client := WinApi.CreateWindowExW({}, "MDICLIENT", NIL,
 													{20, 21, 25, 30},	(* scroll, clipchildren, child *)
 													0, 0, 0, 0,
 													main, 32767, instance, SYSTEM.ADR(ccs))
 		END;
-		status := USER32.CreateWindowExA({}, "STATIC", NIL,
+		status := WinApi.CreateWindowExW({}, "STATIC", NIL,
 												{7, 23, 30},	(* left, noprefix, border, child *)
 												0, 0, 0, 0,
 												main, 32766, instance, 0);
-		info := USER32.CreateWindowExA({}, "STATIC", NIL,
+		info := WinApi.CreateWindowExW({}, "STATIC", NIL,
 											{7, 23, 30},	(* left, noprefix, border, child *)
 											0, 0, 0, 0,
 											main, 32765, instance, 0);
-		res := USER32.SendMessageA(status, USER32.WMSetFont, font, 1);
-		res := USER32.SendMessageA(info, USER32.WMSetFont, font, 1);
-		dc := USER32.GetDC(status);
-		res := GDI32.GetTextMetricsA(dc, tm);
-		res := USER32.ReleaseDC(status, dc);
-		statusH := tm.height;
-		showState := USER32.SWShow;
+		res := WinApi.SendMessageW(status, WinApi.WM_SETFONT, font, 1);
+		res := WinApi.SendMessageW(info, WinApi.WM_SETFONT, font, 1);
+		dc := WinApi.GetDC(status);
+		res := WinApi.GetTextMetricsW(dc, tm);
+		res := WinApi.ReleaseDC(status, dc);
+		statusH := tm.tmHeight;
+		showState := WinApi.SW_SHOW;
 		LoadWindowState();
-		res := USER32.ShowWindow(client, 1);
+		res := WinApi.ShowWindow(client, 1);
 		IF Dialog.showsStatus THEN
-			res := USER32.ShowWindow(status, 1);
+			res := WinApi.ShowWindow(status, 1);
 			IF memInStatus THEN
-				res := USER32.ShowWindow(info, 1)
+				res := WinApi.ShowWindow(info, 1)
 			END
 		END;
 (*	moved to HostMenus
-		res := USER32.ShowWindow(main, USER32.SWShow);
-		res := USER32.UpdateWindow(main);
+		res := WinApi.ShowWindow(main, WinApi.SW_SHOW);
+		res := WinApi.UpdateWindow(main);
 *)
-		HostFiles.main := main;
-		dc := USER32.GetDC(main);
-		unit := Ports.inch DIV GDI32.GetDeviceCaps(dc, GDI32.LogPixelsY);
-		res := USER32.ReleaseDC(main, dc);
+		Kernel.mainWnd := main;
+		dc := WinApi.GetDC(main);
+		unit := Ports.inch DIV WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY);
+		res := WinApi.ReleaseDC(main, dc);
 
 		Dialog.MapString(allocKey, allocStr);
 		Dialog.MapString(totalKey, totalStr);
@@ -2003,46 +2001,24 @@ MODULE HostWindows;
 	END CreateMainWindows;
 
 	PROCEDURE Init;
-		VAR res, v: INTEGER; d: Directory; dc, user: USER32.Handle;
-			Register: PROCEDURE(i: USER32.Handle): INTEGER; p: KERNEL32.StringPtr;
+		VAR res: INTEGER; d: Directory; dc: WinApi.HANDLE;
+			Register: PROCEDURE(i: WinApi.HANDLE): INTEGER; p: WinApi.PtrWSTR;
 	BEGIN
-		instance := KERNEL32.GetModuleHandleA(NIL);
-		dc := USER32.GetDC(0);
-		unit := Ports.inch DIV GDI32.GetDeviceCaps(dc, GDI32.LogPixelsY);
-		res := USER32.ReleaseDC(0, dc);
-		scW := USER32.GetSystemMetrics(0);	(* screen width *)
-		scH := USER32.GetSystemMetrics(1);	(* screen height *)
+		instance := WinApi.GetModuleHandleW(NIL);
+		dc := WinApi.GetDC(0);
+		unit := Ports.inch DIV WinApi.GetDeviceCaps(dc, WinApi.LOGPIXELSY);
+		res := WinApi.ReleaseDC(0, dc);
+		scW := WinApi.GetSystemMetrics(0);	(* screen width *)
+		scH := WinApi.GetSystemMetrics(1);	(* screen height *)
 		NEW(d); d.l := -1; d.t := -1; d.r := -1; d.b := -1; dir := d; Windows.SetDir(d);
 		NEW(winAnchor); winAnchor.next := NIL;	(* dummy header *)
 		tWindow := NIL; fWindow := NIL; aWindow := NIL; bgWindow := NIL;
 		noClientScroll := FALSE; fullSize := FALSE; noAppWin := FALSE;
-		whiteBrush := GDI32.GetStockObject(GDI32.WhiteBrush);
-		nullPen := GDI32.GetStockObject(GDI32.NullPen);
-		font := GDI32.GetStockObject(GDI32.AnsiVarFont);
+		whiteBrush := WinApi.GetStockObject(WinApi.WHITE_BRUSH);
+		nullPen := WinApi.GetStockObject(WinApi.NULL_PEN);
+		font := WinApi.GetStockObject(WinApi.DEFAULT_GUI_FONT);
 		cbValid := FALSE; newNumber := 1;
 		visualScroll := TRUE; HostRegistry.ReadBool("VisualScroll", visualScroll, res);
-		v := KERNEL32.GetVersion();
-		v := v MOD 256 * 100 + v DIV 256 MOD 256;
-		IF v < 400 THEN
-			res := KERNEL32.SearchPathA(NIL, "CTL3D32.DLL", NIL, 0, NIL, p);
-			IF res > 0 THEN	(* CTL3D32 available, avoids error dialog in LoadLibrary on Win32s *)
-				ctl3d := KERNEL32.LoadLibraryA("CTL3D32");
-				IF ctl3d # 0 THEN
-					SYSTEM.PUT(SYSTEM.ADR(Register), KERNEL32.GetProcAddress(ctl3d, "Ctl3dRegister"));
-					IF Register # NIL THEN
-						res := Register(instance);
-						IF res # 0 THEN
-							SYSTEM.PUT(
-								SYSTEM.ADR(FramePaint), KERNEL32.GetProcAddress(ctl3d, "Ctl3dDlgFramePaint"))
-						ELSE ctl3d := 0
-						END
-					END
-				END
-			END
-		END;
-		user := KERNEL32.GetModuleHandleA("USER32");
-		SYSTEM.PUT(SYSTEM.ADR(GetScrollInfo), KERNEL32.GetProcAddress(user, "GetScrollInfo"));
-		SYSTEM.PUT(SYSTEM.ADR(SetScrollInfo), KERNEL32.GetProcAddress(user, "SetScrollInfo"))
 	END Init;
 
 BEGIN

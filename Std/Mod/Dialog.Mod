@@ -12,7 +12,7 @@ MODULE StdDialog;
 **)
 
 	IMPORT
-		Kernel, Meta, Strings, Files, Fonts, Printers, Stores, Models, Sequencers, Views, Controllers,
+		Kernel, Meta, Strings, Files, Stores, Models, Sequencers, Views,
 		Containers, Dialog, Properties, Documents, Converters, Windows;
 
 
@@ -89,22 +89,14 @@ MODULE StdDialog;
 		i.failed := FALSE; i.trapped := FALSE
 	END ClearGuards;
 
-	PROCEDURE StripEllipsis (VAR s: ARRAY OF CHAR);
-		CONST ELLIPSIS = 0C9X;
-		VAR i: INTEGER;
-	BEGIN
-		i := 0; WHILE s[i] # 0X DO INC(i) END;
-		WHILE (i > 0) & (s[i-1] = ".") OR (s[i-1] = ELLIPSIS) DO DEC(i); s[i] := 0X END
-	END StripEllipsis;
-
 	PROCEDURE GetGuardProc (name: ARRAY OF CHAR; VAR i: Meta.Item;
 														VAR par: BOOLEAN; VAR n: INTEGER);
-		VAR j, k, x: INTEGER; num: ARRAY 32 OF CHAR;
+		VAR j, k: INTEGER; num: ARRAY 32 OF CHAR;
 	BEGIN
 		j := 0;
 		WHILE (name[j] # 0X) & (name[j] # "(") DO INC(j) END;
 		IF name[j] = "(" THEN
-			x := 0; name[j] := 0X; INC(j); k := 0;
+			name[j] := 0X; INC(j); k := 0;
 			WHILE (name[j] # 0X) & (name[j] # ")") DO num[k] := name[j]; INC(j); INC(k) END;
 			IF (name[j] = ")") & (name[j+1] = 0X) THEN
 				num[k] := 0X; Strings.StringToInt(num, n, k);
@@ -151,7 +143,7 @@ MODULE StdDialog;
 			Dialog.Call(i.string^, " ", res)
 		ELSIF (i # NIL) & i.failed THEN
 			IF i.trapped THEN
-				Dialog.ShowParamMsg("#System:ItemFilterTrapped", i.string^, i.filter^, "");
+				Dialog.ShowParamMsg("#System:ItemFilterTrapped", i.string^, i.filter^, "")
 			ELSE
 				Dialog.ShowParamMsg("#System:ItemFilterNotFound", i.string^, i.filter^, "")
 			END
@@ -189,7 +181,7 @@ MODULE StdDialog;
 									loc: Files.Locator; name: Files.Name; conv: Converters.Converter;
 									asTool, asAux, noResize, allowDuplicates, neverDirty: BOOLEAN);
 		VAR t: Views.Title; flags, opts: SET; done: BOOLEAN; d: Documents.Document; i: INTEGER;
-			m: Models.Model; win: Windows.Window; c: Containers.Controller; f: Files.File; seq: ANYPTR;
+			win: Windows.Window; c: Containers.Controller; seq: ANYPTR;
 	BEGIN
 		IF conv = NIL THEN conv := Converters.list END;	(* use document converter *)
 		ASSERT(v # NIL, 20);
@@ -236,7 +228,7 @@ MODULE StdDialog;
 			END;
 			IF asTool OR asAux THEN
 				c := d.ThisController();
-				c.SetOpts(c.opts + {Containers.noSelection});
+				c.SetOpts(c.opts + {Containers.noSelection})
 			END;
 			ASSERT(d.Domain() = v.Domain(), 100);
 			ASSERT(d.Domain() # NIL, 101);
@@ -291,7 +283,7 @@ MODULE StdDialog;
 			Converters.Import(loc, name, conv, s);
 			IF s # NIL THEN RecalcView(s(Views.View)) END
 		END;
-		IF s # NIL THEN RETURN s(Views.View) ELSE RETURN NIL END;
+		IF s # NIL THEN RETURN s(Views.View) ELSE RETURN NIL END
 	END OldView;
 
 	PROCEDURE (h: ViewHook) RegisterView (v: Views.View; 
@@ -305,7 +297,7 @@ MODULE StdDialog;
 	PROCEDURE Init;
 		VAR h: ViewHook;
 	BEGIN
-		NEW(h); Views.SetViewHook(h);
+		NEW(h); Views.SetViewHook(h)
 	END Init;
 
 BEGIN

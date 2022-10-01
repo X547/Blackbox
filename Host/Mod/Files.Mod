@@ -11,7 +11,7 @@ MODULE HostFiles;
 
 **)
 
-	IMPORT Files, Kernel, KERNEL32, USER32, SYSTEM, WinApi;
+	IMPORT SYSTEM, WinApi, Files, Kernel;
 
 	CONST
 		tempName = "odcxxxxx.tmp";
@@ -24,7 +24,7 @@ MODULE HostFiles;
 		nofbufs = 4;	(* max number of buffers per file *)
 		bufsize = 2 * 1024;	(* size of each buffer *)
 
-		invalid = KERNEL32.InvalidHandle;
+		invalid = WinApi.INVALID_HANDLE_VALUE;
 
 		temp = 0; new = 1; shared = 2; hidden = 3; exclusive = 4; closed = 5;	(* file states *)
 		create = -1;
@@ -63,7 +63,7 @@ MODULE HostFiles;
 		File = POINTER TO RECORD (Files.File)
 			state: INTEGER;
 			name: FullName;
-			ref: KERNEL32.Handle;
+			ref: WinApi.HANDLE;
 			loc: Locator;
 			swapper: INTEGER;	(* index into file table / next buffer to swap *)
 			len: INTEGER;
@@ -100,12 +100,9 @@ MODULE HostFiles;
 			count: INTEGER
 		END;
 
-		ShortName = ARRAY pathLen OF SHORTCHAR;
-
 
 	VAR
 		MapParamString*: PROCEDURE(in, p0, p1, p2: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
-		main*: INTEGER;	(* main window *)
 		appName-: FullName;
 		dir: Directory;
 		wildcard: Files.Type;
@@ -130,7 +127,7 @@ MODULE HostFiles;
 		RETURN res
 	END Error;
 
-	PROCEDURE Diff (VAR a, b: ARRAY OF CHAR; caseSens: BOOLEAN): INTEGER;
+	PROCEDURE Diff (IN a, b: ARRAY OF CHAR; caseSens: BOOLEAN): INTEGER;
 		VAR i: INTEGER; cha, chb: CHAR;
 	BEGIN
 		i := 0;
@@ -161,7 +158,7 @@ MODULE HostFiles;
 	END Diff;
 
 	PROCEDURE NewLocator* (IN fname: ARRAY OF CHAR): Locator;
-		VAR loc: Locator; res, n, max, i: INTEGER; root: FullName; ch: CHAR; f: SET; s: ShortName;
+		VAR loc: Locator; res, n, max, i: INTEGER; root: FullName; ch: CHAR; f: SET;
 	BEGIN
 		NEW(loc); loc.path := fname$; i := 0;
 		WHILE loc.path[i] # 0X DO INC(i) END;
@@ -173,8 +170,7 @@ MODULE HostFiles;
 			IF (ch = "/") OR (ch = "\") THEN DEC(n) END
 		UNTIL (ch = 0X) OR (n = 0);
 		IF ch = 0X THEN root[i-1] := "\" END;
-		root[i] := 0X; s := SHORT(root$);
-		res := KERNEL32.GetVolumeInformationA(s, NIL, 0, n, max, f, NIL, 0);
+		root[i] := 0X; res := WinApi.GetVolumeInformationW(root, NIL, 0, n, max, f, NIL, 0);
 		IF res = 0 THEN
 			max := 12; f := {}	(* FAT values *)
 		END;
@@ -236,14 +232,14 @@ MODULE HostFiles;
 
 	PROCEDURE CloseFileHandle (f: File; VAR res: INTEGER);
 	BEGIN
-		IF (f.ref = invalid) OR (KERNEL32.CloseHandle(f.ref) # 0) THEN res := ok	(* !!! *)
-		ELSE res := KERNEL32.GetLastError()
+		IF (f.ref = invalid) OR (WinApi.CloseHandle(f.ref) # 0) THEN res := ok	(* !!! *)
+		ELSE res := WinApi.GetLastError()
 		END;
 		f.ref := invalid
 	END CloseFileHandle;
 
 	PROCEDURE CloseFile (f: File; VAR res: INTEGER);
-		VAR s: INTEGER; n: ShortName;
+		VAR s: INTEGER;
 	BEGIN
 		IF f.state = exclusive THEN
 			f.Flush;
@@ -252,8 +248,7 @@ MODULE HostFiles;
 		s := f.state; f.state := closed;
 		CloseFileHandle (f, res);
 		IF (s IN {temp, new, hidden}) & (f.name # "") THEN
-			n := SHORT(f.name$);
-			res := KERNEL32.DeleteFileA(n)
+			res := WinApi.DeleteFileW(f.name)
 		END
 	END CloseFile;
 
@@ -270,7 +265,7 @@ MODULE HostFiles;
 		RETURN (f.state IN {shared, exclusive}) & (Diff(f.name, id.name, f.loc.caseSens) = 0)
 	END Identified;
 
-	PROCEDURE ThisFile (VAR name: FullName): File;
+	PROCEDURE ThisFile (IN name: FullName): File;
 		VAR id: Identifier; p: ANYPTR;
 	BEGIN
 		id.typ := SYSTEM.TYP(File); id.name := name$;
@@ -294,24 +289,22 @@ MODULE HostFiles;
 		s.typ := SYSTEM.TYP(File); s.f := NIL;
 		p := Kernel.ThisFinObj(s);
 		IF s.f # NIL THEN
-			res := KERNEL32.CloseHandle(s.f.ref); s.f.ref := invalid;
-			IF res = 0 THEN res := KERNEL32.GetLastError(); HALT(100) END
+			res := WinApi.CloseHandle(s.f.ref); s.f.ref := invalid;
+			IF res = 0 THEN res := WinApi.GetLastError(); HALT(100) END
 		END
 	END SearchFileToClose;
 
-	PROCEDURE NewFileRef (state: INTEGER; VAR name: FullName): KERNEL32.Handle;
-		VAR n: ShortName;
+	PROCEDURE NewFileRef (state: INTEGER; VAR name: FullName): WinApi.HANDLE;
 	BEGIN
-		n := SHORT(name$);
 		IF state = create THEN
-			RETURN KERNEL32.CreateFileA(n, {KERNEL32.GenericRead, KERNEL32.GenericWrite}, {},
-										0, KERNEL32.CreateNew, {KERNEL32.FileAttrTemp}, 0)
+			RETURN WinApi.CreateFileW(name, WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {},
+										NIL, WinApi.CREATE_NEW, WinApi.FILE_ATTRIBUTE_TEMPORARY, 0)
 		ELSIF state = shared THEN
-			RETURN KERNEL32.CreateFileA(n, {KERNEL32.GenericRead}, {KERNEL32.FileShareRead},
-										0, KERNEL32.OpenExisting, {}, 0)
+			RETURN WinApi.CreateFileW(name, WinApi.GENERIC_READ, WinApi.FILE_SHARE_READ,
+										NIL, WinApi.OPEN_EXISTING, {}, 0)
 		ELSE
-			RETURN KERNEL32.CreateFileA(n, {KERNEL32.GenericRead, KERNEL32.GenericWrite}, {},
-										0, KERNEL32.OpenExisting, {}, 0)
+			RETURN WinApi.CreateFileW(name, WinApi.GENERIC_READ + WinApi.GENERIC_WRITE, {},
+										NIL, WinApi.OPEN_EXISTING, {}, 0)
 		END
 	END NewFileRef;
 
@@ -319,17 +312,17 @@ MODULE HostFiles;
 	BEGIN
 		ref := NewFileRef(state, name);
 		IF ref = invalid THEN
-			res := KERNEL32.GetLastError();
+			res := WinApi.GetLastError();
 			IF (res = tooManyOpenFilesErr) OR (res = noSystemResourcesErr) THEN
 				Kernel.Collect;
 				ref := NewFileRef(state, name);
 				IF ref = invalid THEN
-					res := KERNEL32.GetLastError();
+					res := WinApi.GetLastError();
 					IF (res = tooManyOpenFilesErr) OR (res = noSystemResourcesErr) THEN
 						SearchFileToClose;
 						ref := NewFileRef(state, name);
 						IF ref = invalid THEN
-							res := KERNEL32.GetLastError()
+							res := WinApi.GetLastError()
 						ELSE res := ok
 						END
 					END
@@ -340,7 +333,7 @@ MODULE HostFiles;
 		END
 	END OpenFile;
 
-	PROCEDURE GetTempFileName (VAR path, name: FullName; num: INTEGER);
+	PROCEDURE GetTempFileName (IN path: FullName; OUT name: FullName; num: INTEGER);
 		VAR i: INTEGER; str: ARRAY 16 OF CHAR;
 	BEGIN
 		str := tempName; i := 7;
@@ -354,7 +347,7 @@ MODULE HostFiles;
 		VAR num, n: INTEGER;
 	BEGIN
 		IF f.name = "" THEN
-			num := KERNEL32.GetTickCount(); n := 200;
+			num := WinApi.GetTickCount(); n := 200;
 			REPEAT
 				GetTempFileName(f.loc.path, f.name, num); INC(num); DEC(n);
 				OpenFile(create, f.name, f.ref, res)
@@ -364,26 +357,25 @@ MODULE HostFiles;
 		END
 	END CreateFile;
 
-	PROCEDURE Delete (VAR fname, path: FullName; VAR res: INTEGER);
-		VAR num, n, s: INTEGER; f: File; new: FullName; attr: SET; fn, nn: ShortName;
+	PROCEDURE Delete (IN fname, path: FullName; VAR res: INTEGER);
+		VAR num, n, s: INTEGER; f: File; new: FullName; attr: SET;
 	BEGIN
 		ASSERT(fname # "", 100);
-		f := ThisFile(fname); fn := SHORT(fname$);
+		f := ThisFile(fname);
 		IF f = NIL THEN
-			IF KERNEL32.DeleteFileA(fn) # 0 THEN res := ok
-			ELSE res := KERNEL32.GetLastError()
+			IF WinApi.DeleteFileW(fname) # 0 THEN res := ok
+			ELSE res := WinApi.GetLastError()
 			END
 		ELSE (* still in use => make it anonymous *)
-			IF f.ref # invalid THEN res := KERNEL32.CloseHandle(f.ref); f.ref := invalid END;	(* !!! *)
-			attr := KERNEL32.GetFileAttributesA(fn);
+			IF f.ref # invalid THEN res := WinApi.CloseHandle(f.ref); f.ref := invalid END;	(* !!! *)
+			attr := BITS(WinApi.GetFileAttributesW(fname));
 			ASSERT(attr # {0..MAX(SET)}, 101);
-			IF ~(KERNEL32.FileAttrReadOnly IN attr) THEN
-				s := SHORT(f.state); num := KERNEL32.GetTickCount(); n := 200;
+			IF WinApi.FILE_ATTRIBUTE_READONLY * attr = {} THEN
+				s := f.state; num := WinApi.GetTickCount(); n := 200;
 				REPEAT
 					GetTempFileName(path, new, num); INC(num); DEC(n);
-					nn := SHORT(new$);
-					IF KERNEL32.MoveFileA(fn, nn) # 0 THEN res := ok
-					ELSE res := KERNEL32.GetLastError()
+					IF WinApi.MoveFileW(fname, new) # 0 THEN res := ok
+					ELSE res := WinApi.GetLastError()
 					END
 				UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87) OR (n = 0);
 				IF res = ok THEN
@@ -402,9 +394,9 @@ MODULE HostFiles;
 		IF (buf # NIL) & buf.dirty THEN
 			IF f.ref = invalid THEN CreateFile(f, res) (* ASSERT(res = ok, 100) *) END;
 			IF f.ref # invalid THEN
-				h := 0; h := KERNEL32.SetFilePointer(f.ref, buf.org, h, 0);
-				IF (KERNEL32.WriteFile(f.ref, SYSTEM.ADR(buf.data), buf.len, h, 0) = 0) OR (h < buf.len) THEN
-					res := KERNEL32.GetLastError(); HALT(101)
+				h := 0; h := WinApi.SetFilePointer(f.ref, buf.org, h, 0);
+				IF (WinApi.WriteFile(f.ref, SYSTEM.ADR(buf.data), buf.len, h, NIL) = 0) OR (h < buf.len) THEN
+					res := WinApi.GetLastError(); HALT(101)
 				END;
 				buf.dirty := FALSE; f.t := Kernel.Time()
 			END
@@ -449,36 +441,34 @@ MODULE HostFiles;
 		i := 0; WHILE i # nofbufs DO FlushBuffer(f, i); INC(i) END
 	END Flush;
 
-	PROCEDURE GetPath (VAR fname, path: FullName);
+	PROCEDURE GetPath (IN fname: FullName; OUT path: FullName);
 		VAR i: INTEGER;
 	BEGIN
-		path := fname$; i := 0;
-		WHILE path[i] # 0X DO INC(i) END;
+		path := fname$; i := LEN(path$);
 		WHILE (i > 0) & (path[i] # "\") & (path[i] # "/") & (path[i-1] # ":") DO DEC(i) END;
 		path[i] := 0X
 	END GetPath;
 
-	PROCEDURE CreateDir (VAR path: FullName; VAR res: INTEGER);
-		VAR sec: KERNEL32.SecurityAttributes; p: FullName; s: ShortName;
+	PROCEDURE CreateDir (IN path: FullName; OUT res: INTEGER);
+		VAR sec: WinApi.SECURITY_ATTRIBUTES; p: FullName;
 	BEGIN
 		ASSERT(path # "", 100);
-		sec.len :=SIZE(KERNEL32.SecurityAttributes);
-		sec.secDesc := 0; sec.inherit := 0; s := SHORT(path$);
-		res := KERNEL32.CreateDirectoryA(s, sec);
-		IF res = 0 THEN res := KERNEL32.GetLastError() ELSE res := ok END;
+		sec.nLength :=SIZE(WinApi.SECURITY_ATTRIBUTES);
+		sec.lpSecurityDescriptor := 0; sec.bInheritHandle := 0;
+		res := WinApi.CreateDirectoryW(path, sec);
+		IF res = 0 THEN res := WinApi.GetLastError() ELSE res := ok END;
 		IF (res = fileNotFoundErr) OR (res = pathNotFoundErr) THEN
 			GetPath(path, p);
 			CreateDir(p, res);	(* recursive call *)
 			IF res = ok THEN
-				res := KERNEL32.CreateDirectoryA(s, sec);
-				IF res = 0 THEN res := KERNEL32.GetLastError() ELSE res := ok END
+				res := WinApi.CreateDirectoryW(path, sec);
+				IF res = 0 THEN res := WinApi.GetLastError() ELSE res := ok END
 			END
 		END
 	END CreateDir;
 
 	PROCEDURE CheckPath (VAR path: FullName; ask: BOOLEAN; VAR res: INTEGER);
 		VAR s: ARRAY 300 OF CHAR; t: ARRAY 32 OF CHAR;
-			ss: ARRAY 300 OF SHORTCHAR; st: ARRAY 32 OF SHORTCHAR;
 	BEGIN
 		IF ask THEN
 			IF MapParamString # NIL THEN
@@ -487,8 +477,7 @@ MODULE HostFiles;
 			ELSE
 				s := path$; t := "Missing Directory"
 			END;
-			ss := SHORT(s$); st := SHORT(t$);
-			res := USER32.MessageBoxA(main, ss, st, {0, 6})	(* ok cancel, icon information *)
+			res := WinApi.MessageBoxW(Kernel.mainWnd, s, t, {0, 6})	(* ok cancel, icon information *)
 		ELSE
 			res := 1
 		END;
@@ -497,9 +486,8 @@ MODULE HostFiles;
 		END
 	END CheckPath;
 
-	PROCEDURE CheckDelete (VAR fname, path: FullName; ask: BOOLEAN; VAR res: INTEGER);
+	PROCEDURE CheckDelete (IN fname, path: FullName; ask: BOOLEAN; VAR res: INTEGER);
 		VAR s: ARRAY 300 OF CHAR; t: ARRAY 16 OF CHAR;
-			ss: ARRAY 300 OF SHORTCHAR; st: ARRAY 16 OF SHORTCHAR;
 	BEGIN
 		REPEAT
 			Delete(fname, path, res);
@@ -519,8 +507,7 @@ MODULE HostFiles;
 					ELSE
 						s := fname$; t := "File Error"
 					END;
-					ss := SHORT(s$); st := SHORT(t$);
-					res := USER32.MessageBoxA(main, ss, st, {0, 2, 4, 5});	(* retry cancel, icon warning *)
+					res := WinApi.MessageBoxW(Kernel.mainWnd, s, t, {0, 2, 4, 5});	(* retry cancel, icon warning *)
 					IF res = 2 THEN res := cancel
 					ELSIF res = 4 THEN res := retry
 					END
@@ -534,7 +521,7 @@ MODULE HostFiles;
 	END CheckDelete;
 
 	PROCEDURE (f: File) Register (name: Files.Name; type: Files.Type; ask: BOOLEAN; OUT res: INTEGER);
-		VAR b: INTEGER; fname: FullName; fn, nn: ShortName;
+		VAR b: INTEGER; fname: FullName;
 	BEGIN
 		ASSERT(f.state = new, 20); ASSERT(name # "", 21);
 		Append(f.loc.path, name, type, f.loc.maxLen, fname);
@@ -546,21 +533,17 @@ MODULE HostFiles;
 				OpenFile(create, f.name, f.ref, res);
 				IF res = ok THEN
 					f.state := exclusive; CloseFile(f, res);
-					fn := SHORT(f.name$);
-					b := KERNEL32.SetFileAttributesA(fn, {KERNEL32.FileAttrArchive})
+					b := WinApi.SetFileAttributesW(f.name, WinApi.FILE_ATTRIBUTE_ARCHIVE)
 				END
 			ELSE
 				f.state := exclusive; CloseFile(f, res);
-				fn := SHORT(f.name$); nn := SHORT(fname$);
-				IF KERNEL32.MoveFileA(fn, nn) # 0 THEN
+				IF WinApi.MoveFileW(f.name, fname) # 0 THEN
 					res := ok; f.name := fname$;
-					fn := SHORT(f.name$);
-					b := KERNEL32.SetFileAttributesA(fn, {KERNEL32.FileAttrArchive})
+					b := WinApi.SetFileAttributesW(f.name, WinApi.FILE_ATTRIBUTE_ARCHIVE)
 				ELSE
-					res := KERNEL32.GetLastError();
+					res := WinApi.GetLastError();
 					ASSERT(res # 87, 101);
-					fn := SHORT(f.name$);
-					b := KERNEL32.DeleteFileA(fn)
+					b := WinApi.DeleteFileW(f.name)
 				END
 			END
 		END;
@@ -651,9 +634,9 @@ MODULE HostFiles;
 			IF count > 0 THEN
 				IF f.ref = invalid THEN CreateFile(f, res) (* ASSERT(res = ok, 100) *) END;
 				IF f.ref # invalid THEN
-					i := 0; i := KERNEL32.SetFilePointer(f.ref, org, i, 0);
-					IF (KERNEL32.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, 0) = 0) OR (i < count) THEN
-						res := KERNEL32.GetLastError(); res := Error(res); HALT(101)
+					i := 0; i := WinApi.SetFilePointer(f.ref, org, i, 0);
+					IF (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, NIL) = 0) OR (i < count) THEN
+						res := WinApi.GetLastError(); res := Error(res); HALT(101)
 					END;
 					f.t := Kernel.Time()
 				END
@@ -737,9 +720,9 @@ MODULE HostFiles;
 			IF count > 0 THEN
 				IF f.ref = invalid THEN CreateFile(f, res) (* ASSERT(res = ok, 100) *) END;
 				IF f.ref # invalid THEN
-					i := 0; i := KERNEL32.SetFilePointer(f.ref, org, i, 0);
-					IF (KERNEL32.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, 0) = 0) OR (i < count) THEN
-						res := KERNEL32.GetLastError(); res := Error(res); HALT(101)
+					i := 0; i := WinApi.SetFilePointer(f.ref, org, i, 0);
+					IF (WinApi.ReadFile(f.ref, SYSTEM.ADR(buf.data), count, i, NIL) = 0) OR (i < count) THEN
+						res := WinApi.GetLastError(); res := Error(res); HALT(101)
 					END;
 					f.t := Kernel.Time()
 				END
@@ -799,22 +782,21 @@ MODULE HostFiles;
 	END This;
 
 	PROCEDURE (d: Directory) New (loc: Files.Locator; ask: BOOLEAN): Files.File;
-		VAR f: File; res: INTEGER; attr: SET; s: ShortName;
+		VAR f: File; res: INTEGER; attr: SET;
 	BEGIN
 		ASSERT(loc # NIL, 20); f := NIL; res := ok;
 		WITH loc: Locator DO
 			IF loc.path # "" THEN
-				s := SHORT(loc.path$);
-				attr := KERNEL32.GetFileAttributesA(s);
+				attr := BITS(WinApi.GetFileAttributesW(loc.path));
 				IF attr = {0..MAX(SET)} THEN	(* error *)
-					res := KERNEL32.GetLastError();
+					res := WinApi.GetLastError();
 					IF (res = fileNotFoundErr) OR (res = pathNotFoundErr) THEN
 						IF loc.res = 76 THEN CreateDir(loc.path, res)
 						ELSE CheckPath(loc.path, ask, res)
 						END
 					ELSE res := pathNotFoundErr
 					END
-				ELSIF ~(KERNEL32.FileAttrDirectory IN attr) THEN res := fileExistsErr
+				ELSIF WinApi.FILE_ATTRIBUTE_DIRECTORY * attr = {} THEN res := fileExistsErr
 				END
 			END;
 			IF res = ok THEN
@@ -844,7 +826,7 @@ MODULE HostFiles;
 	END GetShadowDir;
 
 	PROCEDURE (d: Directory) Old (loc: Files.Locator; name: Files.Name; shrd: BOOLEAN): Files.File;
-		VAR res, i, j: INTEGER; f: File; ref: KERNEL32.Handle; fname: FullName; type: Files.Type; s: BYTE;
+		VAR res, i, j: INTEGER; f: File; ref: WinApi.HANDLE; fname: FullName; type: Files.Type; s: BYTE;
 	BEGIN
 		ASSERT(loc # NIL, 20); ASSERT(name # "", 21);
 		res := ok; f := NIL;
@@ -876,7 +858,7 @@ MODULE HostFiles;
 				f.InitType(type);
 				ASSERT(ref # invalid, 107);
 				f.ref := ref; f.name := fname$; f.state := s; f.t := Kernel.Time();
-				f.len := KERNEL32.GetFileSize(ref, j)
+				f.len := WinApi.GetFileSize(ref, j)
 			END
 		END;
 		loc.res := Error(res);
@@ -896,36 +878,35 @@ MODULE HostFiles;
 	END Delete;
 
 	PROCEDURE (d: Directory) Rename* (loc: Files.Locator; old, new: Files.Name; ask: BOOLEAN);
-		VAR res, i: INTEGER; oldname, newname: FullName; f: File; on, nn, tn: ShortName; attr: SET;
+		VAR res, i: INTEGER; oldname, newname, tn: FullName; f: File; attr: SET;
 	BEGIN
 		ASSERT(loc # NIL, 20);
 		WITH loc: Locator DO
 			Append(loc.path, old, "", loc.maxLen, oldname); Append(loc.path, new, "", loc.maxLen, newname);
-			on := SHORT(oldname$); nn := SHORT(newname$);
-			attr := KERNEL32.GetFileAttributesA(on);
+			attr :=BITS( WinApi.GetFileAttributesW(oldname));
 			IF ORD(attr) # -1 THEN
 				f := ThisFile(oldname);
-				IF (f # NIL) & (f.ref # invalid) THEN res := KERNEL32.CloseHandle(f.ref); f.ref := invalid END;
+				IF (f # NIL) & (f.ref # invalid) THEN res := WinApi.CloseHandle(f.ref); f.ref := invalid END;
 				IF Diff(oldname, newname, loc.caseSens) # 0 THEN
 					CheckDelete(newname, loc.path, ask, res);
 					IF res = ok THEN
-						IF KERNEL32.MoveFileA(on, nn) # 0 THEN
+						IF WinApi.MoveFileW(oldname, newname) # 0 THEN
 							IF f # NIL THEN	(* still in use => update file table *)
 								f.name := newname$
 							END
-						ELSE res := KERNEL32.GetLastError()
+						ELSE res := WinApi.GetLastError()
 						END
 					END
 				ELSE	(* destination is same file as source *)
-					tn := on$; i := LEN(tn$) - 1;
+					tn := oldname$; i := LEN(tn$) - 1;
 					REPEAT
-						tn[i] := SHORT(CHR(ORD(tn[i]) + 1));
-						IF KERNEL32.MoveFileA(on, tn) # 0 THEN res := ok
-						ELSE res := KERNEL32.GetLastError()
+						tn[i] := CHR(ORD(tn[i]) + 1);
+						IF WinApi.MoveFileW(oldname, tn) # 0 THEN res := ok
+						ELSE res := WinApi.GetLastError()
 						END
 					UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87);
 					IF res = ok THEN
-						IF KERNEL32.MoveFileA(tn, nn) = 0 THEN res := KERNEL32.GetLastError() END
+						IF WinApi.MoveFileW(tn, newname) = 0 THEN res := WinApi.GetLastError() END
 					END
 				END
 			ELSE res := fileNotFoundErr
@@ -947,55 +928,61 @@ MODULE HostFiles;
 
 	PROCEDURE (d: Directory) FileList* (loc: Files.Locator): Files.FileInfo;
 		VAR i, res, diff: INTEGER; info, first, last: Files.FileInfo; s: FullName;
-			find: KERNEL32.Handle; fd: KERNEL32.FindData;
-			st: KERNEL32.SystemTime; ss: ShortName;
+			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW; st: WinApi.SYSTEMTIME;
 	BEGIN
 		ASSERT(loc # NIL, 20);
 		first := NIL; last :=NIL;
 		WITH loc: Locator DO
 			Append(loc.path, wildcard, wildcard, loc.maxLen, s);
-			ss := SHORT(s$); find := KERNEL32.FindFirstFileA(ss, fd);
+			find := WinApi.FindFirstFileW(s, fd);
 			IF find # invalid THEN
 				REPEAT
-					IF ~(KERNEL32.FileAttrDirectory IN fd.attributes)
-							& (LEN(fd.name$) < LEN(info.name)) THEN
-						info := first; last := NIL; s := fd.name$;
+					IF ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
+							& (LEN(fd.cFileName$) < LEN(info.name)) THEN
+						info := first; last := NIL; s := fd.cFileName$;
 						WHILE (info # NIL) & (Diff(info.name, s, loc.caseSens) < 0) DO last := info; info := info.next END;
 						NEW(info);
-						info.name := fd.name$;
-						info.length := fd.sizeLow;
-						res := KERNEL32.FileTimeToSystemTime(fd.lastWrite, st);
-						info.modified.year := st.year;
-						info.modified.month := st.month;
-						info.modified.day := st.day;
-						info.modified.hour := st.hour;
-						info.modified.minute := st.minute;
-						info.modified.second := st.second;
+						info.name := fd.cFileName$;
+						info.length := fd.nFileSizeLow;
+						res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st);
+						info.modified.year := st.wYear;
+						info.modified.month := st.wMonth;
+						info.modified.day := st.wDay;
+						info.modified.hour := st.wHour;
+						info.modified.minute := st.wMinute;
+						info.modified.second := st.wSecond;
 						info.attr := {};
-						IF KERNEL32.FileAttrHidden IN fd.attributes THEN INCL(info.attr, Files.hidden) END;
-						IF KERNEL32.FileAttrReadOnly IN fd.attributes THEN INCL(info.attr, Files.readOnly) END;
-						IF KERNEL32.FileAttrSystem IN fd.attributes THEN INCL(info.attr, Files.system) END;
-						IF KERNEL32.FileAttrArchive IN fd.attributes THEN INCL(info.attr, Files.archive) END;
-						s := fd.name$;
-						GetType(s, info.type);
+						IF WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.hidden)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.readOnly)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.system)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.archive)
+						END;
+						GetType(fd.cFileName, info.type);
 						IF last = NIL THEN info.next := first; first := info ELSE info.next := last.next; last.next := info END
 					END;
-					i := KERNEL32.FindNextFileA(find, fd)
+					i := WinApi.FindNextFileW(find, fd)
 				UNTIL i = 0;
-				res := KERNEL32.GetLastError(); i := KERNEL32.FindClose(find)
-			ELSE res := KERNEL32.GetLastError()
+				res := WinApi.GetLastError(); i := WinApi.FindClose(find)
+			ELSE res := WinApi.GetLastError()
 			END;
 			IF res = noMoreFilesErr THEN res := ok END;
 			(* check startup directory *)
 			IF (loc.rootLen > 0) & ((res = ok) OR (res = fileNotFoundErr) OR (res = pathNotFoundErr)) THEN
 				GetShadowDir(loc, s);
 				Append(s, wildcard, wildcard, loc.maxLen, s);
-				ss := SHORT(s$); find := KERNEL32.FindFirstFileA(ss, fd);
+				find := WinApi.FindFirstFileW(s, fd);
 				IF find # invalid THEN
 					REPEAT
-						IF ~(KERNEL32.FileAttrDirectory IN fd.attributes)
-								& (LEN(fd.name$) < LEN(info.name)) THEN
-							info := first; last := NIL; s := fd.name$;
+						IF ~(WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
+								& (LEN(fd.cFileName$) < LEN(info.name)) THEN
+							info := first; last := NIL; s := fd.cFileName$;
 							IF info # NIL THEN diff := Diff(info.name, s, loc.caseSens) END;
 							WHILE (info # NIL) & (diff < 0) DO
 								last := info; info := info.next;
@@ -1003,29 +990,36 @@ MODULE HostFiles;
 							END;
 							IF (info = NIL) OR (diff # 0) THEN
 								NEW(info);
-								info.name := fd.name$;
-								info.length := fd.sizeLow;
-								res := KERNEL32.FileTimeToSystemTime(fd.lastWrite, st);
-								info.modified.year := st.year;
-								info.modified.month := st.month;
-								info.modified.day := st.day;
-								info.modified.hour := st.hour;
-								info.modified.minute := st.minute;
-								info.modified.second := st.second;
+								info.name := fd.cFileName$;
+								info.length := fd.nFileSizeLow;
+								res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st);
+								info.modified.year := st.wYear;
+								info.modified.month := st.wMonth;
+								info.modified.day := st.wDay;
+								info.modified.hour := st.wHour;
+								info.modified.minute := st.wMinute;
+								info.modified.second := st.wSecond;
 								info.attr := {};
-								IF KERNEL32.FileAttrHidden IN fd.attributes THEN INCL(info.attr, Files.hidden) END;
-								IF KERNEL32.FileAttrReadOnly IN fd.attributes THEN INCL(info.attr, Files.readOnly) END;
-								IF KERNEL32.FileAttrSystem IN fd.attributes THEN INCL(info.attr, Files.system) END;
-								IF KERNEL32.FileAttrArchive IN fd.attributes THEN INCL(info.attr, Files.archive) END;
-								s := fd.name$;
-								GetType(s, info.type);
+								IF WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.hidden)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.readOnly)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.system)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.archive)
+								END;
+								GetType(fd.cFileName, info.type);
 								IF last = NIL THEN info.next := first; first := info ELSE info.next := last.next; last.next := info END
 							END
 						END;
-						i := KERNEL32.FindNextFileA(find, fd)
+						i := WinApi.FindNextFileW(find, fd)
 					UNTIL i = 0;
-					res := KERNEL32.GetLastError(); i := KERNEL32.FindClose(find)
-				ELSE res := KERNEL32.GetLastError()
+					res := WinApi.GetLastError(); i := WinApi.FindClose(find)
+				ELSE res := WinApi.GetLastError()
 				END;
 				IF res = noMoreFilesErr THEN res := ok END
 			END;
@@ -1037,46 +1031,52 @@ MODULE HostFiles;
 
 	PROCEDURE (d: Directory) LocList* (loc: Files.Locator): Files.LocInfo;
 		VAR i, res, diff: INTEGER; first, last, info: Files.LocInfo; s: FullName;
-			find: KERNEL32.Handle; fd: KERNEL32.FindData;
-			ss: ShortName;
+			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW;
 	BEGIN
 		ASSERT(loc # NIL, 20);
 		first := NIL; last :=NIL;
 		WITH loc: Locator DO
 			Append(loc.path, wildcard, wildcard, loc.maxLen, s);
-			ss := SHORT(s$); find := KERNEL32.FindFirstFileA(ss, fd);
+			find := WinApi.FindFirstFileW(s, fd);
 			IF find # invalid THEN
 				REPEAT
-					IF (KERNEL32.FileAttrDirectory IN fd.attributes) & (fd.name[0] # ".") & (LEN(fd.name$) < LEN(info.name))
-					THEN
-						info := first; last := NIL; s := fd.name$;
+					IF (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
+							& (fd.cFileName[0] # ".") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
+						info := first; last := NIL; s := fd.cFileName$;
 						WHILE (info # NIL) & (Diff(info.name, s, loc.caseSens) < 0) DO last := info; info := info.next END;
 						NEW(info);
-						info.name := fd.name$;
+						info.name := fd.cFileName$;
 						info.attr := {};
-						IF KERNEL32.FileAttrHidden IN fd.attributes THEN INCL(info.attr, Files.hidden) END;
-						IF KERNEL32.FileAttrReadOnly IN fd.attributes THEN INCL(info.attr, Files.readOnly) END;
-						IF KERNEL32.FileAttrSystem IN fd.attributes THEN INCL(info.attr, Files.system) END;
-						IF KERNEL32.FileAttrArchive IN fd.attributes THEN INCL(info.attr, Files.archive) END;
+						IF WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.hidden)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.readOnly)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.system)
+						END;
+						IF WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} THEN
+							INCL(info.attr, Files.archive)
+						END;
 						IF last = NIL THEN info.next := first; first := info ELSE info.next := last.next; last.next := info END
 					END;
-					i := KERNEL32.FindNextFileA(find, fd)
+					i := WinApi.FindNextFileW(find, fd)
 				UNTIL i = 0;
-				res := KERNEL32.GetLastError(); i := KERNEL32.FindClose(find)
-			ELSE res := KERNEL32.GetLastError()
+				res := WinApi.GetLastError(); i := WinApi.FindClose(find)
+			ELSE res := WinApi.GetLastError()
 			END;
 			IF res = noMoreFilesErr THEN res := ok END;
 			(* check startup directory *)
 			IF (loc.rootLen > 0) & ((res = ok) OR (res = fileNotFoundErr) OR (res = pathNotFoundErr)) THEN
 				GetShadowDir(loc, s);
 				Append(s, wildcard, wildcard, loc.maxLen, s);
-				ss := SHORT(s$); find := KERNEL32.FindFirstFileA(ss, fd);
+				find := WinApi.FindFirstFileW(s, fd);
 				IF find # invalid THEN
 					REPEAT
-						IF (KERNEL32.FileAttrDirectory IN fd.attributes)
-							& (fd.name[0] # ".") & (LEN(fd.name$) < LEN(info.name))
-						THEN
-							info := first; last := NIL; s := fd.name$;
+					IF (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
+							& (fd.cFileName[0] # ".") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
+							info := first; last := NIL; s := fd.cFileName$;
 							IF info # NIL THEN diff := Diff(info.name, s, loc.caseSens) END;
 							WHILE (info # NIL) & (diff < 0) DO
 								last := info; info := info.next;
@@ -1084,19 +1084,27 @@ MODULE HostFiles;
 							END;
 							IF (info = NIL) OR (diff # 0) THEN
 								NEW(info);
-								info.name := fd.name$;
+								info.name := fd.cFileName$;
 								info.attr := {};
-								IF KERNEL32.FileAttrHidden IN fd.attributes THEN INCL(info.attr, Files.hidden) END;
-								IF KERNEL32.FileAttrReadOnly IN fd.attributes THEN INCL(info.attr, Files.readOnly) END;
-								IF KERNEL32.FileAttrSystem IN fd.attributes THEN INCL(info.attr, Files.system) END;
-								IF KERNEL32.FileAttrArchive IN fd.attributes THEN INCL(info.attr, Files.archive) END;
+								IF WinApi.FILE_ATTRIBUTE_HIDDEN * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.hidden)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_READONLY * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.readOnly)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_SYSTEM * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.system)
+								END;
+								IF WinApi.FILE_ATTRIBUTE_ARCHIVE * fd.dwFileAttributes # {} THEN
+									INCL(info.attr, Files.archive)
+								END;
 								IF last = NIL THEN info.next := first; first := info ELSE info.next := last.next; last.next := info END
 							END
 						END;
-						i := KERNEL32.FindNextFileA(find, fd)
+						i := WinApi.FindNextFileW(find, fd)
 					UNTIL i = 0;
-					res := KERNEL32.GetLastError(); i := KERNEL32.FindClose(find)
-				ELSE res := KERNEL32.GetLastError()
+					res := WinApi.GetLastError(); i := WinApi.FindClose(find)
+				ELSE res := WinApi.GetLastError()
 				END;
 				IF res = noMoreFilesErr THEN res := ok END
 			END;
@@ -1130,13 +1138,13 @@ MODULE HostFiles;
 	END NofFiles;
 
 	PROCEDURE GetModDate* (f: Files.File; VAR year, month, day, hour, minute, second: INTEGER);
-		VAR res: INTEGER; ft: KERNEL32.FileTime; st: KERNEL32.SystemTime;
+		VAR res: INTEGER; ft: WinApi.FILETIME; st: WinApi.SYSTEMTIME;
 	BEGIN
 		ASSERT(f IS File, 20);
-		res := KERNEL32.GetFileTime(f(File).ref, NIL, NIL, ft);
-		res := KERNEL32.FileTimeToSystemTime(ft, st);
-		year := st.year; month := st.month; day := st.day;
-		hour := st.hour; minute := st.minute; second := st.second
+		res := WinApi.GetFileTime(f(File).ref, NIL, NIL, ft);
+		res := WinApi.FileTimeToSystemTime(ft, st);
+		year := st.wYear; month := st.wMonth; day := st.wDay;
+		hour := st.wHour; minute := st.wMinute; second := st.wSecond
 	END GetModDate;
 
 	PROCEDURE SetRootDir* (path: ARRAY OF CHAR);
@@ -1148,7 +1156,7 @@ MODULE HostFiles;
 		startupLen := i
 	END SetRootDir;
 
-	PROCEDURE GetName (VAR p: KERNEL32.StringPtr; VAR i: INTEGER; VAR name, opt: FullName);
+	PROCEDURE GetName (VAR p: WinApi.PtrWSTR; VAR i: INTEGER; OUT name, opt: FullName);
 		VAR ch, tch: CHAR; j: INTEGER;
 	BEGIN
 		j := 0; ch := p[i]; tch := " ";
@@ -1167,22 +1175,21 @@ MODULE HostFiles;
 	END GetName;
 
 	PROCEDURE Init;
-		VAR res, res1, i, j: INTEGER; path, opt: FullName; attr: SET; p: KERNEL32.StringPtr; s0, s: ShortName;
-			find: KERNEL32.Handle; fd: KERNEL32.FindData;
+		VAR res, res1, i, j: INTEGER; path, opt, s: FullName; attr: SET; p: WinApi.PtrWSTR;
+			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW;
 	BEGIN
 		wildcard := "*"; NEW(dir);
-		res := KERNEL32.GetModuleFileNameA(0, s, LEN(s)); path := s$;
+		res := WinApi.GetModuleFileNameW(0, path, LEN(path));
 		GetPath(path, startupDir);
 		dir.startup := NewLocator(startupDir);
-		dir.startup.rootLen := 0; i := 0;
-		WHILE startupDir[i] # 0X DO INC(i) END;
-		startupLen := i;
-		find := KERNEL32.FindFirstFileA(s, fd);
+		dir.startup.rootLen := 0;
+		i := LEN(startupDir$); startupLen := i;
+		find := WinApi.FindFirstFileW(path, fd);
 		IF find # invalid THEN
-			appName := fd.name$; res := KERNEL32.FindClose(find)
+			appName := fd.cFileName$; res := WinApi.FindClose(find)
 		ELSE
 			INC(i); j := 0;
-			WHILE s[i] # 0X DO appName[j] := s[i]; INC(i); INC(j) END
+			WHILE path[i] # 0X DO appName[j] := path[i]; INC(i); INC(j) END
 		END;
 		i := 0; j := -1;
 		WHILE appName[i] # 0X DO
@@ -1190,30 +1197,29 @@ MODULE HostFiles;
 			INC(i)
 		END;
 		IF j > 0 THEN appName[j] := 0X END;
-		p := KERNEL32.GetCommandLineA(); i := 0; res := 1;
+		p := WinApi.GetCommandLineW(); i := 0; res := 1;
 		REPEAT
 			GetName(p, i, path, opt);
 			IF opt = "/USE" THEN
-				GetName(p, i, path, opt); s0 := SHORT(path$);
-				res1 := WinApi.ExpandEnvironmentStringsA(s0, s, LEN(s) - 2);
-				IF (res1 = 0) OR (res1 > LEN(s) - 2) THEN s := s0 ELSE path := s$ END;
-				attr := KERNEL32.GetFileAttributesA(s);
-				IF (attr # {0..MAX(SET)}) & (KERNEL32.FileAttrDirectory IN attr) THEN res := 0
+				GetName(p, i, path, opt);
+				res1 := WinApi.ExpandEnvironmentStringsW(path, s, LEN(s) - 2);
+				IF (res1 = 0) OR (res1 > LEN(s) - 2) THEN s := path ELSE path := s$ END;
+				attr := BITS(WinApi.GetFileAttributesW(s));
+				IF (attr # {0..MAX(SET)}) & (WinApi.FILE_ATTRIBUTE_DIRECTORY * attr # {}) THEN res := 0
 				ELSIF (path[1] = ":") & ((path[2] = 0X) OR (path[2] = "\") & (path[3] = 0X))
-					& (KERNEL32.GetDriveTypeA(s) >= 2) THEN res := 0
+					& (WinApi.GetDriveTypeW(s) >= 2) THEN res := 0
 				END
 			END
 		UNTIL (res = 0) OR (p[i] < " ");
 		IF serverVersion & (res = 0) THEN
-			i := 0; WHILE path[i] # 0X DO INC(i) END;
+			i := LEN(path$);
 			IF (path[i-1] = "/") OR (path[i-1] = "\") THEN DEC(i); path[i] := 0X END;
 			dir.startup := NewLocator(path);
-			dir.startup.rootLen := SHORT(i)
+			dir.startup.rootLen := i
 		END;
-		res := KERNEL32.GetTempPathA(LEN(s), s); path := s$;
+		res := WinApi.GetTempPathW(LEN(path), path);
 		dir.temp := NewLocator(path);
-		Files.SetDir(dir);
-		main := 0
+		Files.SetDir(dir)
 	END Init;
 
 BEGIN

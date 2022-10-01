@@ -2,7 +2,7 @@ MODULE HostTextConv;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Alexander Iljin"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -12,9 +12,9 @@ MODULE HostTextConv;
 **)
 
 	IMPORT
-		SYSTEM, KERNEL32, GDI32, USER32, COM, WinApi, WinOle,
-		Files, Fonts, Ports, Stores, Views, Dialog, Converters, Properties,
-		HostFonts, HostWindows, HostClipboard, TextModels,
+		SYSTEM, WinApi, WinOle, COM,
+		Files, Fonts, Ports, Stores, Views, Properties,
+		HostFonts, HostClipboard, TextModels,
 		TextRulers, TextViews, TextMappers;
 	
 	CONST
@@ -26,7 +26,9 @@ MODULE HostTextConv;
 		Context = POINTER TO RECORD
 			next: Context;
 			dest: INTEGER;
-			attr: TextModels.Attributes
+			uniCnt : INTEGER;
+			attr: TextModels.Attributes;
+			pattr: TextRulers.Attributes
 		END;
 		MemReader = POINTER TO RECORD (Files.Reader)
 			adr, pos: INTEGER
@@ -78,7 +80,7 @@ MODULE HostTextConv;
 	END MediumGlobal;
 	
 	
-	PROCEDURE WriteWndChar (wr: TextModels.Writer; ch: SHORTCHAR);
+	PROCEDURE WriteWndChar (wr: TextModels.Writer; ch: CHAR);
 	BEGIN
 		CASE ch OF
 		| CR, TAB, " "..7EX, 0A0X..0FFX: wr.WriteChar(ch)
@@ -113,7 +115,7 @@ MODULE HostTextConv;
 		END
 	END WriteWndChar;
 	
-	PROCEDURE ThisWndChar (ch: CHAR): SHORTCHAR;
+	PROCEDURE ThisWndChar (ch: CHAR): CHAR;
 	BEGIN
 		IF ch >= 100X THEN
 			IF (ch >= 0EF00X) & (ch <= 0EFFFX) THEN ch := CHR(ORD(ch) - 0EF00H)
@@ -146,7 +148,7 @@ MODULE HostTextConv;
 			END
 		ELSIF ch = 08FX THEN ch := " "	(* digit space *)
 		END;
-		RETURN SHORT(ch)
+		RETURN ch
 	END ThisWndChar;
 	
 	PROCEDURE ParseRichText (rd: Files.Reader; wr: TextModels.Writer; VAR defRuler: TextRulers.Ruler);
@@ -154,10 +156,15 @@ MODULE HostTextConv;
 			FontInfo = POINTER TO RECORD id: INTEGER; f: Fonts.Typeface; next: FontInfo END;
 			ColorInfo = POINTER TO RECORD id: INTEGER; c: Ports.Color; next: ColorInfo END;
 		CONST text = 0; fonttab = 1; colortab = 2; skip = 3;
-		VAR ch: SHORTCHAR; fact, val, defFont, dest, idx, fnum, cnum, bpos, spos, paraPos, i: INTEGER;
-			fonts, font: FontInfo; colors: ColorInfo; hasNum, remPar: BOOLEAN;
-			f: Fonts.Font; comm: ARRAY 32 OF SHORTCHAR; c, con: Context; ruler: TextRulers.Ruler;
-			p0: Properties.Property; p: TextRulers.Prop; attr: TextRulers.Attributes; tabStyle: SET;
+		VAR ch: CHAR; tabStyle: SET;
+			fact, val, defFont, dest, idx, fnum, cnum, paraPos, i: INTEGER;
+			fonts, font: FontInfo; colors: ColorInfo;
+			hasNum, remPar, skipDest: BOOLEAN;
+			f: Fonts.Font; comm: ARRAY 32 OF CHAR;
+			c, con: Context; p0: Properties.Property; p: TextRulers.Prop;
+			ruler: TextRulers.Ruler;
+			pattr: TextRulers.Attributes;
+			skipCnt, uniCnt : INTEGER;
 			
 		PROCEDURE Color(i: INTEGER): ColorInfo;
 			VAR c: ColorInfo;
@@ -191,62 +198,65 @@ MODULE HostTextConv;
 			NEW(f); f.id := i; f.f := tf; f.next := fonts; fonts := f
 		END SetFont;
 		
-		PROCEDURE Next (VAR ch: SHORTCHAR);
+		PROCEDURE Next (VAR ch: CHAR);
 			VAR b: BYTE;
 		BEGIN
-			rd.ReadByte(b); ch := SHORT(CHR(b MOD 256))
+			rd.ReadByte(b); ch := CHR(b MOD 256)
 		END Next;
 		
-		PROCEDURE Write (ch: SHORTCHAR);
+		PROCEDURE Write (ch: CHAR);
 		BEGIN
-			IF dest = text THEN WriteWndChar(wr, ch)
+			IF skipCnt > 0 THEN
+				DEC(skipCnt)
+			ELSIF dest = text THEN
+				IF ch < 100X THEN WriteWndChar(wr, ch)
+				ELSE wr.WriteChar(ch)
+				END
 			ELSIF dest = fonttab THEN
 				ASSERT(font # NIL, 20);
 				font.f[idx] := ch; INC(idx); font.f[idx] := 0X
 			END
 		END Write;
 		
-		PROCEDURE NewPara;
+		PROCEDURE Paragraph;
+			VAR v: Views.View;
 		BEGIN
-			IF dest = text THEN
-				wr.WriteChar(CR); paraPos := wr.Pos(); remPar := FALSE;
-				IF (ruler.style.attr.first # ruler.style.attr.left) OR (ruler.style.attr.lead > 0)
-					OR (TextRulers.pageBreak IN ruler.style.attr.opts) THEN wr.WriteChar(FF); remPar := TRUE
-				END
-			END
-		END NewPara;
-		
-		PROCEDURE CheckPara;
-			VAR t: TextModels.Model; v: Views.View;
-		BEGIN
-			IF paraPos >= 0 THEN
-				t := wr.Base();
-				IF remPar THEN t.Delete(paraPos, paraPos + 1) END;
+			IF ~pattr.Equals(ruler.style.attr) THEN	(* new ruler needed *)
 				wr.SetPos(paraPos);
 				v := Views.CopyOf(ruler, Views.deep); ruler := v(TextRulers.Ruler);
+				ruler.style.SetAttr(pattr);
 				wr.WriteView(ruler, Views.undefined, Views.undefined);
-				wr.SetPos(t.Length());
-				paraPos := -1
-			END
-		END CheckPara;
+				wr.SetPos(wr.Base().Length())
+			ELSIF (pattr.first # pattr.left)
+					OR (pattr.lead > 0)
+					OR (TextRulers.pageBreak IN pattr.opts) THEN	(* paragraph marker needed *)
+				wr.SetPos(paraPos);
+				wr.WriteChar(FF);
+				wr.SetPos(wr.Base().Length())
+			END;
+			wr.WriteChar(CR);
+			paraPos := wr.Pos()
+		END Paragraph;
 		
 	BEGIN
-		defFont := 0; fnum := 1; f := Fonts.dir.Default(); NEW(fonts); fonts.f := f.typeface;
+		defFont := 0; fnum := 1; f := Fonts.dir.Default(); NEW(fonts); fonts.f := f.typeface; skipCnt := 0; uniCnt := 1;
 		cnum := 1; NEW(colors); SetColor(0, Ports.defaultColor);
-		dest := text; con := NIL; paraPos := 0; remPar := FALSE;
-		defRuler := TextRulers.dir.New(NIL); ruler := defRuler; tabStyle := {};
+		dest := text; con := NIL; paraPos := 0; remPar := FALSE; skipDest := FALSE;
+		defRuler := TextRulers.dir.New(NIL); ruler := defRuler; pattr := defRuler.style.attr; tabStyle := {};
 		Next(ch);
 		WHILE ch # 0X DO
 			IF ch = "{" THEN
-				NEW(c); c.dest := dest; c.attr := wr.attr; c.next := con; con := c;
-				bpos := rd.Pos(); Next(ch)
+				skipCnt := 0;
+				NEW(c); c.dest := dest; c.attr := wr.attr; c.pattr := pattr; c.uniCnt := uniCnt; c.next := con; con := c;
+				Next(ch)
 			ELSIF ch = "}" THEN
+				skipCnt := 0;
 				IF con # NIL THEN
-					dest := con.dest; wr.SetAttr(con.attr); con := con.next
+					dest := con.dest; uniCnt := con.uniCnt; wr.SetAttr(con.attr); pattr := con.pattr; con := con.next
 				END;
 				Next(ch)
 			ELSIF ch = "\" THEN
-				spos := rd.Pos() - 1; Next(ch); i := 0; val := 0;
+				Next(ch); i := 0; val := 0;
 				IF (ch >= "a") & (ch <= "z") THEN
 					WHILE (ch >= "a") & (ch <= "z") DO comm[i] := ch; INC(i); Next(ch) END;
 					comm[i] := 0X; fact := 1; hasNum := FALSE;
@@ -257,20 +267,23 @@ MODULE HostTextConv;
 					val := val * fact;
 					IF ch = " " THEN Next(ch) END;
 					(* special characters *)
-					IF comm = "tab" THEN wr.WriteChar(TAB)
-					ELSIF comm = "line" THEN wr.WriteChar(CR)
-					ELSIF comm = "par" THEN NewPara
-(*
-					ELSIF comm = "enspace" THEN wr.WriteChar(08FX)	(* digit space *)
-*)
-					ELSIF comm =  "ldblquote" THEN wr.WriteChar(201CX) (*  unicode: left double quote *)
-					ELSIF comm = "rdblquote" THEN wr.WriteChar(201DX) (*  unicode: right double quote *)
-					ELSIF comm = "lquote" THEN wr.WriteChar(2018X) (*  unicode: left single quote *)
-					ELSIF comm = "rquote" THEN wr.WriteChar(2019X) (*  unicode: right single quote *)
+					IF skipCnt > 0 THEN DEC(skipCnt)	(* command skipped as single character *)
+					ELSIF comm = "tab" THEN Write(TAB)
+					ELSIF comm = "line" THEN Write(CR)
+					ELSIF comm = "par" THEN Paragraph
+					ELSIF comm = "sect" THEN Paragraph
+					ELSIF comm =  "ldblquote" THEN Write(201CX) (* unicode: left double quote *)
+					ELSIF comm = "rdblquote" THEN Write(201DX) (* unicode: right double quote *)
+					ELSIF comm = "lquote" THEN Write(2018X) (* unicode: left single quote *)
+					ELSIF comm = "rquote" THEN Write(2019X) (* unicode: right single quote *)
+					ELSIF comm = "enspace" THEN Write(2002X) (* unicode: en space *)
+					ELSIF comm = "emspace" THEN Write(2003X) (* unicode: em space *)
+					ELSIF comm = "endash" THEN Write(2013X) (* unicode: en dash *)
+					ELSIF comm = "emdash" THEN Write(2014X) (* unicode: em dash *)
 					ELSIF comm = "page" THEN
-						NewPara; CheckPara; NEW(p);
+						Paragraph; NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {TextRulers.pageBreak}; p.opts.mask := p.opts.val;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					(* character attributes *)
 					ELSIF comm = "plain" THEN
 						wr.SetAttr(TextModels.NewWeight(wr.attr, Fonts.normal));
@@ -318,74 +331,70 @@ MODULE HostTextConv;
 						wr.SetAttr(TextModels.NewOffset(wr.attr, val * halfpoint))
 					(* paragraph attributes *)
 					ELSIF comm = "pard" THEN
-						IF (ruler.style.attr.first # 0) OR (ruler.style.attr.left # 0)
-							OR (ruler.style.attr.opts # {TextRulers.leftAdjust})
-							OR (ruler.style.attr.tabs.len # 0) THEN
-							CheckPara; NEW(p);
-							p.valid := {TextRulers.first, TextRulers.left, TextRulers.opts, TextRulers.tabs};
-							p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust, TextRulers.pageBreak};
-							p.first := 0; p.left := 0; p.opts.val := {TextRulers.leftAdjust}; p.tabs.len := 0;
-							attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
-						END
+						pattr := defRuler.style.attr; tabStyle := {}
 					ELSIF comm = "fi" THEN
-						CheckPara; NEW(p);
-						p.valid := {TextRulers.first}; p.first := ruler.style.attr.left + val * twips;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						NEW(p);
+						p.valid := {TextRulers.first}; p.first := pattr.left + val * twips;
+						IF p.first < 0 THEN	(* change left indent to make the value legal *)
+							p.valid := {TextRulers.left, TextRulers.first};
+							p.left := pattr.left - p.first; p.first := 0
+						END;
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "li" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.left, TextRulers.first};
-						p.left := val * twips; p.first := p.left + ruler.style.attr.first - ruler.style.attr.left;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						p.left := val * twips; p.first := p.left + pattr.first - pattr.left;
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "ql" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {TextRulers.leftAdjust};
 						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust};
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "qr" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {TextRulers.rightAdjust};
 						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust};
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "qc" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {};
 						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust};
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "qj" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {TextRulers.leftAdjust, TextRulers.rightAdjust};
 						p.opts.mask := {TextRulers.leftAdjust, TextRulers.rightAdjust};
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "sb" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.lead}; p.lead := val * twips;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "sl" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.grid}; p.grid := val * twips;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "tqc" THEN
 						tabStyle := {TextRulers.centerTab}
 					ELSIF (comm = "tqr") OR (comm="tqdec") THEN
 						tabStyle := {TextRulers.rightTab}
 					ELSIF comm = "tb" THEN
-						CheckPara; p0 := ruler.style.attr.Prop(); p := p0(TextRulers.Prop);
+						p0 := pattr.Prop(); p := p0(TextRulers.Prop);
 						p.valid := {TextRulers.tabs};
 						p.tabs.tab[p.tabs.len].stop := val * twips; 
 						p.tabs.tab[p.tabs.len].type := {TextRulers.barTab}; tabStyle := {}; 
 						INC(p.tabs.len);
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "tx" THEN
-						CheckPara; p0 := ruler.style.attr.Prop(); p := p0(TextRulers.Prop);
+						p0 := pattr.Prop(); p := p0(TextRulers.Prop);
 						p.valid := {TextRulers.tabs};
 						p.tabs.tab[p.tabs.len].stop := val * twips; 
 						p.tabs.tab[p.tabs.len].type := tabStyle; tabStyle := {}; 
 						INC(p.tabs.len);
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "pagebb" THEN
-						CheckPara; NEW(p);
+						NEW(p);
 						p.valid := {TextRulers.opts}; p.opts.val := {TextRulers.pageBreak}; p.opts.mask := p.opts.val;
-						attr := TextRulers.ModifiedAttr(ruler.style.attr, p); ruler.style.SetAttr(attr)
+						pattr := TextRulers.ModifiedAttr(pattr, p)
 					(* header *)
 					ELSIF comm = "deff" THEN
 						IF hasNum THEN defFont := val END
@@ -402,11 +411,55 @@ MODULE HostTextConv;
 					ELSIF comm = "rtf" THEN
 					ELSIF comm = "ansi" THEN
 					ELSIF comm = "lang" THEN
+					ELSIF comm = "langfe" THEN
+					ELSIF comm = "loch" THEN
+					ELSIF comm = "ltrch" THEN
+					ELSIF comm = "rtlch" THEN
+					ELSIF comm = "ansicpg" THEN
 					(* misc *)
 					ELSIF comm = "bin" THEN rd.SetPos(rd.Pos() + val - 1); Next(ch)
+					(* unicode *)
+					ELSIF comm = "u" THEN Write(CHR(val)); skipCnt := uniCnt
+					ELSIF comm = "uc" THEN IF hasNum THEN uniCnt := val END
+					ELSIF comm = "upr" THEN dest := skip	(* skip ANSI part *)
+					ELSIF comm = "ud" THEN dest := text	(* use Unicode part *)
+					(* unhandled destinations *)
+					ELSIF comm = "author" THEN dest := skip
+					ELSIF comm = "buptim" THEN dest := skip
+					ELSIF comm = "comment" THEN dest := skip
+					ELSIF comm = "creatim" THEN dest := skip
+					ELSIF comm = "doccomm" THEN dest := skip
+					ELSIF comm = "footer" THEN dest := skip
+					ELSIF comm = "footerl" THEN dest := skip
+					ELSIF comm = "footerr" THEN dest := skip
+					ELSIF comm = "footerf" THEN dest := skip
+					ELSIF comm = "footnote" THEN dest := skip
+					ELSIF comm = "ftnsep" THEN dest := skip
+					ELSIF comm = "ftnsepc" THEN dest := skip
+					ELSIF comm = "ftncn" THEN dest := skip
+					ELSIF comm = "header" THEN dest := skip
+					ELSIF comm = "headerl" THEN dest := skip
+					ELSIF comm = "headerr" THEN dest := skip
+					ELSIF comm = "headerf" THEN dest := skip
+					ELSIF comm = "info" THEN dest := skip
+					ELSIF comm = "keywords" THEN dest := skip
+					ELSIF comm = "object" THEN dest := skip
+					ELSIF comm = "operator" THEN dest := skip
+					ELSIF comm = "pict" THEN dest := skip
+					ELSIF comm = "printim" THEN dest := skip
+					ELSIF comm = "private1" THEN dest := skip
+					ELSIF comm = "revtim" THEN dest := skip
+					ELSIF comm = "rxe" THEN dest := skip
+					ELSIF comm = "stylesheet" THEN dest := skip
+					ELSIF comm = "subject" THEN dest := skip
+					ELSIF comm = "tc" THEN dest := skip
+					ELSIF comm = "title" THEN dest := skip
+					ELSIF comm = "txe" THEN dest := skip
+					ELSIF comm = "xe" THEN dest := skip
 					ELSE (* unknown *)
-						IF (spos = bpos) & (con # NIL) & (con.next # NIL) THEN dest := skip END
-					END
+						IF skipDest & (con # NIL) & (con.next # NIL) THEN dest := skip END
+					END;
+					skipDest := FALSE
 				ELSIF ch = "'" THEN
 					Next(ch);
 					IF ch <= "9" THEN val := ORD(ch) - ORD("0") ELSE val := ORD(CAP(ch)) - ORD("A") + 10 END;
@@ -414,13 +467,13 @@ MODULE HostTextConv;
 					IF ch <= "9" THEN val := 16 * val + ORD(ch) - ORD("0")
 					ELSE val := 16 * val + ORD(CAP(ch)) - ORD("A") + 10
 					END;
-					Write(SHORT(CHR(val))); Next(ch)
+					Write(CHR(val)); Next(ch)
 				ELSE
-					IF ch = "~" THEN wr.WriteChar(0A0X)	(* non breaking space *)
-					ELSIF ch = "-" THEN wr.WriteChar(0ADX)	(* soft hyphen *)
-					ELSIF ch = "_" THEN wr.WriteChar(2011X)	(* non breaking hyphen *)
-					ELSIF ch = "*" THEN bpos := rd.Pos()
-					ELSIF (ch = LF) OR (ch = CR) THEN NewPara
+					IF ch = "~" THEN Write(0A0X)	(* nonbreaking space *)
+					ELSIF ch = "-" THEN Write(0ADX)	(* soft hyphen *)
+					ELSIF ch = "_" THEN Write(2011X)	(* nonbreaking hyphen *)
+					ELSIF ch = "*" THEN skipDest := TRUE
+					ELSIF (ch = LF) OR (ch = CR) THEN Paragraph
 					ELSIF (ch = "{") OR (ch = "}") OR (ch = "\") THEN Write(ch)
 					END;
 					Next(ch)
@@ -547,15 +600,25 @@ MODULE HostTextConv;
 				attr0 := attr
 			END;
 			IF ch >= 100X THEN
-				IF r.char = 2007X THEN w.WriteSString("\enspace ")
-				ELSIF r.char = 2010X THEN w.WriteChar("-")
-				ELSIF r.char = 2011X THEN w.WriteSString("\_")
-				ELSIF r.char = 201CX THEN (*  unicode: left double quote *) w.WriteSString("\ldblquote ")
-				ELSIF r.char = 201DX THEN (*  unicode: right double quote *) w.WriteSString("\rdblquote ")
-				ELSIF r.char = 2018X THEN (*  unicode: left single quote *) w.WriteSString("\lquote ")
-				ELSIF r.char = 2019X THEN (*  unicode: right single quote *) w.WriteSString("\rquote ")					
-				ELSE w.WriteSString("\'"); 
-					w.WriteIntForm(ORD(ThisWndChar(r.char)) MOD 256, TextMappers.hexadecimal, 2, "0", FALSE)
+				IF ch = 2002X THEN w.WriteSString("\enspace ")
+				ELSIF ch = 2003X THEN w.WriteSString("\emspace ")
+				ELSIF ch = 2013X THEN w.WriteSString("\endash ")
+				ELSIF ch = 2014X THEN w.WriteSString("\emdash ")
+				ELSIF ch = 2010X THEN w.WriteChar("-")
+				ELSIF ch = 2011X THEN w.WriteSString("\_")
+				ELSIF ch = 201CX THEN (* unicode: left double quote *) w.WriteSString("\ldblquote ")
+				ELSIF ch = 201DX THEN (* unicode: right double quote *) w.WriteSString("\rdblquote ")
+				ELSIF ch = 2018X THEN (* unicode: left single quote *) w.WriteSString("\lquote ")
+				ELSIF ch = 2019X THEN (* unicode: right single quote *) w.WriteSString("\rquote ")					
+				ELSE
+					w.WriteSString("\u"); w.WriteInt(ORD(ch)); 
+					ch := ThisWndChar(ch);
+					IF ch >= 80X THEN
+						w.WriteSString("\'"); 
+						w.WriteIntForm(ORD(ch), TextMappers.hexadecimal, 2, "0", FALSE)
+					ELSE
+						w.WriteChar(ch)
+					END
 				END
 			ELSE
 				CASE ch OF 
@@ -575,12 +638,12 @@ MODULE HostTextConv;
 				ELSE
 				END
 			END;
-			r.ReadChar(ch);
+			r.ReadChar(ch)
 		END;
 		w.WriteChar("}");
 		(* header *)
 		w.SetPos(0);
-		w.WriteSString("{\rtf1\ansi\deff0");
+		w.WriteSString("{\rtf1\ansi\ansicpg1252\deff0");
 		w.WriteSString("{\fonttbl"); i := 0;
 		WHILE i < fnum DO
 			IF fonts[i] = Fonts.default THEN fonts[i] := HostFonts.defFont.alias$ END;
@@ -604,11 +667,11 @@ MODULE HostTextConv;
 	PROCEDURE ImportDText* (VAR med: WinOle.STGMEDIUM; OUT v: Views.View;
 											OUT w, h: INTEGER; OUT isSingle: BOOLEAN);
 		VAR t: TextModels.Model; res, adr: INTEGER; wr: TextModels.Writer; ch: SHORTCHAR;
-			hnd: KERNEL32.Handle; attr: TextModels.Attributes; p: Properties.StdProp; pref: Properties.BoundsPref;
+			hnd: WinApi.HANDLE; attr: TextModels.Attributes; p: Properties.StdProp; pref: Properties.BoundsPref;
 	BEGIN
 		hnd := MediumGlobal(med);
 		ASSERT(hnd # 0, 20);
-		adr := KERNEL32.GlobalLock(hnd);
+		adr := WinApi.GlobalLock(hnd);
 		t := TextModels.dir.New(); wr := t.NewWriter(NIL);
 		IF HostClipboard.cloneAttributes THEN
 			Properties.CollectStdProp(p);
@@ -620,7 +683,7 @@ MODULE HostTextConv;
 			WriteWndChar(wr, ch);
 			INC(adr); SYSTEM.GET(adr, ch)
 		END;
-		res := KERNEL32.GlobalUnlock(hnd);
+		res := WinApi.GlobalUnlock(hnd);
 		v := TextViews.dir.New(t);
 		pref.w := Views.undefined; pref.h := Views.undefined;
 		Views.HandlePropMsg(v, pref);
@@ -630,19 +693,19 @@ MODULE HostTextConv;
 	PROCEDURE ImportDRichText* (VAR med: WinOle.STGMEDIUM; OUT v: Views.View;
 												OUT w, h: INTEGER; OUT isSingle: BOOLEAN);
 		VAR t: TextModels.Model; res, adr: INTEGER; wr: TextModels.Writer; rd: MemReader;
-			hnd: KERNEL32.Handle; ruler: TextRulers.Ruler; pref: Properties.BoundsPref;
+			hnd: WinApi.HANDLE; ruler: TextRulers.Ruler; pref: Properties.BoundsPref;
 	BEGIN
 		IF debug THEN
 			ImportDText(med, v, w, h, isSingle);
-			RETURN;
+			RETURN
 		END;		
 		hnd := MediumGlobal(med);
 		ASSERT(hnd # 0, 20);
-		adr := KERNEL32.GlobalLock(hnd);
+		adr := WinApi.GlobalLock(hnd);
 		NEW(rd); rd.adr := adr; rd.pos := 0;
 		t := TextModels.dir.New(); wr := t.NewWriter(NIL);
 		ParseRichText(rd, wr, ruler);
-		res := KERNEL32.GlobalUnlock(hnd);
+		res := WinApi.GlobalUnlock(hnd);
 		v := TextViews.dir.New(t);
 		v(TextViews.View).SetDefaults(ruler, TextModels.dir.attr);
 		pref.w := Views.undefined; pref.h := Views.undefined;
@@ -652,12 +715,12 @@ MODULE HostTextConv;
 	
 	PROCEDURE ImportDUnicode* (VAR med: WinOle.STGMEDIUM; OUT v: Views.View;
 												OUT w, h: INTEGER; OUT isSingle: BOOLEAN);
-		VAR t: TextModels.Model; res, adr, len: INTEGER; wr: TextModels.Writer; uc: CHAR;
-			hnd: KERNEL32.Handle; attr: TextModels.Attributes; p: Properties.StdProp; pref: Properties.BoundsPref;
+		VAR t: TextModels.Model; res, adr: INTEGER; wr: TextModels.Writer; uc: CHAR;
+			hnd: WinApi.HANDLE; attr: TextModels.Attributes; p: Properties.StdProp; pref: Properties.BoundsPref;
 	BEGIN
 		hnd := MediumGlobal(med);
 		ASSERT(hnd # 0, 20);
-		adr := KERNEL32.GlobalLock(hnd);
+		adr := WinApi.GlobalLock(hnd);
 		t := TextModels.dir.New(); wr := t.NewWriter(NIL);
 		IF HostClipboard.cloneAttributes THEN
 			Properties.CollectStdProp(p);
@@ -667,12 +730,12 @@ MODULE HostTextConv;
 		SYSTEM.GET(adr, uc);
 		WHILE uc # 0X DO
 			ASSERT(uc # 0FFFEX, 100);
-			IF uc < 100X THEN WriteWndChar(wr, SHORT(uc))
+			IF uc < 100X THEN WriteWndChar(wr, uc)
 			ELSIF uc # 0FEFFX THEN wr.WriteChar(uc)
 			END;
 			INC(adr, 2); SYSTEM.GET(adr, uc)
 		END;
-		res := KERNEL32.GlobalUnlock(hnd);
+		res := WinApi.GlobalUnlock(hnd);
 		v := TextViews.dir.New(t);
 		pref.w := Views.undefined; pref.h := Views.undefined;
 		Views.HandlePropMsg(v, pref);
@@ -682,27 +745,27 @@ MODULE HostTextConv;
 	PROCEDURE ExportDText* (
 		v: Views.View; w, h, x, y: INTEGER; isSingle: BOOLEAN; VAR med: WinOle.STGMEDIUM
 	);
-		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR; wch: SHORTCHAR;
-			res, len, adr: INTEGER; hnd: KERNEL32.Handle;
+		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR;
+			res, len, adr: INTEGER; hnd: WinApi.HANDLE;
 	BEGIN
 		ASSERT(v # NIL, 20);
 		WITH v: TextViews.View DO
 			t := v.ThisModel();
-			hnd := KERNEL32.GlobalAlloc({1, 13}, 2 * t.Length());	(* movable, sharable *)
+			hnd := WinApi.GlobalAlloc({1, 13}, 2 * t.Length() + 1);	(* movable, sharable *)
 			IF hnd # 0 THEN
-				adr  := KERNEL32.GlobalLock(hnd); len := 0;
+				adr  := WinApi.GlobalLock(hnd); len := 0;
 				r := t.NewReader(NIL); r.ReadChar(ch);
 				WHILE ~r.eot DO
 					IF (ch # TextModels.viewcode) & (ch # TextModels.para) THEN
-						wch := ThisWndChar(ch);
-						SYSTEM.PUT(adr, wch); INC(adr); INC(len);
-						IF wch = CR THEN SYSTEM.PUT(adr, LF); INC(adr); INC(len) END;
+						ch := ThisWndChar(ch);
+						SYSTEM.PUT(adr, SHORT(ch)); INC(adr); INC(len);
+						IF ch = CR THEN SYSTEM.PUT(adr, LF); INC(adr); INC(len) END
 					END;
 					r.ReadChar(ch)
 				END;
 				SYSTEM.PUT(adr, 0X); INC(len);
-				res := KERNEL32.GlobalUnlock(hnd);
-				hnd := KERNEL32.GlobalReAlloc(hnd, len, {});
+				res := WinApi.GlobalUnlock(hnd);
+				hnd := WinApi.GlobalReAlloc(hnd, len, {});
 				GenGlobalMedium(hnd, NIL, med)
 			END
 		ELSE
@@ -712,21 +775,21 @@ MODULE HostTextConv;
 	PROCEDURE ExportDRichText* (
 		v: Views.View; w, h, x, y: INTEGER; isSingle: BOOLEAN; VAR med: WinOle.STGMEDIUM
 	);
-		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR; res, adr: INTEGER; hnd: KERNEL32.Handle;
+		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR; res, adr: INTEGER; hnd: WinApi.HANDLE;
 	BEGIN
 		ASSERT(v # NIL, 20);
 		WITH v: TextViews.View DO
 			ConvertToRichText(v, 0, MAX(INTEGER), t);
-			hnd := KERNEL32.GlobalAlloc({1, 13}, t.Length() + 1);	(* movable, sharable *)
+			hnd := WinApi.GlobalAlloc({1, 13}, t.Length() + 1);	(* movable, sharable *)
 			IF hnd # 0 THEN
-				adr := KERNEL32.GlobalLock(hnd);
+				adr := WinApi.GlobalLock(hnd);
 				r := t.NewReader(NIL); r.ReadChar(ch);
 				WHILE ~r.eot DO
-					SYSTEM.PUT(adr, ch); INC(adr);
+					SYSTEM.PUT(adr, SHORT(ch)); INC(adr);
 					r.ReadChar(ch)
 				END;
 				SYSTEM.PUT(adr, 0X);
-				res := KERNEL32.GlobalUnlock(hnd);
+				res := WinApi.GlobalUnlock(hnd);
 				GenGlobalMedium(hnd, NIL, med)
 			END
 		ELSE
@@ -736,14 +799,14 @@ MODULE HostTextConv;
 	PROCEDURE ExportDUnicode* (
 		v: Views.View; w, h, x, y: INTEGER; isSingle: BOOLEAN; VAR med: WinOle.STGMEDIUM
 	);
-		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR; res, len, adr: INTEGER; hnd: KERNEL32.Handle;
+		VAR t: TextModels.Model; r: TextModels.Reader; ch: CHAR; res, len, adr: INTEGER; hnd: WinApi.HANDLE;
 	BEGIN
 		ASSERT(v # NIL, 20);
 		WITH v: TextViews.View DO
 			t := v.ThisModel();
-			hnd := KERNEL32.GlobalAlloc({1, 13}, 4 * t.Length());	(* movable, sharable *)
+			hnd := WinApi.GlobalAlloc({1, 13}, 4 * t.Length() + 2);	(* movable, sharable *)
 			IF hnd # 0 THEN
-				adr  := KERNEL32.GlobalLock(hnd); len := 0;
+				adr  := WinApi.GlobalLock(hnd); len := 0;
 				r := t.NewReader(NIL); r.ReadChar(ch);
 				WHILE ~r.eot DO
 					IF ch = CR THEN
@@ -756,8 +819,8 @@ MODULE HostTextConv;
 					r.ReadChar(ch)
 				END;
 				SYSTEM.PUT(adr, LONG(0X)); INC(len, 2);
-				res := KERNEL32.GlobalUnlock(hnd);
-				hnd := KERNEL32.GlobalReAlloc(hnd, len, {});
+				res := WinApi.GlobalUnlock(hnd);
+				hnd := WinApi.GlobalReAlloc(hnd, len, {});
 				GenGlobalMedium(hnd, NIL, med)
 			END
 		ELSE
@@ -811,8 +874,7 @@ MODULE HostTextConv;
 	
 	PROCEDURE ImportUnicode* (f: Files.File; OUT s: Stores.Store);
 		VAR r: Stores.Reader; t: TextModels.Model; v: TextViews.View; w: TextModels.Writer;
-			ch0, ch1: SHORTCHAR; len, res: INTEGER; uc: CHAR;
-			rev: BOOLEAN; fh, dc: GDI32.Handle; name: Fonts.Typeface;
+			ch0, ch1: SHORTCHAR; len, res: INTEGER; uc: CHAR; rev: BOOLEAN;
 	BEGIN
 		ASSERT(f # NIL, 20);
 		r.ConnectTo(f); r.SetPos(0);
@@ -825,7 +887,7 @@ MODULE HostTextConv;
 			END;
 			DEC(len, 2);
 			IF uc = 0FFFEX THEN rev := ~rev
-			ELSIF uc < 100X THEN WriteWndChar(w, SHORT(uc))
+			ELSIF uc < 100X THEN WriteWndChar(w, uc)
 			ELSIF uc # 0FEFFX THEN w.WriteChar(uc)
 			END
 		END;
@@ -835,7 +897,8 @@ MODULE HostTextConv;
 	
 	PROCEDURE ImportDosText* (f: Files.File; OUT s: Stores.Store);
 		VAR r: Stores.Reader; t: TextModels.Model; wr: TextModels.Writer; ch, nch: SHORTCHAR;
-		PROCEDURE ConvertChar (wr: TextModels.Writer; ch: SHORTCHAR);
+		
+		PROCEDURE ConvertChar (wr: TextModels.Writer; ch: CHAR);
 		(* PC Code Page Mappings M4 (Latin) to Unicode Encoding *)
 		(* Reference: The Unicode Standard, Version 1.0, Vol 1, Addison Wesley, p. 536 *)
 		BEGIN		
@@ -969,10 +1032,9 @@ MODULE HostTextConv;
 	END TextView;
 
 	PROCEDURE ExportText* (s: Stores.Store; f: Files.File);
-		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR; wch: SHORTCHAR;
+		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR;
 	BEGIN
 		ASSERT(s # NIL, 20); ASSERT(f # NIL, 21);
-		(* IF s IS TextViews.View THEN *)
 		s := TextView(s);
 		IF s # NIL THEN
 			w.ConnectTo(f); w.SetPos(0);
@@ -982,9 +1044,9 @@ MODULE HostTextConv;
 				r.ReadChar(ch);
 				WHILE ~r.eot DO
 					IF (ch # TextModels.viewcode) & (ch # TextModels.para) THEN
-						wch := ThisWndChar(ch);
-						w.WriteSChar(wch);
-						IF wch = CR THEN w.WriteSChar(LF) END
+						ch := ThisWndChar(ch);
+						w.WriteSChar(SHORT(ch));
+						IF ch = CR THEN w.WriteSChar(LF) END
 					END;
 					r.ReadChar(ch)
 				END
@@ -993,7 +1055,7 @@ MODULE HostTextConv;
 	END ExportText;
 	
 	PROCEDURE ExportTabText* (s: Stores.Store; f: Files.File);
-		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR; wch: SHORTCHAR;
+		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR;
 	BEGIN
 		ASSERT(s # NIL, 20); ASSERT(f # NIL, 21);
 		s := TextView(s);
@@ -1005,10 +1067,10 @@ MODULE HostTextConv;
 				r.ReadChar(ch);
 				WHILE ~r.eot DO
 					IF (ch # TextModels.viewcode) & (ch # TextModels.para) THEN
-						wch := ThisWndChar(ch);
-						IF wch = CR THEN w.WriteSChar(CR); w.WriteSChar(LF)
-						ELSIF wch = TAB THEN w.WriteSChar(" "); w.WriteSChar(" ")
-						ELSE w.WriteSChar(wch)
+						ch := ThisWndChar(ch);
+						IF ch = CR THEN w.WriteSChar(CR); w.WriteSChar(LF)
+						ELSIF ch = TAB THEN w.WriteSChar(" "); w.WriteSChar(" ")
+						ELSE w.WriteSChar(SHORT(ch))
 						END
 					END;
 					r.ReadChar(ch)
@@ -1027,7 +1089,7 @@ MODULE HostTextConv;
 			r := t.NewReader(NIL); r.ReadChar(ch);
 			WHILE ~r.eot DO
 				w.WriteSChar(SHORT(ch)); r.ReadChar(ch)
-			END;
+			END
 (*
 			w.WriteSChar(0X)
 *)
@@ -1036,7 +1098,7 @@ MODULE HostTextConv;
 	END ExportRichText;
 	
 	PROCEDURE ExportUnicode* (s: Stores.Store; f: Files.File);
-		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR; tab2sp: INTEGER;
+		VAR w: Stores.Writer; t: TextModels.Model; r: TextModels.Reader; ch: CHAR;
 	BEGIN
 		ASSERT(s # NIL, 20); ASSERT(f # NIL, 21);
 		s := TextView(s);

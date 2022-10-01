@@ -69,7 +69,8 @@ MODULE Converters;
 		file := Files.dir.Old(loc, name, Files.shared); s := NIL;
 		IF file # NIL THEN
 			IF conv = NIL THEN
-				conv := list; WHILE (conv # NIL) & (conv.fileType # file.type) DO conv := conv.next END;
+				conv := list;
+				WHILE (conv # NIL) & ((conv.fileType # file.type) OR (conv.imp = "")) DO conv := conv.next END;
 				IF conv = NIL THEN
 					conv := list; WHILE (conv # NIL) & ~(importAll IN conv.opts) DO conv := conv.next END
 				END

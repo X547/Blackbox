@@ -11,11 +11,11 @@ DEFINITION HostPackedFiles;
 END HostPackedFiles.
 
 
-Module HostPackedFiles is an implementation of Files.Directory. The implementation is basically a wrapper around the HostFiles implementation with one major differnce: when a file is not present in the file system HostPackedFiles searches the current executable for files packed in there by DevPacker. 
+Module HostPackedFiles is an implementation of Files.Directory. The implementation is basically a wrapper around the HostFiles implementation with one major difference: when a file is not present in the file system HostPackedFiles searches the current executable for files packed in there by DevPacker. 
 
 Since HostPackedFiles wraps HostFiles it cannot work unless HostFiles is installed first. For HostPackedFiles to work properly it is also important that the exe-file has the right format. This format is explained below.
 
-Whenever HostPackedFiles is loaded it trys to install itself as the Files.Directory. There are two preconditions for HostPackedFiles to be installed; first the current Files.Directory must be a HostFiles implementation and secondly there must be some files packed into the current directory.
+Whenever HostPackedFiles is loaded it tries to install itself as the Files.Directory. There are two preconditions for HostPackedFiles to be installed; first the current Files.Directory must be a HostFiles implementation and secondly there must be some files packed into the current directory.
 
 CONST magicnum
 Used as a magic number in the exe-file to mark the position of the address to the file table. This constant is only exported to make it possible for DevPacker to write the appropriate magic number into the exe-file.

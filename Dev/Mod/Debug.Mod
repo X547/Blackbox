@@ -127,21 +127,21 @@ MODULE DevDebug;
 		out.WriteIntForm(n, TextMappers.hexadecimal, 9, "0", TextMappers.showBase)
 	END WriteHex;
 	
-	PROCEDURE WriteString (adr, len, base: INTEGER; zterm: BOOLEAN);
+	PROCEDURE WriteString (adr, len, base: INTEGER; zterm, unicode: BOOLEAN);
 		CONST beg = 0; char = 1; code = 2;
-		VAR ch: SHORTCHAR; val, mode: SHORTINT; str: ARRAY 16 OF CHAR;
+		VAR ch: CHAR; sc: SHORTCHAR; val, mode: INTEGER; str: ARRAY 16 OF CHAR;
 	BEGIN
 		mode := beg;
-		IF base = 2 THEN SYSTEM.GET(adr, val) ELSE SYSTEM.GET(adr, ch); val := ORD(ch) END;
+		IF base = 2 THEN SYSTEM.GET(adr, ch); val := ORD(ch) ELSE SYSTEM.GET(adr, sc); val := ORD(sc) END;
 		IF zterm & (val = 0) THEN out.WriteSString('""')
 		ELSE
 			REPEAT
-				IF (val >= ORD(" ")) & (val < 7FH) OR (val > 0A0H) & (val < 256) THEN
+				IF (val >= ORD(" ")) & (val < 7FH) OR (val > 0A0H) & (val < 100H) OR unicode & (val >= 100H) THEN
 					IF mode # char THEN
 						IF mode = code THEN out.WriteSString(", ") END;
 						out.WriteChar(22X); mode := char
 					END;
-					out.WriteChar(SHORT(CHR(val)))
+					out.WriteChar(CHR(val))
 				ELSE
 					IF mode = char THEN out.WriteChar(22X) END;
 					IF mode # beg THEN out.WriteSString(", ") END;
@@ -150,7 +150,7 @@ MODULE DevDebug;
 					out.WriteString(str); out.WriteChar("X")
 				END;
 				INC(adr, base); DEC(len);
-				IF base = 2 THEN SYSTEM.GET(adr, val) ELSE SYSTEM.GET(adr, ch); val := ORD(ch) END
+				IF base = 2 THEN SYSTEM.GET(adr, ch); val := ORD(ch) ELSE SYSTEM.GET(adr, sc); val := ORD(sc) END
 			UNTIL (len = 0) OR zterm & (val = 0)
 		END;
 		IF mode = char THEN out.WriteChar(22X) END
@@ -329,26 +329,34 @@ MODULE DevDebug;
 	
 	PROCEDURE ShowArray (a, ind: INTEGER; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; VAR sel: Name);
 		VAR f: SHORTCHAR; i, n, m, size, len: INTEGER; name: Kernel.Name; eltyp, t: Kernel.Type;
-			vi: SHORTINT; vs: BYTE; str: Dialog.String;
+			vi: SHORTINT; vs: BYTE; str: Dialog.String; high: BOOLEAN;
 	BEGIN
 		WriteName(desc, ptr); out.WriteTab;
 		len := LenOf(desc, ptr); eltyp := desc.base[0]; f := FormOf(eltyp); size := SizeOf(eltyp, ptr);
 		IF (f = 2X) OR (f = 3X) THEN	(* string *)
-			n := 0; m := len;
+			n := 0; m := len; high := FALSE;
 			IF f = 2X THEN
 				REPEAT SYSTEM.GET(a + n, vs); INC(n) UNTIL (n = 32) OR (n = len) OR (vs = 0);
 				REPEAT DEC(m); SYSTEM.GET(a + m, vs) UNTIL (m = 0) OR (vs # 0)
 			ELSE
-				REPEAT SYSTEM.GET(a + n * 2, vi); INC(n) UNTIL (n = 32) OR (n = len) OR (vi = 0);
+				REPEAT
+					SYSTEM.GET(a + n * 2, vi); INC(n);
+					IF vi DIV 256 # 0 THEN high := TRUE END
+				UNTIL (n = len) OR (vi = 0);
+				n := MIN(n, 32);
 				REPEAT DEC(m); SYSTEM.GET(a + m * 2, vi) UNTIL (m = 0) OR (vi # 0)
 			END;
-			WriteString(a, n, size, TRUE);
+			WriteString(a, n, size, TRUE, TRUE);
 			INC(m, 2);
 			IF m > len THEN m := len END;
-			IF m > n THEN
+			IF high OR (m > n) THEN
 				out.WriteSString("   "); OpenFold("...");
 				out.WriteLn;
-				WriteString(a, m, size, FALSE);
+				IF high & (n = 32) THEN
+					WriteString(a, m, size, TRUE, TRUE);
+					out.WriteLn; out.WriteLn
+				END;
+				WriteString(a, m, size, FALSE, FALSE);
 				IF m < len THEN out.WriteSString(", ..., 0X") END;
 				out.WriteSString("   "); CloseFold(TRUE)
 			END
@@ -493,8 +501,10 @@ MODULE DevDebug;
 				ELSIF vc = 1X THEN out.WriteSString("TRUE")
 				ELSE OutString("#Dev:Undefined"); out.WriteInt(ORD(vc))
 				END
-			| 2X: WriteString(a, 1, 1, FALSE)
-			| 3X: WriteString(a, 1, 2, FALSE)
+			| 2X: WriteString(a, 1, 1, FALSE, FALSE)
+			| 3X: WriteString(a, 1, 2, FALSE, TRUE);
+					SYSTEM.GET(a, vi);
+					IF vi DIV 256 # 0 THEN out.WriteString("  "); WriteString(a, 1, 2, FALSE, FALSE) END
 			| 4X: SYSTEM.GET(a, vsi); out.WriteInt(vsi)
 			| 5X: SYSTEM.GET(a, vi); out.WriteInt(vi)
 			| 6X: SYSTEM.GET(a, vli); out.WriteInt(vli)
@@ -528,7 +538,7 @@ MODULE DevDebug;
 					END
 			| 0CX, 0DX, 13X, 20X: ShowPointer(a, f, desc, back, tsel)
 			| 0EX, 10X: ShowProcVar(a)
-			| 0FX: WriteString(a, 256, 1, TRUE)
+			| 0FX: WriteString(a, 256, 1, TRUE, FALSE)
 			| 21X: WriteGuid(a)
 			| 22X: SYSTEM.GET(a, vli); WriteHex(vli)
 			ELSE 

@@ -741,7 +741,7 @@ The following example uses a text scanner to count the number of integer numbers
 
 MODULE ObxCount1;
 
-	IMPORT TextModels, TextMappers, TextControllers, StdLog;
+	IMPORT TextMappers, TextControllers, StdLog;
 
 	PROCEDURE Do*;
 	(** use TextCmds.SelectionGuard as guard for this command **)
@@ -755,7 +755,7 @@ MODULE ObxCount1;
 			s.SetPos(from);	(* set the reader to beginning of selection *)
 			s.Scan;				(* read the first symbol of the text selection *)
 			ints := 0; reals := 0; strings := 0;	(* counter variables *)
-			WHILE s.Pos() < to DO	(* read all symbols starting in the text selection *)
+			WHILE s.start < to DO	(* read all symbols starting in the text selection *)
 				IF s.type = TextMappers.int THEN	(* symbol is an integer number *)
 					INC(ints)
 				ELSIF s.type = TextMappers.real THEN	(* symbol is a real number *)
@@ -776,7 +776,7 @@ END ObxCount1.
 
 Listing 5-27. Counting integers, reals, and strings in a text
 
-The most typical code pattern for a scanner looks similar to the code pattern for a reader. condition may be something like s.Pos() < end or s.type # TextMappers.eot.
+The most typical code pattern for a scanner looks similar to the code pattern for a reader. condition may be something like s.start < end or s.type # TextMappers.eot.
 
 		VAR s: TextMappers.Scanner; start: INTEGER;
 	BEGIN

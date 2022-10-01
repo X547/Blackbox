@@ -46,7 +46,7 @@ Mac OS:
 Whenever the system is working on the completion of some command for more than a fraction of a second, BlackBox changes the cursor to a special busy cursor sequence, i.e., a cursor which changes its shape as long as the command is running. However, this does not guarantee that the executing program does make any progress. For example, the busy cursor will keep advancing, even if the program entered an endless loop. Use command-option-. to terminate such a program. Note that it may take a few seconds before you see a reaction.
 
 Windows:
-On Windows NT and Windows 95, an endless loop can be terminated with ctrl-break.
+An endless loop can be terminated with ctrl-break.
 
 
 2 Conventions
@@ -62,8 +62,8 @@ The contents of this documentation mostly applies to both the Windows and Mac OS
 
 
 3 Installation (Windows only)
-The BlackBox Component Builder requires a PC with an i386 or better, with Windows 95, Windows 98 (SE / ME), Windows NT, Windows 2000, Windows XP, or Windows Server 2003.
-A two-button mouse is sufficient, but a three-button mouse is recommended (see the chapter Windows 95 user interface guidelines).
+The BlackBox Component Builder requires a PC with an i386 or better, with Windows NT, Windows 2000, Windows XP, or Windows Server 2003.
+A two-button mouse is sufficient, but a three-button mouse is recommended.
 
 The resulting BlackBox directory contains several files and directories:
 
@@ -81,7 +81,6 @@ Comm	Communications subsystem.
 Ctl	OLE Automation support.
 Dev	Development subsystem.
 Docu	On-line documentation not specific to a particular module or subsystem.
-Dtf	dtF driver for the Sql subsystem.
 Form	Form subsystem with the visual designer.
 Host	Private code of BlackBox.
 Obx	Obx subsystem, a collection of examples.
@@ -106,14 +105,14 @@ For the installation, follow these steps:
 
 3) For each workstation, create a shortcut with the following contents:
 
-  Command Line (Target): "<BlackBoxFDir>\BlackBox.exe /Use <WorkDir>"
-  Working Directory (Start in): "<WorkDir>"
+  Command Line (Target): <BlackBoxDir>\BlackBox.exe /Use <WorkDir>
+  Working Directory (Start in): <WorkDir>
 
-where <BlackBoxFDir> stands for the full path name of the directory where BlackBox is installed (on the server), and <WorkDir> is the path of the working directory of the actual machine (on the client or on the server). The latter must not end with a backslash ("\").
+where <BlackBoxDir> stands for the full path name of the directory where BlackBox is installed (on the server), and <WorkDir> is the path of the working directory of the actual machine (on the client or on the server). The latter must not end with a backslash ("\"). Use double quotation marks to delimit path names that contain spaces.
 
 Example:
-  Command Line (Target): "S:\BLACKBOX\BlackBox.exe /Use C:\BLACKBOX"
-  Working Directory (Start in): "C:\BLACKBOX"
+  Command Line (Target): "C:\Program Files\BlackBox\BlackBox.exe" /Use C:\BlackBox
+  Working Directory (Start in): C:\BlackBox
 
 These features, originally introduced for situations where multiple users want to develop with BlackBox, can also be useful in a single-user environment. The idea is to have one directory with the original installation of BlackBox, and a separate directory for all the developer-specific files. If the user opens a file, it is first searched in his or her working directory. If it isn't found there, the corresponding file in the "server directory" is opened. When a file is saved, it is always saved in the working directory. This makes it easy to set up entirely separate projects simply by creating separate working directories for them. When an upgrade of BlackBox comes out, only the central "server directory" needs to be upgraded. If you use the server features in this way, without having multiple developers using the same installation simultaneously, then no special license is required.
 

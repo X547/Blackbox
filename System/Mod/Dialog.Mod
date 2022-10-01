@@ -34,6 +34,8 @@ MODULE Dialog;
 		windowsNT4* = 14;
 		windows2000* = 15;
 		windows98* = 16;
+		windowsXP* = 17;
+		windowsVista* = 18;
 		macOS* = 21;
 		macOSX* = 22;
 		linux* = 30;
@@ -112,13 +114,13 @@ MODULE Dialog;
 		GuardProc* = PROCEDURE (VAR par: Par);
 		NotifierProc* = PROCEDURE (op, from, to: INTEGER);
 
-		StringPtr = POINTER TO ARRAY [untagged] OF SHORTCHAR;
+		StringPtr = POINTER TO ARRAY [untagged] OF CHAR;
 		StringTab = POINTER TO RECORD
 			next: StringTab;
 			name: Files.Name;
 			key: POINTER TO ARRAY OF StringPtr;
 			str: POINTER TO ARRAY OF StringPtr;
-			data: POINTER TO ARRAY OF SHORTCHAR
+			data: POINTER TO ARRAY OF CHAR
 		END;
 
 		LangNotifier* = POINTER TO ABSTRACT RECORD next: LangNotifier END;
@@ -200,27 +202,83 @@ MODULE Dialog;
 	END SetLanguageHook;
 
 	PROCEDURE ReadStringFile (subsys: Files.Name; f: Files.File; VAR tab: StringTab);
-		VAR i, j, h, n: INTEGER; in: Files.Reader;
-			ch: SHORTCHAR; b: BYTE; p, q: StringPtr;
+		VAR i, j, h, n, s, x, len, next, down, end: INTEGER; in, in1: Files.Reader;
+			ch: CHAR; b: BYTE; p, q: StringPtr;
+			
+		PROCEDURE ReadInt (OUT x: INTEGER);
+			VAR b: BYTE;
+		BEGIN
+			in.ReadByte(b); x := b MOD 256;
+			in.ReadByte(b); x := x + (b MOD 256) * 100H;
+			in.ReadByte(b); x := x + (b MOD 256) * 10000H;
+			in.ReadByte(b); x := x + b * 1000000H
+		END ReadInt;
+		
+		PROCEDURE ReadHead (OUT next, down, end: INTEGER);
+			VAR b, t: BYTE; n: INTEGER;
+		BEGIN
+			in.ReadByte(b);
+			REPEAT
+				in.ReadByte(t);
+				IF t = -14 THEN ReadInt(n)
+				ELSE
+					REPEAT in.ReadByte(b) UNTIL b = 0
+				END
+			UNTIL t # -15;
+			ReadInt(n);
+			ReadInt(next); next := next + in.Pos();
+			ReadInt(down); down := down + in.Pos();
+			ReadInt(end); end := end + in.Pos()
+		END ReadHead;
+	
 	BEGIN
 		tab := NIL;
-		IF f # NIL THEN
-			in := f.NewReader(NIL);
-			IF in # NIL THEN
+		IF f # NIL THEN	(* read text file *)
+			in := f.NewReader(NIL); in1 :=  f.NewReader(NIL);
+			IF (in # NIL) & (in1 # NIL) THEN
+				in.SetPos(8); ReadHead(next, down, end);	(* document view *)
+				in.SetPos(down); ReadHead(next, down, end);	(* document model *)
+				in.SetPos(down); ReadHead(next, down, end);	(* text view *)
+				in.SetPos(down); ReadHead(next, down, end);	(* text model *)
+				in.ReadByte(b); in.ReadByte(b); in.ReadByte(b);	(* versions *)
+				in.ReadByte(b); in.ReadByte(b); in.ReadByte(b);
+				ReadInt(x); in1.SetPos(in.Pos() + x);	(* text offset *)
+				next := down;
 				NEW(tab); tab.name := subsys$;
 				NEW(tab.data, f.Length());
-				n := 0; i := 0; in.ReadByte(b); ch := SHORT(CHR(b));
-				WHILE ~in.eof DO
-					j := i;
-					WHILE ~in.eof & (ch >= " ") DO tab.data[j] := ch; INC(j); in.ReadByte(b); ch := SHORT(CHR(b)) END;
-					IF (j > i) & (ch = TAB) THEN
-						tab.data[j] := 0X; INC(j); in.ReadByte(b); ch := SHORT(CHR(b));
-						WHILE ~in.eof & (ch >= " ") DO
-							tab.data[j] := ch; INC(j); in.ReadByte(b); ch := SHORT(CHR(b))
-						END;
-						IF ch = CR THEN tab.data[j] := 0X; INC(j); INC(n); i := j END
+				n := 0; i := 0; s := 0; in.ReadByte(b);
+				WHILE b # -1 DO
+					IF next = in.Pos() THEN ReadHead(next, down, end); in.SetPos(end) END;	(* skip attributes *)
+					ReadInt(len);
+					IF len > 0 THEN	(* shortchar run *)
+						WHILE len > 0 DO
+							in1.ReadByte(b); ch := CHR(b MOD 256);
+							IF ch >= " " THEN
+								IF s = 0 THEN j := i; s := 1 END;	(* start of left part *)
+								tab.data[j] := ch; INC(j)
+							ELSIF (s = 1) & (ch = TAB) THEN
+								tab.data[j] := 0X; INC(j);
+								s := 2	(* start of right part *)
+							ELSIF (s = 2) & (ch = CR) THEN
+								tab.data[j] := 0X; INC(j);
+								INC(n); i := j; s := 0	(* end of line *)
+							ELSE
+								s := 0	(* reset *)
+							END;
+							DEC(len)
+						END
+					ELSIF len < 0 THEN		(* longchar run *)
+						WHILE len < 0 DO
+							in1.ReadByte(b); x := b MOD 256; in1.ReadByte(b); ch := CHR(x + 256 * (b + 128));
+							IF s = 0 THEN j := i; s := 1 END;	(* start of left part *)
+							tab.data[j] := ch; INC(j);
+							INC(len, 2)
+						END
+					ELSE	(* view *)
+						ReadInt(x); ReadInt(x); in1.ReadByte(b);	(* ignore *)
 					END;
-					WHILE ~in.eof & (ch < " ") DO in.ReadByte(b); ch := SHORT(CHR(b)) END
+					IF next = in.Pos() THEN ReadHead(next, down, end); in.SetPos(end) END;	(* skip view data *)
+					in.ReadByte(b);
 				END;
 				IF n > 0 THEN
 					NEW(tab.key, n); NEW(tab.str, n); i := 0; j := 0;

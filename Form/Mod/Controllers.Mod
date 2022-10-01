@@ -696,9 +696,13 @@ MODULE FormControllers;
 	PROCEDURE (c: StdController) IsSelected (view: Views.View): BOOLEAN;
 		VAR l: List;
 	BEGIN
-		ASSERT(view # NIL, 20); ASSERT(view.context.ThisModel() = c.form, 21);
-		l := c.sel; WHILE (l # NIL) & (l.view # view) DO l := l.next END;
-		RETURN l # NIL
+		IF view # NIL THEN
+			ASSERT(view.context.ThisModel() = c.form, 20);
+			l := c.sel; WHILE (l # NIL) & (l.view # view) DO l := l.next END;
+			RETURN l # NIL
+		ELSE
+			RETURN FALSE
+		END
 	END IsSelected;
 
 	PROCEDURE (c: StdController) GetSelection (): List;

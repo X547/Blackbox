@@ -17,12 +17,12 @@ Controls can have different visible states, e.g., they can be enabled or disable
 4.1 Preliminaries
 
 We want to start as quickly as possible with a concrete example, but a few preliminary remarks are still in order. The reader is expected to have some basic knowledge of programming, preferably in some dialect of Pascal. Furthermore, he of she is expected to know how to use the platform (Windows or Macintosh), and the general user interface guidelines for the platform.
-The BlackBox Component Builder is used as the tool to expose the various characteristics of component software in an exemplary way. The contents of the book applies both to the Windows and the Macintosh version of the BlackBox Component Builder; except for screendumps, which mostly use Windows 95. In order to minimize platform-specific remarks in the text, a few notational conventions are followed:
+The BlackBox Component Builder is used as the tool to expose the various characteristics of component software in an exemplary way. The contents of the book applies both to the Windows and the Macintosh version of the BlackBox Component Builder; except for screendumps, which mostly use Windows. In order to minimize platform-specific remarks in the text, a few notational conventions are followed:
 
 • Mac OS folders are called directories
 • Path names contain "/" as directory separators, as in Unix and the World-Wide Web
 • File and directory names may contain both capital and small letters
-• Document file names are given without the ".odc" suffix used in Windows. Thus the file name Text/Rsrc/Find under Windows corresponds to Text\Rsrc\Find.odc on Windows 95, and to Text:Rsrc:Find under Mac OS.
+• Document file names are given without the ".odc" suffix used in Windows. Thus the file name Text/Rsrc/Find under Windows corresponds to Text\Rsrc\Find.odc on Windows, and to Text:Rsrc:Find under Mac OS.
 • Modifier key: on Windows this is the Ctrl key, on Mac OS it is the Option key
 • Menu commands: M->I is a shorthand notation for menu item I in menu M, e.g., File->New
 
@@ -198,7 +198,7 @@ In terms of genuine functionality, we have seen everything that is important abo
 
 In section 1.2 we have already discussed what user-friendliness means. For example, it means avoiding modes wherever possible. For this reason, BlackBox doesn't support modal dialog boxes.
 Modes are unavoidable if a user action sometimes makes sense, and sometimes doesn't. For example, if the clipboard is empty, its contents cannot be pasted into a text. If it is not empty and contains text, pasting is possible. This cannot be helped, and is harmless if the current state is clearly visible or can easily be inquired by the user. For example, if the clipboard is empty, the Paste menu command can be visibly marked as disabled. The visual distinction gives the user early feedback that this command is currently not meaningful. This is usually much better than to let the user try out a command and then give an error message afterwards.
-The following example shows a dialog box with two buttons. The Empty button is enabled, while the Create button is disabled. The Create button only becomes enabled if something has been typed into the dialog box's text field:
+The following example shows a dialog box with two buttons. The Empty button is enabled, while the OK button is disabled. The OK button only becomes enabled if something has been typed into the dialog box's text field:
 
 
 

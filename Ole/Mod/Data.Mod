@@ -2,7 +2,7 @@ MODULE OleData;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems"
+	contributors	= "Oberon microsystems, Alexander Iljin"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -477,7 +477,10 @@ MODULE OleData;
 		VAR r: MemReader;
 	BEGIN
 		ASSERT(f.mem # 0, 20);
-		NEW(r); r.base := f;
+		IF (old = NIL) OR ~(old IS MemReader) THEN NEW(r) 
+		ELSE r := old(MemReader) 
+		END;
+		r.base := f;
 		r.pos := 0; r.eof := FALSE;
 		RETURN r
 	END NewReader;
@@ -486,7 +489,10 @@ MODULE OleData;
 		VAR w: MemWriter;
 	BEGIN
 		ASSERT(f.mem # 0, 20);
-		NEW(w); w.base := f;
+		IF (old = NIL) OR ~(old IS MemWriter) THEN NEW(w) 
+		ELSE w := old(MemWriter) 
+		END;
+		w.base := f;
 		w.pos := f.len;
 		RETURN w
 	END NewWriter;
@@ -578,7 +584,7 @@ MODULE OleData;
 (*
 		w := w DIV (Ports.mm DIV 100); h := h DIV (Ports.mm DIV 100);	(* w, h in mm/100 *)
 *)
-		dc := WinApi.CreateMetaFileA(NIL);
+		dc := WinApi.CreateMetaFileW(NIL);
 		IF dc # 0 THEN
 			res := WinApi.SetMapMode(dc, WinApi.MM_ANISOTROPIC);
 			res := WinApi.SetWindowOrgEx(dc, 0, 0, NIL);
@@ -930,7 +936,7 @@ MODULE OleData;
 	(* registration *)
 	
 	PROCEDURE Register* (imp, exp, format: Dialog.String; type: Stores.TypeName; opts: SET);
-		VAR c, f: Converter; tymed: SET; cbf: SHORTINT; fmt: ARRAY 256 OF SHORTCHAR;
+		VAR c, f: Converter; tymed: SET; cbf: SHORTINT;
 	BEGIN
 		tymed := WinOle.TYMED_HGLOBAL;
 		IF format = "TEXT" THEN cbf := WinApi.CF_TEXT
@@ -949,7 +955,7 @@ MODULE OleData;
 		ELSIF format = "ENHMETAFILE" THEN cbf := WinApi.CF_ENHMETAFILE; tymed := WinOle.TYMED_ENHMF
 		ELSIF format = "HDROP" THEN cbf := WinApi.CF_HDROP
 		ELSIF format = "LOCALE" THEN cbf := WinApi.CF_LOCALE
-		ELSE fmt := SHORT(format$); cbf := SHORT(WinApi.RegisterClipboardFormat(fmt))
+		ELSE cbf := SHORT(WinApi.RegisterClipboardFormatW(format))
 		END;
 		IF stream IN opts THEN tymed := WinOle.TYMED_ISTREAM
 		ELSIF storage IN opts THEN tymed := WinOle.TYMED_ISTORAGE

@@ -24,5 +24,10 @@ MODULE ObxTrap;
 		i := 777;
 		str[i] := "*"	(* index out of range, since the Dialog.String array only contains 256 elements *)
 	END Do;
+	
+	PROCEDURE Hang*;
+	BEGIN
+		LOOP END
+	END Hang;
 
 END ObxTrap.

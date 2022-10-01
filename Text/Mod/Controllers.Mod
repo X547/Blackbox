@@ -737,7 +737,7 @@ disable intelligent paste for now
 	BEGIN
 		FindFilter(c, f, msg.x, msg.y, filter);
 		IF filter # NIL THEN
-			f.Input(x, y, modifiers, isDown);
+			(* f.Input(x, y, modifiers, isDown); *)
 			fmsg.x := msg.x; fmsg.y := msg.y; fmsg.cursor := msg.cursor;
 			fmsg.controller := c; fmsg.done := FALSE;
 			(*Views.ForwardCtrlMsg(f, fmsg) - does not work f.view # filter !!*)

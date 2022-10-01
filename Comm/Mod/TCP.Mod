@@ -12,21 +12,25 @@ MODULE CommTCP;
 
 **)
 
-	IMPORT SYSTEM, Winsock, Strings, Dialog, CommStreams;
+	IMPORT SYSTEM, WinApi, WinNet, Strings, Dialog, CommStreams;
 
 	CONST
 		hostSpecificError = -1;	(* host-specific error codes *)
-		INVALID_SOCKET = Winsock.INVALID_SOCKET;
-		SOCKET_ERROR = Winsock.SOCKET_ERROR;
+		INVALID_SOCKET = WinNet.INVALID_SOCKET;
+		SOCKET_ERROR = WinNet.SOCKET_ERROR;
+		
+		FIONREAD = WinNet.IOC_OUT + 00040000H + ASH(ORD("f"), 8) + 127;	(* get # bytes to read *)
+		FIONBIO = WinNet.IOC_IN + 00040000H + ASH(ORD("f"), 8) + 126;			(* set/clear non-blocking i/o *)
+		FIOASYNC = WinNet.IOC_IN + 00040000H + ASH(ORD("f"), 8) + 125;		(* set/clear async i/o *)
 
 	TYPE
 		Stream = POINTER TO RECORD (CommStreams.Stream)
-			sock: Winsock.SOCKET;	(* socket must be in non-blocking mode, otherwise recv() or send() could block *)
+			sock: WinNet.SOCKET;	(* socket must be in non-blocking mode, otherwise recv() or send() could block *)
 			remoteAdr: CommStreams.Adr	(* remoteAdr # NIL *)
 		END;
 
 		Listener = POINTER TO RECORD (CommStreams.Listener)
-			sock: Winsock.SOCKET;
+			sock: WinNet.SOCKET;
 			localAdr: CommStreams.Adr	(* localAdr # NIL *)
 		END;
 
@@ -49,13 +53,13 @@ MODULE CommTCP;
 	BEGIN
 		IF debug THEN
 			CASE errno OF
-			  Winsock.WSASYSNOTREADY: s := "WSASYSNOTREADY, network subsystem is unavailable"
-			| Winsock.WSAVERNOTSUPPORTED: s := "WSAVERNOTSUPPORTED, WINSOCK.DLL version out of range"
-			| Winsock.WSAEINVAL: s := "WSAEINVAL, invalid argument"
-			| Winsock.WSAETIMEDOUT: s := "WSAETIMEDOUT, connection timed out"
-			| Winsock.WSAECONNREFUSED: s := "WSAECONNREFUSED, connection refused"
-			| Winsock.WSAEADDRNOTAVAIL: s := "WSAEADDRNOTAVAIL, cannot assign requested address"
-			ELSE s := "(please look up the error number in the Winsock symbol file and in the Microsoft documentation)"
+			  WinNet.WSASYSNOTREADY: s := "WSASYSNOTREADY, network subsystem is unavailable"
+			| WinNet.WSAVERNOTSUPPORTED: s := "WSAVERNOTSUPPORTED, WINSOCK.DLL version out of range"
+			| WinNet.WSAEINVAL: s := "WSAEINVAL, invalid argument"
+			| WinNet.WSAETIMEDOUT: s := "WSAETIMEDOUT, connection timed out"
+			| WinNet.WSAECONNREFUSED: s := "WSAECONNREFUSED, connection refused"
+			| WinNet.WSAEADDRNOTAVAIL: s := "WSAEADDRNOTAVAIL, cannot assign requested address"
+			ELSE s := "(please look up the error number in the WinNet symbol file and in the Microsoft documentation)"
 			END;
 			Strings.IntToString(errno, errnostr);
 			Dialog.ShowParamMsg("^0: error ^1 (^2)", msg, errnostr, s)
@@ -109,25 +113,25 @@ MODULE CommTCP;
 		END
 	END ParseLocalAdr;
 
-	PROCEDURE NameToAdr (IN peername: ARRAY OF CHAR; VAR inaddr: Winsock.in_addr; OUT ok: BOOLEAN);
-		VAR hostentry: Winsock.hostentPtr; shortPName: ARRAY 64 OF SHORTCHAR;
+	PROCEDURE NameToAdr (IN peername: ARRAY OF CHAR; VAR inaddr: WinNet.in_addr; OUT ok: BOOLEAN);
+		VAR hostentry: WinNet.Ptrhostent; shortPName: ARRAY 64 OF SHORTCHAR;
 	BEGIN
 		shortPName := SHORT(peername$);
 		IF IsIPAddress(peername) THEN
-			inaddr.S_un.S_addr := Winsock.inet_addr(shortPName);
-			ok := inaddr.S_un.S_addr # Winsock.INADDR_NONE
+			inaddr.S_un.S_addr := WinNet.inet_addr(shortPName);
+			ok := inaddr.S_un.S_addr # WinNet.INADDR_NONE
 		ELSE
-			hostentry := Winsock.gethostbyname(shortPName);
+			hostentry := WinNet.gethostbyname(shortPName);
 			ok := hostentry # NIL;
 			IF ok THEN
 				inaddr := hostentry.h_addr_list^[0]^[0]
 			ELSE
-				Error("gethostbyname()", Winsock.WSAGetLastError())
+				Error("gethostbyname()", WinNet.WSAGetLastError())
 			END
 		END
 	END NameToAdr;
 
-	PROCEDURE MakeAdr (adr: Winsock.sockaddr_in; OUT s: CommStreams.Adr);
+	PROCEDURE MakeAdr (adr: WinNet.sockaddr_in; OUT s: CommStreams.Adr);
 		VAR ipadr, n: INTEGER; temp, buf: ARRAY 64 OF CHAR;
 	BEGIN
 		ipadr := adr.sin_addr.S_un.S_addr; temp := "";
@@ -146,7 +150,7 @@ MODULE CommTCP;
 		NEW(s, LEN(temp$) + 1); s^ := temp$
 	END MakeAdr;
 
-	PROCEDURE MakeFdSet (socket: Winsock.SOCKET; OUT set: Winsock.fd_set);
+	PROCEDURE MakeFdSet (socket: WinNet.SOCKET; OUT set: WinNet.fd_set);
 	BEGIN
 		set.fd_count := 1; set.fd_array[0] := socket
 	END MakeFdSet;
@@ -159,20 +163,20 @@ MODULE CommTCP;
 	END LocalAdr;
 
 	PROCEDURE (l: Listener) Accept (OUT s: CommStreams.Stream);
-		VAR timeout: Winsock.timeval; set: Winsock.fd_set; res, namelen: INTEGER;
-			sock: Winsock.SOCKET; tcpstream: Stream;
-			inadr: Winsock.sockaddr_in;
+		VAR timeout: WinNet.timeval; set: WinNet.fd_set; res, namelen: INTEGER;
+			sock: WinNet.SOCKET; tcpstream: Stream;
+			inadr: WinNet.sockaddr_in;
 	BEGIN
 		timeout.tv_sec := 0; timeout.tv_usec := 0;
 		MakeFdSet(l.sock, set);
-		res := Winsock.select(0, set, NIL, NIL, timeout);
+		res := WinNet.select(0, set, NIL, NIL, timeout);
 		ASSERT(res # SOCKET_ERROR, 100);
 		IF res > 0 THEN
-			namelen := SIZE(Winsock.sockaddr_in);
-			sock := Winsock.accept(l.sock, inadr, namelen);
+			namelen := SIZE(WinNet.sockaddr_in);
+			sock := WinNet.accept(l.sock, SYSTEM.VAL(WinNet.sockaddr, inadr), namelen);
 			ASSERT(sock # INVALID_SOCKET, 101);
 			namelen := 1;	(* = 'true' *)
-			res := Winsock.ioctlsocket(sock, Winsock.FIONBIO, namelen);	(* set to non-blocking mode *)
+			res := WinNet.ioctlsocket(sock, FIONBIO, namelen);	(* set to non-blocking mode *)
 			ASSERT(res = 0, 102);
 			NEW(tcpstream); tcpstream.sock := sock;
 			MakeAdr(inadr, tcpstream.remoteAdr);
@@ -184,7 +188,7 @@ MODULE CommTCP;
 		VAR res: INTEGER;
 	BEGIN
 		IF l.sock # INVALID_SOCKET THEN
-			res := Winsock.closesocket(l.sock);
+			res := WinNet.closesocket(l.sock);
 			l.sock := INVALID_SOCKET
 		END
 	END Close;
@@ -202,26 +206,26 @@ MODULE CommTCP;
 		(* localAdr must contain a port number *)
 		CONST SOMAXCONN = 5;	(* use default length of listener backlog queue *)
 		VAR portnr, namelen: INTEGER; ok: BOOLEAN; tcplistener: Listener;
-			adr: Winsock.sockaddr_in; sock: Winsock.SOCKET;
+			adr: WinNet.sockaddr_in; sock: WinNet.SOCKET;
 			peername: ARRAY 64 OF CHAR;
 	BEGIN
 		l := NIL;
 		IF winSockInstalled THEN
 			ParseLocalAdr(localAdr, peername, portnr, ok);
 			IF ok & (portnr >= 0) THEN	(* only non-negative port numbers are legal *)
-				sock := Winsock.socket(Winsock.PF_INET, Winsock.SOCK_STREAM, Winsock.IPPROTO_TCP);
+				sock := WinNet.socket(WinNet.PF_INET, WinNet.SOCK_STREAM, WinNet.IPPROTO_TCP);
 				ASSERT(sock # INVALID_SOCKET, 100);
-				adr.sin_family := Winsock.PF_INET;
-				adr.sin_port := Winsock.htons(SHORT(portnr));
+				adr.sin_family := WinNet.PF_INET;
+				adr.sin_port := WinNet.htons(SHORT(portnr));
 				NameToAdr(peername, adr.sin_addr, ok);
 				IF ok THEN
-					res := Winsock.bind(sock, adr, SIZE(Winsock.sockaddr_in));
+					res := WinNet.bind(sock, SYSTEM.VAL(WinNet.sockaddr, adr), SIZE(WinNet.sockaddr_in));
 					IF res = 0 THEN
-						res := Winsock.listen(sock, SOMAXCONN);
+						res := WinNet.listen(sock, SOMAXCONN);
 						ASSERT(res = 0, 102);
 						NEW(tcplistener); tcplistener.sock := sock;
-						namelen := SIZE(Winsock.sockaddr_in);
-						res := Winsock.getsockname(sock, adr, namelen);
+						namelen := SIZE(WinNet.sockaddr_in);
+						res := WinNet.getsockname(sock, SYSTEM.VAL(WinNet.sockaddr, adr), namelen);
 						ASSERT(res = 0, 103);
 						MakeAdr(adr, tcplistener.localAdr);
 						l := tcplistener;
@@ -230,7 +234,7 @@ MODULE CommTCP;
 						res := CommStreams.localAdrInUse
 					END
 				ELSE
-					res := Winsock.closesocket(sock);
+					res := WinNet.closesocket(sock);
 					res := CommStreams.invalidLocalAdr
 				END
 			ELSE 
@@ -252,17 +256,17 @@ MODULE CommTCP;
 	PROCEDURE (s: Stream) IsConnected (): BOOLEAN;
 		(* Give an educated guess on whether the peer has closed the connection. *)
 		(* This is not a guarantee that data sent on s will arrive at the peer. *)
-		VAR timeout: Winsock.timeval; set: Winsock.fd_set; n, res, avail: INTEGER;
+		VAR timeout: WinNet.timeval; set: WinNet.fd_set; n, res, avail: INTEGER;
 	BEGIN
 		IF s.sock = INVALID_SOCKET THEN
 			RETURN FALSE
 		ELSE
 			timeout.tv_sec := 0; timeout.tv_usec := 0;
 			MakeFdSet(s.sock, set);
-			n := Winsock.select(0, set, NIL, NIL, timeout);
+			n := WinNet.select(0, set, NIL, NIL, timeout);
 			ASSERT(n # SOCKET_ERROR, 100);
 			IF n = 1 THEN	(* a recv on s.sock would not block; find out whether there is data queued *)
-				res := Winsock.ioctlsocket(s.sock, Winsock.FIONREAD, avail);
+				res := WinNet.ioctlsocket(s.sock, FIONREAD, avail);
 				ASSERT(res = 0, 101);
 				(* if there is data queued, we assume the socket is still open.
 					if no data is queued, then we know that a recv can only return with zero bytes
@@ -271,7 +275,7 @@ MODULE CommTCP;
 			ELSE (* a recv on s.sock would block, so the peer has not closed the socket yet or the connect failed entirely *)
 				timeout.tv_sec := 0; timeout.tv_usec := 0;
 				MakeFdSet(s.sock, set);
-				n := Winsock.select(0, NIL, NIL, set, timeout);
+				n := WinNet.select(0, NIL, NIL, set, timeout);
 				ASSERT(n # SOCKET_ERROR, 102);
 				IF n = 1 THEN s.Close END;
 				RETURN n = 0
@@ -285,10 +289,10 @@ MODULE CommTCP;
 		ASSERT(beg >= 0, 20);
 		ASSERT(len > 0, 21);
 		ASSERT(LEN(x) >= beg + len, 22);
-		written := Winsock.send(s.sock, SYSTEM.ADR(x) + beg, len, {});
+		written := WinNet.send(s.sock, SYSTEM.VAL(WinApi.PtrSTR, SYSTEM.ADR(x) + beg), len, {});
 		IF written = SOCKET_ERROR THEN
-			res := Winsock.WSAGetLastError();
-			IF (res # Winsock.WSAEWOULDBLOCK) & (res # Winsock.WSAENOTCONN) THEN Error("send()", res) END;
+			res := WinNet.WSAGetLastError();
+			IF (res # WinNet.WSAEWOULDBLOCK) & (res # WinNet.WSAENOTCONN) THEN Error("send()", res) END;
 			written := 0
 		END
 	END WriteBytes;
@@ -299,12 +303,12 @@ MODULE CommTCP;
 		ASSERT(beg >= 0, 20);
 		ASSERT(len > 0, 21);
 		ASSERT(LEN(x) >= beg + len, 22);
-		read := Winsock.recv(s.sock, SYSTEM.ADR(x) + beg, len, {});
+		read := WinNet.recv(s.sock, SYSTEM.VAL(WinApi.PtrSTR, SYSTEM.ADR(x) + beg), len, {});
 		IF read = SOCKET_ERROR THEN
-			res := Winsock.WSAGetLastError();
-			IF (res = Winsock.WSAEWOULDBLOCK) OR (res = Winsock.WSAENOTCONN) THEN
+			res := WinNet.WSAGetLastError();
+			IF (res = WinNet.WSAEWOULDBLOCK) OR (res = WinNet.WSAENOTCONN) THEN
 				read := 0	 (* there is nothing to be read *)
-			ELSIF res = Winsock.WSAECONNRESET THEN
+			ELSIF res = WinNet.WSAECONNRESET THEN
 				read := 0;
 				s.Close	(* prevent trap *)
 			ELSE
@@ -317,7 +321,7 @@ MODULE CommTCP;
 	PROCEDURE (s: Stream) Close;
 		VAR res: INTEGER;
 	BEGIN
-		res := Winsock.closesocket(s.sock);
+		res := WinNet.closesocket(s.sock);
 		s.sock := INVALID_SOCKET
 	END Close;
 
@@ -329,7 +333,7 @@ MODULE CommTCP;
 	END FINALIZE;
 
 	PROCEDURE CreateStream (
-		OUT s: CommStreams.Stream; sock: Winsock.SOCKET; IN remoteAdr: ARRAY OF CHAR
+		OUT s: CommStreams.Stream; sock: WinNet.SOCKET; IN remoteAdr: ARRAY OF CHAR
 	);
 		VAR stream: Stream;
 	BEGIN
@@ -343,58 +347,58 @@ MODULE CommTCP;
 	);
 		(* localAdr may contain a port number *)
 		(* remoteAdr must contain an address in the format  ( ip-address | hostname ) [ ":" portnumber ] *)
-		VAR adr: Winsock.sockaddr_in;
+		VAR adr: WinNet.sockaddr_in;
 			rpeername, lpeername: ARRAY 64 OF CHAR;
-			inaddr: Winsock.in_addr; lport, rport: INTEGER; ok: BOOLEAN;
-			sock: Winsock.SOCKET;
+			inaddr: WinNet.in_addr; lport, rport: INTEGER; ok: BOOLEAN;
+			sock: WinNet.SOCKET;
 	BEGIN
 		s := NIL;
 		IF winSockInstalled THEN
 			ParseAdr(remoteAdr, rpeername, rport, ok);
 			IF ok THEN
-				sock := Winsock.socket(Winsock.PF_INET, Winsock.SOCK_STREAM, Winsock.IPPROTO_TCP);
+				sock := WinNet.socket(WinNet.PF_INET, WinNet.SOCK_STREAM, WinNet.IPPROTO_TCP);
 				IF sock # INVALID_SOCKET THEN
 					ParseLocalAdr(localAdr, lpeername, lport, ok);
 					IF ok & (lport >= 0) THEN	(* only non-negative port numbers are legal *)
-						adr.sin_family := Winsock.PF_INET;
-						adr.sin_port := Winsock.htons(SHORT(lport));
+						adr.sin_family := WinNet.PF_INET;
+						adr.sin_port := WinNet.htons(SHORT(lport));
 						NameToAdr(lpeername, adr.sin_addr, ok);
-						res := Winsock.bind(sock, adr, SIZE(Winsock.sockaddr_in));
+						res := WinNet.bind(sock, SYSTEM.VAL(WinNet.sockaddr, adr), SIZE(WinNet.sockaddr_in));
 						IF res = 0 THEN
 							NameToAdr(rpeername, inaddr, ok);
 							IF ok THEN
-								adr.sin_family := Winsock.PF_INET;
-								adr.sin_port := Winsock.htons(SHORT(rport));
+								adr.sin_family := WinNet.PF_INET;
+								adr.sin_port := WinNet.htons(SHORT(rport));
 								adr.sin_addr := inaddr;
 								res := 1;	(* = 'true' *)
-								res := Winsock.ioctlsocket(sock, Winsock.FIONBIO, res);	(* set to non-blocking mode *)
+								res := WinNet.ioctlsocket(sock, FIONBIO, res);	(* set to non-blocking mode *)
 								ASSERT(res = 0, 101);
-								res := Winsock.connect(sock, adr, SIZE(Winsock.sockaddr_in));
+								res := WinNet.connect(sock, SYSTEM.VAL(WinNet.sockaddr, adr), SIZE(WinNet.sockaddr_in));
 								IF res = 0 THEN
 									CreateStream(s, sock, remoteAdr); res := CommStreams.done
 								ELSE
-									res := Winsock.WSAGetLastError();
-									IF res = Winsock.WSAEWOULDBLOCK THEN
+									res := WinNet.WSAGetLastError();
+									IF res = WinNet.WSAEWOULDBLOCK THEN
 										CreateStream(s, sock, remoteAdr); res := CommStreams.done
 									ELSE
 										Error("connect()", res);
-										res := Winsock.closesocket(sock);
+										res := WinNet.closesocket(sock);
 										res := hostSpecificError
 									END
 								END
 							ELSE
-								res := Winsock.closesocket(sock);
+								res := WinNet.closesocket(sock);
 								res := CommStreams.invalidRemoteAdr
 							END
 						ELSE
-							res := Winsock.closesocket(sock);
+							res := WinNet.closesocket(sock);
 							res := CommStreams.invalidLocalAdr
 						END
 					ELSE
 						res := CommStreams.invalidLocalAdr
 					END
 				ELSE
-					Error("socket()", Winsock.WSAGetLastError());
+					Error("socket()", WinNet.WSAGetLastError());
 					res := hostSpecificError
 				END
 			ELSE
@@ -407,11 +411,11 @@ MODULE CommTCP;
 
 	PROCEDURE Init;
 		CONST version = 00000101H;
-		VAR data: Winsock.WSADATA; ret: INTEGER;
+		VAR data: WinNet.WSADATA; ret: INTEGER;
 	BEGIN
 		debug := TRUE;
 		winSockInstalled := FALSE;
-		ret := Winsock.WSAStartup(version, data);
+		ret := WinNet.WSAStartup(version, data);
 		IF ret = 0 THEN
 			winSockInstalled := TRUE
 		ELSE
@@ -423,7 +427,7 @@ MODULE CommTCP;
 	PROCEDURE Close;
 		VAR ret: INTEGER;
 	BEGIN
-		ret := Winsock.WSACleanup()
+		ret := WinNet.WSACleanup()
 	END Close;
 
 BEGIN

@@ -11,52 +11,51 @@ MODULE HostRegistry;
 
 **)
 
-	IMPORT KERNEL32, ADVAPI32, HostFiles, Dialog, Strings;
+	IMPORT WinApi, HostFiles, Dialog, Strings;
 	
 	VAR localeId*: INTEGER;
 
 	PROCEDURE ReadString* (
-		key: ARRAY OF SHORTCHAR; VAR str: ARRAY OF SHORTCHAR; VAR res: INTEGER
+		IN key: ARRAY OF CHAR; OUT str: ARRAY OF CHAR; VAR res: INTEGER
 	);
-		VAR r, len: INTEGER; sw, comp, appl, vers: ADVAPI32.Handle; an: ARRAY 32 OF SHORTCHAR;
+		VAR r, len: INTEGER; sw, comp, appl, vers: WinApi.HANDLE;
 	BEGIN
-		res := ADVAPI32.RegOpenKeyA(ADVAPI32.KeyCurrentUser, "Software", sw);
+		res := WinApi.RegOpenKeyW(WinApi.HKEY_CURRENT_USER, "Software", sw);
 		IF res = 0 THEN
-			res := ADVAPI32.RegOpenKeyA(sw, "Oberon", comp);
+			res := WinApi.RegOpenKeyW(sw, "Oberon", comp);
 			IF res = 0 THEN
-				an := SHORT(Dialog.appName$);
-				res := ADVAPI32.RegOpenKeyA(comp, an, appl);
+				res := WinApi.RegOpenKeyW(comp, Dialog.appName, appl);
 				IF res = 0 THEN
-					res := ADVAPI32.RegOpenKeyA(appl, "CurrentVersion", vers);
+					res := WinApi.RegOpenKeyW(appl, "CurrentVersion", vers);
 					IF res = 0 THEN
 						len := LEN(str);
-						res := ADVAPI32.RegQueryValueA(vers, key, str, len);
-						r := ADVAPI32.RegCloseKey(vers)
+						res := WinApi.RegQueryValueW(vers, key, str, len);
+						r := WinApi.RegCloseKey(vers)
 					END;
-					r := ADVAPI32.RegCloseKey(appl)
+					r := WinApi.RegCloseKey(appl)
 				END;
-				r := ADVAPI32.RegCloseKey(comp)
+				r := WinApi.RegCloseKey(comp)
 			END;
-			r := ADVAPI32.RegCloseKey(sw)
+			r := WinApi.RegCloseKey(sw)
 		END
 	END ReadString;
 	
-	PROCEDURE ReadInt* (key: ARRAY OF SHORTCHAR; VAR x: INTEGER; VAR res: INTEGER);
-		VAR str: ARRAY 64 OF SHORTCHAR; s: ARRAY 64 OF CHAR;
+	PROCEDURE ReadInt* (IN key: ARRAY OF CHAR; OUT x: INTEGER; OUT res: INTEGER);
+		VAR str: ARRAY 64 OF CHAR;
 	BEGIN
-		ReadString(key, str, res); s := str$;
-		IF res = 0 THEN Strings.StringToInt(s, x, res) END;
+		ReadString(key, str, res);
+		IF res = 0 THEN Strings.StringToInt(str, x, res) END;
 	END ReadInt;
 	
-	PROCEDURE ReadBool* (key: ARRAY OF SHORTCHAR; VAR x: BOOLEAN; VAR res: INTEGER);
-		VAR str: ARRAY 4 OF SHORTCHAR;
+	PROCEDURE ReadBool* (IN key: ARRAY OF CHAR; OUT x: BOOLEAN; OUT res: INTEGER);
+		VAR str: ARRAY 4 OF CHAR;
 	BEGIN
 		ReadString(key, str, res);
 		IF res = 0 THEN x := str = "1" END
 	END ReadBool;
 	
-	PROCEDURE ReadIntList* (key: ARRAY OF SHORTCHAR; VAR x: ARRAY OF INTEGER; VAR res: INTEGER);
-		VAR i, n, val, sig: INTEGER; str: ARRAY 256 OF SHORTCHAR;
+	PROCEDURE ReadIntList* (IN key: ARRAY OF CHAR; OUT x: ARRAY OF INTEGER; OUT res: INTEGER);
+		VAR i, n, val, sig: INTEGER; str: ARRAY 256 OF CHAR;
 	BEGIN
 		ReadString(key, str, res);
 		IF res = 0 THEN
@@ -75,50 +74,47 @@ MODULE HostRegistry;
 		END
 	END ReadIntList;
 	
-	PROCEDURE WriteString* (key: ARRAY OF SHORTCHAR; str: ARRAY OF SHORTCHAR);
-		VAR res, n: INTEGER; sw, comp, appl, vers: ADVAPI32.Handle; an: ARRAY 32 OF SHORTCHAR;
+	PROCEDURE WriteString* (IN key: ARRAY OF CHAR; IN str: ARRAY OF CHAR);
+		VAR res: INTEGER; sw, comp, appl, vers: WinApi.HANDLE;
 	BEGIN
-		res := ADVAPI32.RegCreateKeyA(ADVAPI32.KeyCurrentUser, "Software", sw);
+		res := WinApi.RegCreateKeyW(WinApi.HKEY_CURRENT_USER, "Software", sw);
 		IF res = 0 THEN
-			res := ADVAPI32.RegCreateKeyA(sw, "Oberon", comp);
+			res := WinApi.RegCreateKeyW(sw, "Oberon", comp);
 			IF res = 0 THEN
-				an := SHORT(Dialog.appName$);
-				res := ADVAPI32.RegCreateKeyA(comp, an, appl);
+				res := WinApi.RegCreateKeyW(comp, Dialog.appName, appl);
 				IF res = 0 THEN
-					res := ADVAPI32.RegCreateKeyA(appl, "CurrentVersion", vers);
+					res := WinApi.RegCreateKeyW(appl, "CurrentVersion", vers);
 					IF res = 0 THEN
-						n := 0;
-						WHILE (n < LEN(str)) & (str[n] # 0X) DO INC(n) END;
-						res := ADVAPI32.RegSetValueA(vers, key, 1, str, n);
+						res := WinApi.RegSetValueW(vers, key, WinApi.REG_SZ, str, LEN(str$) * 2)
 					END;
-					res := ADVAPI32.RegCloseKey(appl)
+					res := WinApi.RegCloseKey(appl)
 				END;
-				res := ADVAPI32.RegCloseKey(comp)
+				res := WinApi.RegCloseKey(comp)
 			END;
-			res := ADVAPI32.RegCloseKey(sw)
+			res := WinApi.RegCloseKey(sw)
 		END
 	END WriteString;
 	
-	PROCEDURE WriteInt* (key: ARRAY OF SHORTCHAR; x: INTEGER);
+	PROCEDURE WriteInt* (IN key: ARRAY OF CHAR; x: INTEGER);
 		VAR str: ARRAY 64 OF CHAR;
 	BEGIN
 		Strings.IntToString(x, str);
-		WriteString(key, SHORT(str))
+		WriteString(key, str)
 	END WriteInt;
 	
-	PROCEDURE WriteBool* (key: ARRAY OF SHORTCHAR; x: BOOLEAN);
+	PROCEDURE WriteBool* (IN key: ARRAY OF CHAR; x: BOOLEAN);
 	BEGIN
 		IF x THEN WriteString(key, "1") ELSE WriteString(key, "0") END
 	END WriteBool;
 	
-	PROCEDURE WriteIntList* (key: ARRAY OF SHORTCHAR; VAR x: ARRAY OF INTEGER);
-		VAR i,j,  n: INTEGER; str: ARRAY 256 OF SHORTCHAR; s: ARRAY 16 OF CHAR;
+	PROCEDURE WriteIntList* (IN key: ARRAY OF CHAR; IN x: ARRAY OF INTEGER);
+		VAR i,j,  n: INTEGER; str: ARRAY 256 OF CHAR; s: ARRAY 16 OF CHAR;
 	BEGIN
 		n := 0; i := 0;
 		WHILE n < LEN(x) DO
 			IF (n > 0) & (i < LEN(str)) THEN str[i] := ","; INC(i) END;
 			Strings.IntToString(x[n], s); j := 0;
-			WHILE (s[j] # 0X) & (i < LEN(str)) DO str[i] := SHORT(s[j]); INC(i); INC(j) END;
+			WHILE (s[j] # 0X) & (i < LEN(str)) DO str[i] := s[j]; INC(i); INC(j) END;
 			INC(n)
 		END;
 		IF i < LEN(str) THEN str[i] := 0X ELSE str[LEN(str) - 1] := 0X END;
@@ -127,16 +123,16 @@ MODULE HostRegistry;
 	
 
 	PROCEDURE ReadMeasure;
-		VAR res, len: INTEGER; cp, int: ADVAPI32.Handle; str: ARRAY 4 OF SHORTCHAR;
+		VAR res, len: INTEGER; cp, int: WinApi.HANDLE; str: ARRAY 4 OF CHAR;
 	BEGIN
-		res := KERNEL32.GetProfileIntA("intl", "iMeasure", 1);
+		res := WinApi.GetProfileIntW("intl", "iMeasure", 1);
 		Dialog.metricSystem := res = 0
 	END ReadMeasure;
 	
 	PROCEDURE Init;
 		VAR name, bname: Dialog.String; res, i, v: INTEGER;
 	BEGIN
-		v := KERNEL32.GetVersion();
+		v := WinApi.GetVersion();
 		localeId := 1024;	(* user default *)
 		name := HostFiles.appName$;
 		bname := "BLACKBOX"; i := 0;
@@ -151,7 +147,7 @@ MODULE HostRegistry;
 			END
 		END;
 		Dialog.appName := name$;
-		Dialog.version := 15;
+		Dialog.version := 16;
 		Dialog.Call("Startup.Setup", "", res);
 		ReadMeasure
 	END Init;

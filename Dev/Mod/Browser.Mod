@@ -226,7 +226,10 @@ MODULE DevBrowser;
 		i := 0; quoted := FALSE; first := TRUE;
 		IF long THEN DevCPM.GetUtf8(s, x, i) ELSE x := ORD(s[i]); INC(i) END;
 		WHILE x # 0 DO
-			IF (x < ORD(" ")) OR (x >= 100H) THEN
+			IF (x < ORD(" "))
+					OR (x >= 7FH) & (x <= 9FH)
+					OR (x >= 0D800H) & (x <= 0F8FFH)
+					OR (x >= 0FFF0H) THEN	(* nonprintable character *)
 				IF quoted THEN global.out.WriteChar('"') END;
 				IF ~first THEN global.out.WriteString(" + ") END;
 				IF x >= 0A00H THEN global.out.WriteIntForm(x, TextMappers.hexadecimal, 4, "0", FALSE)
@@ -235,7 +238,7 @@ MODULE DevBrowser;
 				END;
 				global.out.WriteChar("X");
 				quoted := FALSE
-			ELSE
+			ELSE	(* printable character *)
 				IF ~quoted THEN
 					IF ~first THEN global.out.WriteString(" + ") END;
 					global.out.WriteChar('"')
@@ -665,7 +668,7 @@ MODULE DevBrowser;
 			Keyword("POINTER"); StructSysFlag(typ); Char(" ");
 			Keyword("TO"); Char(" "); DEC(global.level); TypName(typ.BaseTyp, FALSE); INC(global.level)
 		| procTyp:
-			Keyword("PROCEDURE"); Signature(typ.BaseTyp, typ.link)
+			Keyword("PROCEDURE"); ProcSysFlag(typ.sysflag); Signature(typ.BaseTyp, typ.link)
 		| comp:
 			CASE typ.comp OF
 			  array:

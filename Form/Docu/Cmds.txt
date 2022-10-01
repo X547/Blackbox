@@ -69,10 +69,6 @@ metricSystem: BOOLEAN
 Determines whether the metric system (millimeters) is used or not (1/16 inches).
 
 
-PROCEDURE AlignBottom
-Guard: FormCmds.SelectionGuard
-Move all selected views such that their bottom sides are aligned to the bottommost view in the selection.
-
 PROCEDURE AlignLeft
 Guard: FormCmds.SelectionGuard
 Move all selected views such that their left sides are aligned to the leftmost view in the selection.

@@ -302,7 +302,7 @@ res = 81	not enough system resources (disk space, file handles, etc.)
 
 PROCEDURE (f: File) Close
 NEW, ABSTRACT
-Closes an open file. Close does nothing if the file is not open or if it has been opened in "shared" mode. If a call to New or Old is not balanced by a call to Close, the Close is later performed automatically, at an unspecified time. If it is known that a file won't be used again, it is recommended to call its Close procedure.
+Closes an open file. Close does nothing if the file is not open. If a call to New or Old is not balanced by a call to Close, the Close is later performed automatically, at an unspecified time. If it is known that a file won't be used again, it is recommended to call its Close procedure.
 The file f and the riders operating on file f are not valid anymore after closing f, i.e., no more file or rider operations may be performed on it. However, the closed file can be retrieved and opened again by procedure Old.
 Close may call Flush internally.
 Close should (but need not necessarily) be called explicitly after a file is not needed anymore.

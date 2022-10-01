@@ -360,14 +360,14 @@ MODULE SqlDB;
 	PROCEDURE Compile (d: StdDatabase; IN s: ARRAY OF CHAR; OUT t: Statement);
 		VAR i: INTEGER; ch: CHAR; path: ARRAY varLen OF CHAR; quoted, native: BOOLEAN; item: Meta.Item; 
 	BEGIN	(* expand designators in an SQL statement by their current values, yielding a correct SQL statement *)
-		i := 0; ch := s[0]; t.idx := 0; t.ext := NIL; quoted := FALSE; native := FALSE;
+		i := 0; ch := s[0]; t.idx := 0; t.ext := NIL; quoted := FALSE;
 		WHILE ch # 0X DO
 			IF (ch = ":") & ~quoted & (s[i+1] # "\") THEN
 				(* ":\" does not trigger Meta substitution, in order to allow for Windows path names such as in
 					"SELECT * FROM C:\directory\databaseName.tableName"
 				*)
 				INC(i); ch := s[i];
-				IF ch = "!" THEN native := TRUE; INC(i); ch := s[i] END;
+				IF ch = "!" THEN native := TRUE; INC(i); ch := s[i] ELSE native := FALSE END;
 				ReadPath(s, path, i, ch); ASSERT(path # "", 20);
 				Meta.LookupPath(path, item); ASSERT(item.Valid(), 21); ASSERT(item.obj = Meta.varObj, 22);
 				AddItem(d, item, native, t)

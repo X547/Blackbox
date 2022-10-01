@@ -84,8 +84,7 @@ Models are allocated by specific model directories, e.g., by Texts.dir.
 Models are used by commands which can operate on the data that is represented by the model.
 Models are extended whenever new kinds of displayable data need to be represented.
 A model's domain delineates the boundaries of the document in which it is embedded.
-A model's InitDomain procedure must be implemented if the model may (directly or indirectly) contain other Stores.Store objects, e.g., if the model may contain views.
-A model's Internalize, Externalize, and CopyFrom procedure must be implemented if the store contains persistent state.
+A model's Internalize, Externalize, and CopyFrom procedures must be implemented if the store contains persistent state.
 
 PROCEDURE (m: Model) Domain (): Stores.Domain
 NEW

@@ -876,6 +876,10 @@ MODULE DevCPC486;
 					IF y.mode = Reg THEN Free(y);
 						IF (m # Stk) & (m # Undef) & (m # Reg) & (f >= Int32) THEN
 							x.form := y.form; DevCPL486.GenFStore(x, TRUE); x.form := f
+						ELSIF y.form = Real64 THEN	(* S.VAL(LONGINT, real) *)
+							ASSERT((m = Undef) & (f = Int64));
+							DecStack(y.form); y.mode := Stk; DevCPL486.GenFStore(y, TRUE); y.form := Int64;
+							Pop(y, y.form, hint, stop)
 						ELSE
 							ASSERT(y.form # Real64);
 							DecStack(y.form); y.mode := Stk; DevCPL486.GenFStore(y, TRUE); y.form := Int32;
@@ -1026,10 +1030,8 @@ MODULE DevCPC486;
 		ASSERT(x.mode # Con);
 		IF (size >= 0)
 			& ((size # x.typ.size) & ((size > 4) OR (x.typ.size > 4))
-				OR (f IN {Comp, Real64, Int64}) & (x.mode IN {Reg, Stk})) THEN DevCPM.err(220) END;
-(*
-		IF sysval & ((x.form = Real64) & ~(f IN {Comp, Int64}) OR (f = Real64) & ~(x.form  IN {Comp, Int64})) THEN DevCPM.err(220) END;
-*)
+				OR (f IN {Comp, Real64}) & (x.mode IN {Reg, Stk})
+				OR (f  = Int64) & (x.mode = Stk)) THEN DevCPM.err(220) END;
 		y.mode := Undef; y.form := f; ConvMove(y, x, size >= 0, hint, stop)
 	END Convert;
 
@@ -1523,7 +1525,10 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 	PROCEDURE MulDim* (VAR y, z: DevCPL486.Item; VAR fact: INTEGER; dimtyp: DevCPT.Struct);	(* z := z * y *)
 		VAR c: DevCPL486.Item;
 	BEGIN
-		IF y.mode = Con THEN fact := fact * y.offset
+		IF y.mode = Con THEN
+			IF y.offset <= MAX(INTEGER) DIV fact THEN fact := fact * y.offset
+			ELSE fact := 1; DevCPM.err(214)
+			END
 		ELSE
 			IF ranchk OR inxchk THEN
 				DevCPL486.MakeConst(c, 0, Int32); DevCPL486.GenComp(c, y); DevCPL486.GenAssert(ccG, ranTrap)
@@ -1858,6 +1863,16 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 			WHILE i <= n DO DevCPL486.GenCode(ORD(x.obj.conval.ext^[i])); INC(i) END
 		ELSE	(* proc var *)
 			DevCPL486.GenCall(x); Free(x);
+			IF x.typ.sysflag = ccall THEN	(* remove parameters *)
+				p := x.typ.link; n := 0;
+				WHILE p # NIL DO
+					IF p.mode = VarPar THEN INC(n, 4)
+					ELSE INC(n, (p.typ.size + 3) DIV 4 * 4)
+					END;
+					p := p.link
+				END;
+				AdjustStack(n)
+			END;
 			x.typ := x.typ.BaseTyp
 		END;
 		IF procedureUsesFpu & (x.mode = XProc) & (x.obj.mnolev < 0) & (x.obj.mnolev > -128)
@@ -2113,6 +2128,25 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 		END
 	END InitPtrs2;
 	
+	PROCEDURE NeedOutPtrInit (proc: DevCPT.Object): BOOLEAN;
+		VAR obj: DevCPT.Object; nofptrs: INTEGER;
+	BEGIN
+		IF ptrinit THEN
+			obj := proc.link;
+			WHILE obj # NIL DO
+				IF (obj.mode = VarPar) & (obj.vis = outPar) THEN
+					nofptrs := 0;
+					IF obj.typ.comp = DynArr THEN	(* currently not initialized *)
+					ELSE FindPtrs(obj.typ, 0, nofptrs)
+					END;
+					IF nofptrs > 0 THEN RETURN TRUE END
+				END;
+				obj := obj.link
+			END
+		END;
+		RETURN FALSE
+	END NeedOutPtrInit;
+	
 	PROCEDURE Enter* (proc: DevCPT.Object; empty, useFpu: BOOLEAN);
 		VAR sp, fp, r, r1: DevCPL486.Item; par: DevCPT.Object; adr, size, np: INTEGER;
 	BEGIN
@@ -2121,10 +2155,11 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 		DevCPL486.MakeReg(fp, BP, Pointer); DevCPL486.MakeReg(sp, SP, Pointer);
 		IF proc # NIL THEN (* enter proc *)
 			DevCPL486.SetLabel(proc.adr);
-			IF ~empty & (proc.sysflag # noframe) THEN
+			IF (~empty OR NeedOutPtrInit(proc)) & (proc.sysflag # noframe) THEN
 				DevCPL486.GenPush(fp);
 				DevCPL486.GenMove(sp, fp);
 				adr := proc.conval.intval2; size := -adr;
+				IF size < 0 THEN DevCPM.err(214); size := 256 END;
 				IF isGuarded IN proc.conval.setval THEN
 					DevCPL486.MakeReg(r, BX, Pointer); DevCPL486.GenPush(r);
 					DevCPL486.MakeReg(r, DI, Pointer); DevCPL486.GenPush(r);
@@ -2180,7 +2215,7 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 		DevCPL486.MakeReg(sp, SP, Pointer); DevCPL486.MakeReg(fp, BP, Pointer);
 		IF proc # NIL THEN (* exit proc *)
 			IF proc.sysflag # noframe THEN
-				IF ~empty THEN
+				IF ~empty OR NeedOutPtrInit(proc) THEN
 					IF isGuarded IN proc.conval.setval THEN	(* remove exception frame *)
 						x.mode := Ind; x.reg := BP; x.offset := -24; x.scale := 0; x.form := Int32;
 						DevCPL486.MakeReg(r, CX, Int32); DevCPL486.GenMove(x, r);

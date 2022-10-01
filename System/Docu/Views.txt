@@ -330,7 +330,7 @@ This method has become final. It calls the CopyFromSimpleView or CopyFromModelVi
 
 PROCEDURE (v: View) CopyFromSimpleView- (source: View)
 NEW, EMPTY
-The procedure should be implemented in views which have no model. It should copy view-specific data from source. CopyFromModelView is called as part of module Views' copy operations (CopyOf, CopyWithNewModel).
+The procedure should be implemented in views which have no model. It should copy view-specific data from source. CopyFromSimpleView is called as part of module Views' copy operations (CopyOf, CopyWithNewModel).
 Note: it is not permissible to implement both CopyFromModelView and CopyFromSimpleView simultaneously!
 
 Pre
@@ -475,7 +475,7 @@ msg.view = v
 PROCEDURE Domaincast (domain: Stores.Domain; VAR msg: Message)
 Broadcasts msg inside domain. For visual objects, the domain corresponds to the object's document. Domaincast is only necessary in exceptional cases; usually a view message is sent in places where the corresponding view, and not only its domain, is known. In these cases, Broadcast is the appropriate (and faster) procedure.
 
-PROCEDURE Omnicast (VAR msg: Message)
+PROCEDURE Omnicast (VAR msg: ANYREC)
 Broadcast msg to all open views, independent of their domain (i.e., of their document). All views will receive this message with msg.view = NIL. Omnicast is slower than Broadcast, and only necessary in exceptional cases, e.g., for clock views which should be updated every second through a message omnicast.
 
 PROCEDURE HandlePropMsg (v: View; VAR msg: PropMessage)

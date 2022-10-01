@@ -28,7 +28,7 @@ MODULE HostTabFrames;
 		
 		Tab = POINTER TO RECORD (StdTabViews.Frame)
 			i: Info;
-			dispLeft, dispTop, dispWidth, dispHeight: INTEGER;
+			dispLeft, dispTop, dispWidth, dispHeight: INTEGER
 		END;
 
 		Directory = POINTER TO RECORD (StdTabViews.FrameDirectory) END;
@@ -68,7 +68,7 @@ MODULE HostTabFrames;
 		END
 	END Adapt;
 
-	PROCEDURE Open (f: StdTabViews.Frame; class, name: WinApi.PtrSTR; style, ex: SET; VAR i: Info);
+	PROCEDURE Open (f: StdTabViews.Frame; class, name: WinApi.PtrWSTR; style, ex: SET; VAR i: Info);
 		VAR res, x, y, w, h, cx, cy, cw, ch: INTEGER; p: HostPorts.Port; s: SET; r: Ports.Rider;
 	BEGIN
 		f.noRedraw := TRUE;
@@ -77,25 +77,25 @@ MODULE HostTabFrames;
 		p := f.rider(HostPorts.Rider).port;
 		IF p.wnd # 0 THEN	(* port is a window *)
 			s := {27, 30};	(* disabled, child *)
-			i.wnd := WinApi.CreateWindowExA({}, "Oberon Tab", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0);
+			i.wnd := WinApi.CreateWindowExW({}, "Oberon Tab", "", s, cx, cy, cw, ch, p.wnd, 0, instance, 0);
 			IF i.wnd # 0 THEN
 				DEC(x, cx); DEC(y, cy);
-				res := WinApi.SetWindowLongA(i.wnd, dlgWindowExtra, SYSTEM.VAL(INTEGER, f));
-				i.ctrl := WinApi.CreateWindowExA(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0);
+				res := WinApi.SetWindowLongW(i.wnd, dlgWindowExtra, SYSTEM.VAL(INTEGER, f));
+				i.ctrl := WinApi.CreateWindowExW(ex, class, name, style, x, y, w, h, i.wnd, 0, instance, 0);
 				IF i.ctrl # 0 THEN
 					IF (SubclassCtl # NIL) THEN SubclassCtl(i.ctrl) END;
 					IF f.font # NIL THEN
-						res := WinApi.SendMessageA(i.ctrl, WinApi.WM_SETFONT, f.font(HostFonts.Font).dev.id, 0)
+						res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFONT, f.font(HostFonts.Font).dev.id, 0)
 					END;
 					Adapt(f, i);
 					res := WinApi.ShowWindow(i.wnd, 1);
-					res := WinApi.ShowWindow(i.ctrl, 1);
+					res := WinApi.ShowWindow(i.ctrl, 1)
 				ELSE res := WinApi.DestroyWindow(i.wnd); i.wnd := 0
 				END
 			ELSE i.ctrl := 0
 			END
 		ELSE	(* port is a printer -> define temp windows *)
-			i.wnd := 0; i.ctrl := 0;
+			i.wnd := 0; i.ctrl := 0
 		END
 	END Open;
 	
@@ -127,12 +127,12 @@ MODULE HostTabFrames;
 					f.DrawString(x + dm + dsc, y - dsc + dm, Ports.black, s, font)
 				END;
 				x := x + sw + 2*dm;
-				INC(i);
+				INC(i)
 			END;
 			f.DrawLine(0, y + 2*dm, w, y + 2*dm, 1, Ports.black);			
 			f.dispLeft := f.unit; f.dispTop := y + 2*dm + f.unit;
-			f.dispWidth := w - 2*f.unit; f.dispHeight := h - (y + 2*dm + f.unit);
-		END;
+			f.dispWidth := w - 2*f.unit; f.dispHeight := h - (y + 2*dm + f.unit)
+		END
 		
 		(*
 		IF f.font # NIL THEN font := f.font ELSE font := HostFonts.dlgFont END;
@@ -156,7 +156,7 @@ MODULE HostTabFrames;
 		*)
 	END Print;
 
-	PROCEDURE SendKey (ch: SHORTCHAR; wnd: WinApi.HANDLE);
+	PROCEDURE SendKey (ch: CHAR; wnd: WinApi.HANDLE);
 		VAR res, code: INTEGER;
 	BEGIN
 		CASE ch OF
@@ -176,10 +176,10 @@ MODULE HostTabFrames;
 		ELSE code := 0
 		END;
 		IF code # 0 THEN 
-			res := WinApi.SendMessageA(wnd, WinApi.WM_KEYDOWN, code, 0);
-			res := WinApi.SendMessageA(wnd, WinApi.WM_KEYUP, code, 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYDOWN, code, 0);
+			res := WinApi.SendMessageW(wnd, WinApi.WM_KEYUP, code, 0)
 		ELSE
-			res := WinApi.SendMessageA(wnd, WinApi.WM_CHAR, ORD(ch), 0)
+			res := WinApi.SendMessageW(wnd, WinApi.WM_CHAR, ORD(ch), 0)
 		END
 	END SendKey;
 
@@ -195,7 +195,7 @@ MODULE HostTabFrames;
 		REPEAT
 			w := wnd; wnd := WinApi.ChildWindowFromPoint(wnd, pt);
 			res := WinApi.ClientToScreen(w, pt);
-			hc := WinApi.SendMessageA(wnd, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
+			hc := WinApi.SendMessageW(wnd, WinApi.WM_NCHITTEST, 0, pt.x + pt.y * 65536);
 			res := WinApi.ScreenToClient(wnd, pt)
 		UNTIL (hc # 1) OR (w = wnd);
 		IF hc > 1 THEN
@@ -203,24 +203,24 @@ MODULE HostTabFrames;
 			IF ODD(b) THEN m := WinApi.WM_NCLBUTTONDOWN
 			ELSE m := WinApi.WM_NCRBUTTONDOWN
 			END;
-			res := WinApi.SendMessageA(wnd, m, hc, pt.x + pt.y * 65536)
+			res := WinApi.SendMessageW(wnd, m, hc, pt.x + pt.y * 65536)
 		ELSE
-			res := WinApi.GetClassLongA(wnd, -26);	(* classStyle *)
+			res := WinApi.GetClassLongW(wnd, -26);	(* classStyle *)
 			IF (Controllers.doubleClick IN buttons) & ODD(res DIV 8) THEN	(* DblClks IN classStyle *)
 				IF ODD(b) THEN m := WinApi.WM_LBUTTONDBLCLK ELSE m := WinApi.WM_RBUTTONDBLCLK END
 			ELSE
 				IF ODD(b) THEN m := WinApi.WM_LBUTTONDOWN ELSE m := WinApi.WM_RBUTTONDOWN END
 			END;
-			res := WinApi.SendMessageA(wnd, m, b, pt.x + pt.y * 65536)
+			res := WinApi.SendMessageW(wnd, m, b, pt.x + pt.y * 65536)
 		END;
 		REPEAT
-			res := WinApi.GetMessageA(msg, 0, 0, 0);
+			res := WinApi.GetMessageW(msg, 0, 0, 0);
 			IF (msg.message >= WinApi.WM_MOUSEMOVE) & (msg.message <= WinApi.WM_MBUTTONDBLCLK)
 			THEN
 				b := msg.wParam
 			END;
 			res := WinApi.TranslateMessage(msg);
-			res := WinApi.DispatchMessageA(msg)
+			res := WinApi.DispatchMessageW(msg)
 		UNTIL b MOD 4 = 0
 	END HandleMouse;
 
@@ -230,12 +230,12 @@ MODULE HostTabFrames;
 		IF focus THEN
 			IF on THEN
 				IF ~i.hasFocus THEN
-					res := WinApi.SendMessageA(i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_SETFOCUS, 0, 0);
 					i.hasFocus := TRUE
 				END
 			ELSE
 				IF i.hasFocus THEN
-					res := WinApi.SendMessageA(i.ctrl, WinApi.WM_KILLFOCUS, 0, 0);
+					res := WinApi.SendMessageW(i.ctrl, WinApi.WM_KILLFOCUS, 0, 0);
 					i.hasFocus := FALSE
 				END
 			END
@@ -257,7 +257,7 @@ MODULE HostTabFrames;
 			ASSERT(f.rider # NIL, 100); ASSERT(f.rider.Base() # NIL, 101);
 			res := WinApi.DestroyWindow(f.i.wnd);
 			f.i.wnd := 0; f.i.ctrl := 0
-		END;
+		END
 		(*f.Close^*)
 	END Close;
 	
@@ -270,35 +270,35 @@ MODULE HostTabFrames;
 		ELSE
 			IF WinApi.IsWindowEnabled(f.i.ctrl) # 0 THEN res := WinApi.EnableWindow(f.i.ctrl, 0) END
 		END;
-		res := WinApi.UpdateWindow(f.i.ctrl);
+		res := WinApi.UpdateWindow(f.i.ctrl)
 	END Update;
 	
 	PROCEDURE (f: Tab) UpdateList;
 		VAR 
 			res, i, sel, len: INTEGER; 
-			ti: WinCtl.TCITEMA;
-			s: Dialog.String; ss: ARRAY 256 OF SHORTCHAR;
+			ti: WinCtl.TCITEMW;
+			s: Dialog.String;
 			rect: WinApi.RECT;
 			v: Views.View;
 			tv: StdTabViews.View;
 			hrgn, hrgn1: WinApi.HRGN;
 	BEGIN
 		tv := f.view(StdTabViews.View); sel := tv.Index();
-		res := WinApi.SendMessageA(f.i.ctrl, WinCtl.TCM_DELETEALLITEMS, 0, 0); 
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_DELETEALLITEMS, 0, 0); 
 		len := tv.NofTabs();
 		(* Add the tabs to the tabcontrol *)
 		IF len > 0 THEN
-			i := 0; tv.GetItem(i, s, v); Dialog.MapString(s, s); ss := SHORT(s$);
-			WHILE (i < len) & (ss # "") & (v # NIL) DO
+			i := 0; tv.GetItem(i, s, v); Dialog.MapString(s, s);
+			WHILE (i < len) & (s # "") & (v # NIL) DO
 				ti.mask := WinCtl.TCIF_TEXT + WinCtl.TCIF_IMAGE; 
-				ti.pszText := ss; ti.iImage := -1;
-				res := WinApi.SendMessage(f.i.ctrl, WinCtl.TCM_INSERTITEM, i, SYSTEM.ADR(ti));
-				INC(i); IF i < len THEN tv.GetItem(i, s, v); Dialog.MapString(s, s); ss := SHORT(s$) END
+				ti.pszText := s; ti.iImage := -1;
+				res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_INSERTITEMW, i, SYSTEM.ADR(ti));
+				INC(i); IF i < len THEN tv.GetItem(i, s, v); Dialog.MapString(s, s) END
 			END
 		END;
 		(* Get the display area *)
 		rect.left := 0; rect.top := 0; rect.right := f.i.w2; rect.bottom := f.i.h2;
-		res := WinApi.SendMessageA(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE, SYSTEM.ADR(rect));
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE, SYSTEM.ADR(rect));
 		(* set the area which the control should redraw *)
 		hrgn := WinApi.CreateRectRgn(0, 0, f.i.w2, f.i.h2);
 		hrgn1 := WinApi.CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom);
@@ -311,14 +311,14 @@ MODULE HostTabFrames;
 		f.dispWidth := (rect.right - rect.left) * f.unit; f.dispHeight := (rect.bottom - rect.top) * f.unit;
 		(* Set the size and the domain of the views *)
 		IF len > 0 THEN
-			i := 0; tv.GetItem(i, s, v); ss := SHORT(s$);
-			WHILE (i < len) & (ss # "") & (v # NIL) DO
+			i := 0; tv.GetItem(i, s, v);
+			WHILE (i < len) & (s # "") & (v # NIL) DO
 				v.context.SetSize(f.dispWidth, f.dispHeight);
-				INC(i); IF i < len THEN  tv.GetItem(i, s, v); ss := SHORT(s$) END
+				INC(i); IF i < len THEN  tv.GetItem(i, s, v) END
 			END
 		END;
 		(* Reset selection *)
-		res := WinApi.SendMessageA(f.i.ctrl, WinCtl.TCM_SETCURSEL, sel, 0);
+		res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_SETCURSEL, sel, 0);
 		f.Update
 	END UpdateList;
 	
@@ -364,10 +364,10 @@ MODULE HostTabFrames;
 			icex.dwSize := SIZE(WinCtl.INITCOMMONCONTROLSEX);
 			icex.dwICC := WinCtl.ICC_TAB_CLASSES;
 			ok :=  WinCtl.InitCommonControlsEx(icex);
-			Open(f, WinCtl.WC_TABCONTROL, "", 
+			Open(f, WinCtl.WC_TABCONTROLW, "", 
 				WinApi.WS_CLIPSIBLINGS + WinApi.WS_CHILD + WinApi.WS_VISIBLE + WinCtl.TCS_MULTILINE,
 				{},  f.i);
-			f.UpdateList;
+			f.UpdateList
 		END;
 		f.Update;
 		IF f.i.wnd # 0 THEN f.Paint(l, t, r, b) ELSE f.Print(l, t, r, b) END
@@ -378,9 +378,9 @@ MODULE HostTabFrames;
 	BEGIN
 		ASSERT(~f.disabled, 100);
 		IF ch = " " THEN
-			res := WinApi.SendMessageA(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
-			res := WinApi.SendMessageA(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
-		ELSE SendKey(SHORT(ch), f.i.ctrl)
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYDOWN, ORD(ch), 0);
+			res := WinApi.SendMessageW(f.i.ctrl, WinApi.WM_KEYUP, ORD(ch), 0)
+		ELSE SendKey(ch, f.i.ctrl)
 		END
 	END KeyDown;
 	
@@ -408,13 +408,11 @@ MODULE HostTabFrames;
 	END InDispArea;
 	
 	PROCEDURE (f: Tab) GetDispSize (OUT x, y, w, h: INTEGER);
-		VAR
-			rect: WinApi.RECT;
-			res: INTEGER;
+		VAR res: INTEGER; rect: WinApi.RECT;
 	BEGIN
 		IF ~Views.IsPrinterFrame(f) THEN
 			rect.left := 0; rect.top := 0; rect.right := f.i.w2; rect.bottom := f.i.h2;
-			res := WinApi.SendMessageA(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE, SYSTEM.ADR(rect));
+			res := WinApi.SendMessageW(f.i.ctrl, WinCtl.TCM_ADJUSTRECT, WinApi.FALSE, SYSTEM.ADR(rect));
 			f.dispLeft := rect.left * f.unit; f.dispTop := rect.top * f.unit;
 			f.dispWidth := (rect.right - rect.left) * f.unit; f.dispHeight := (rect.bottom - rect.top) * f.unit
 		END;
@@ -442,12 +440,12 @@ MODULE HostTabFrames;
 	PROCEDURE HandleNotifyMsg (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
 		VAR  c: StdTabViews.Frame; pnmhdr: WinApi.PtrNMHDR;
 	BEGIN
-		c := SYSTEM.VAL(StdTabViews.Frame, WinApi.GetWindowLongA(wnd, dlgWindowExtra));
+		c := SYSTEM.VAL(StdTabViews.Frame, WinApi.GetWindowLongW(wnd, dlgWindowExtra));
 		pnmhdr := SYSTEM.VAL(WinApi.PtrNMHDR, lParam);
 		WITH c: Tab DO
 			IF c.i.ctrl #0 THEN
-				IF pnmhdr.code = WinCtl.TCN_SELCHANGE THEN;
-					c.SetIndex(WinApi.SendMessageA(c.i.ctrl, WinCtl.TCM_GETCURSEL, 0, 0))
+				IF pnmhdr.code = WinCtl.TCN_SELCHANGE THEN
+					c.SetIndex(WinApi.SendMessageW(c.i.ctrl, WinCtl.TCM_GETCURSEL, 0, 0))
 				END
 			END
 		END
@@ -459,7 +457,7 @@ MODULE HostTabFrames;
 			Kernel.Try(HandleNotifyMsg, wnd, wParam, lParam);
 			RETURN 0
 		END;
-		RETURN WinApi.DefWindowProcA(wnd, message, wParam, lParam)
+		RETURN WinApi.DefWindowProcW(wnd, message, wParam, lParam)
 	END CtrlHandler;
 
 	PROCEDURE Install;
@@ -469,7 +467,7 @@ MODULE HostTabFrames;
 	END Install;
 
 	PROCEDURE InitClass;
-		VAR class: WinApi.WNDCLASS; res: INTEGER;
+		VAR class: WinApi.WNDCLASSW; res: INTEGER;
 	BEGIN
 		class.hCursor := WinApi.NULL;
 		class.hIcon := WinApi.NULL;
@@ -481,15 +479,15 @@ MODULE HostTabFrames;
 		class.lpfnWndProc := CtrlHandler;
 		class.cbClsExtra := 0;
 		class.cbWndExtra := dlgWindowExtra + 4;
-		res := WinApi.RegisterClassA(class)
+		res := WinApi.RegisterClassW(class)
 	END InitClass;
 	
 	PROCEDURE Init*;
 	BEGIN
 		StdTabViews.setFocus := TRUE;
-		instance := WinApi.GetModuleHandleA(NIL);
+		instance := WinApi.GetModuleHandleW(NIL);
 		InitClass;
-		Install;
+		Install
 	END Init;
 	
 END HostTabFrames.

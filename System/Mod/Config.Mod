@@ -20,12 +20,11 @@ MODULE Config;
 
 		OleData.Register("OleData.ImportInfo", "OleData.ExportInfo", "BlackBox Info", "", {OleData.info});
 		OleData.Register("OleData.ImportNative", "OleData.ExportNative", "BlackBox Data", "", {});
-		OleData.Register("", "HostTextConv.ExportDRichText", "Rich Text Format", "TextViews.View", {});
+		OleData.Register("HostTextConv.ImportDRichText", "HostTextConv.ExportDRichText", "Rich Text Format", "TextViews.View", {});
 		OleData.Register("OleClient.ImportInfo", "OleClient.ExportInfo", "Object Descriptor", "", {OleData.info});
 		OleData.Register("", "OleClient.Export", "Embedded Object", "OleClient.View", {OleData.storage});
 		OleData.Register("OleClient.Import", "OleServer.Export", "Embed Source", "", {OleData.storage});
 		OleData.Register("OleClient.Import", "", "Embedded Object", "", {OleData.storage});
-		OleData.Register("HostTextConv.ImportDRichText", "", "Rich Text Format", "TextViews.View", {});
 		OleData.Register("HostTextConv.ImportDUnicode", "HostTextConv.ExportDUnicode", "UNICODETEXT", "TextViews.View", {});
 		OleData.Register("HostTextConv.ImportDText", "HostTextConv.ExportDText", "TEXT", "TextViews.View", {});
 		OleData.Register("HostPictures.ImportDPict", "HostPictures.ExportDPict", "METAFILEPICT", "HostPictures.View", {});

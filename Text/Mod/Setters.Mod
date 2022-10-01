@@ -59,8 +59,7 @@ MODULE TextSetters;
 		Reader* = POINTER TO ABSTRACT RECORD
 			r-: TextModels.Reader;	(** look-ahead state **)
 			(** unit **)
-			sString*: ARRAY 64 OF SHORTCHAR;	(** single chars in sString[0] **)
-			string*: ARRAY 64 OF CHAR;	(** single lchars in string[0] **)
+			string*: ARRAY 64 OF CHAR;	(** single chars in string[0] **)
 			view*: Views.View;
 			(** unit props **)
 			textOpts*: SET;
@@ -154,7 +153,7 @@ MODULE TextSetters;
 		ASSERT(text # NIL, 20);
 		ASSERT(ruler # NIL, 22);
 		rd.r := text.NewReader(old); rd.r.SetPos(pos); rd.r.Read;
-		rd.sString[0] := 0X; rd.string[0] := 0X; rd.view := NIL;
+		rd.string[0] := 0X; rd.view := NIL;
 		rd.textOpts := {};
 		rd.setterOpts := {}; rd.w := 0; rd.endW := 0; rd.h := 0; rd.dsc := 0;
 		rd.attr := NIL;
@@ -166,15 +165,9 @@ MODULE TextSetters;
 
 	PROCEDURE (rd: Reader) Read*, NEW, EXTENSIBLE;
 	(** pre: rd set **)
-	(** post: rd.pos = rd.pos' + Length(rd.sString) + Length(rd.string) **)
+	(** post: rd.pos = rd.pos' + Length(rd.string) **)
 	BEGIN
-		IF rd.r.char < 100X THEN
-			rd.sString[0] := SHORT(rd.r.char); rd.sString[1] := 0X;
-			rd.string[0] := 0X
-		ELSE
-			rd.sString[0] := 0X;
-			rd.string[0] := rd.r.char; rd.string[1] := 0X
-		END;
+		rd.string[0] := rd.r.char; rd.string[1] := 0X;
 		rd.view := rd.r.view;
 		rd.textOpts := {};
 		rd.setterOpts := {};
@@ -388,6 +381,7 @@ RETURN -1;
 
 	(* StdReader *)
 
+(*
 	PROCEDURE WordPart (ch, ch1: CHAR): BOOLEAN;
 	(* needs more work ... put elsewhere? *)
 	BEGIN
@@ -415,6 +409,173 @@ RETURN -1;
 			END
 		ELSE RETURN FALSE
 		END
+	END WordPart;
+*)
+
+	PROCEDURE WordPart (ch, ch1: CHAR): BOOLEAN;
+		(* Same as .net function System.Char.IsLetterOrDigit(ch)
+				+ digit space, nonbreaking space, nonbreaking hyphen, & underscore
+			ch1 unused *)
+		VAR low: INTEGER;
+	BEGIN
+		low := ORD(ch) MOD 256;
+		CASE ORD(ch) DIV 256 OF
+		| 001H, 015H, 034H..04CH, 04EH..09EH, 0A0H..0A3H, 0ACH..0D6H, 0F9H, 0FCH: RETURN TRUE
+		| 000H: CASE low OF
+			| 030H..039H, 041H..05AH, 061H..07AH, 0AAH, 0B5H, 0BAH, 0C0H..0D6H, 0D8H..0F6H, 0F8H..0FFH,
+				ORD(digitspace), ORD(nbspace), ORD(nbhyphen), ORD("_"): RETURN TRUE
+			ELSE
+			END
+		| 002H: CASE low OF
+			| 000H..041H, 050H..0C1H, 0C6H..0D1H, 0E0H..0E4H, 0EEH: RETURN TRUE
+			ELSE
+			END
+		| 003H: CASE low OF
+			| 07AH, 086H, 088H..08AH, 08CH, 08EH..0A1H, 0A3H..0CEH, 0D0H..0F5H, 0F7H..0FFH: RETURN TRUE
+			ELSE
+			END
+		| 004H: CASE low OF
+			| 000H..081H, 08AH..0CEH, 0D0H..0F9H: RETURN TRUE
+			ELSE
+			END
+		| 005H: CASE low OF
+			| 000H..00FH, 031H..056H, 059H, 061H..087H, 0D0H..0EAH, 0F0H..0F2H: RETURN TRUE
+			ELSE
+			END
+		| 006H: CASE low OF
+			| 021H..03AH, 040H..04AH, 060H..069H, 06EH..06FH, 071H..0D3H, 0D5H, 0E5H..0E6H, 0EEH..0FCH, 0FFH: RETURN TRUE
+			ELSE
+			END
+		| 007H: CASE low OF
+			| 010H, 012H..02FH, 04DH..06DH, 080H..0A5H, 0B1H: RETURN TRUE
+			ELSE
+			END
+		| 009H: CASE low OF
+			| 004H..039H, 03DH, 050H, 058H..061H, 066H..06FH, 07DH, 085H..08CH, 08FH..090H, 093H..0A8H, 0AAH..0B0H, 0B2H, 0B6H..0B9H, 0BDH, 0CEH, 0DCH..0DDH, 0DFH..0E1H, 0E6H..0F1H: RETURN TRUE
+			ELSE
+			END
+		| 00AH: CASE low OF
+			| 005H..00AH, 00FH..010H, 013H..028H, 02AH..030H, 032H..033H, 035H..036H, 038H..039H, 059H..05CH, 05EH, 066H..06FH, 072H..074H, 085H..08DH, 08FH..091H, 093H..0A8H, 0AAH..0B0H, 0B2H..0B3H, 0B5H..0B9H, 0BDH, 0D0H, 0E0H..0E1H, 0E6H..0EFH: RETURN TRUE
+			ELSE
+			END
+		| 00BH: CASE low OF
+			| 005H..00CH, 00FH..010H, 013H..028H, 02AH..030H, 032H..033H, 035H..039H, 03DH, 05CH..05DH, 05FH..061H, 066H..06FH, 071H, 083H, 085H..08AH, 08EH..090H, 092H..095H, 099H..09AH, 09CH, 09EH..09FH, 0A3H..0A4H, 0A8H..0AAH, 0AEH..0B9H, 0E6H..0EFH: RETURN TRUE
+			ELSE
+			END
+		| 00CH: CASE low OF
+			| 005H..00CH, 00EH..010H, 012H..028H, 02AH..033H, 035H..039H, 060H..061H, 066H..06FH, 085H..08CH, 08EH..090H, 092H..0A8H, 0AAH..0B3H, 0B5H..0B9H, 0BDH, 0DEH, 0E0H..0E1H, 0E6H..0EFH: RETURN TRUE
+			ELSE
+			END
+		| 00DH: CASE low OF
+			| 005H..00CH, 00EH..010H, 012H..028H, 02AH..039H, 060H..061H, 066H..06FH, 085H..096H, 09AH..0B1H, 0B3H..0BBH, 0BDH, 0C0H..0C6H: RETURN TRUE
+			ELSE
+			END
+		| 00EH: CASE low OF
+			| 001H..030H, 032H..033H, 040H..046H, 050H..059H, 081H..082H, 084H, 087H..088H, 08AH, 08DH, 094H..097H, 099H..09FH, 0A1H..0A3H, 0A5H, 0A7H, 0AAH..0ABH, 0ADH..0B0H, 0B2H..0B3H, 0BDH, 0C0H..0C4H, 0C6H, 0D0H..0D9H, 0DCH..0DDH: RETURN TRUE
+			ELSE
+			END
+		| 00FH: CASE low OF
+			| 000H, 020H..029H, 040H..047H, 049H..06AH, 088H..08BH: RETURN TRUE
+			ELSE
+			END
+		| 010H: CASE low OF
+			| 000H..021H, 023H..027H, 029H..02AH, 040H..049H, 050H..055H, 0A0H..0C5H, 0D0H..0FAH, 0FCH: RETURN TRUE
+			ELSE
+			END
+		| 011H: CASE low OF
+			| 000H..059H, 05FH..0A2H, 0A8H..0F9H: RETURN TRUE
+			ELSE
+			END
+		| 012H: CASE low OF
+			| 000H..048H, 04AH..04DH, 050H..056H, 058H, 05AH..05DH, 060H..088H, 08AH..08DH, 090H..0B0H, 0B2H..0B5H, 0B8H..0BEH, 0C0H, 0C2H..0C5H, 0C8H..0D6H, 0D8H..0FFH: RETURN TRUE
+			ELSE
+			END
+		| 013H: CASE low OF
+			| 000H..010H, 012H..015H, 018H..05AH, 080H..08FH, 0A0H..0F4H: RETURN TRUE
+			ELSE
+			END
+		| 014H: IF low >= 001H THEN RETURN TRUE END
+		| 016H: CASE low OF
+			| 000H..06CH, 06FH..076H, 081H..09AH, 0A0H..0EAH: RETURN TRUE
+			ELSE
+			END
+		| 017H: CASE low OF
+			| 000H..00CH, 00EH..011H, 020H..031H, 040H..051H, 060H..06CH, 06EH..070H, 080H..0B3H, 0D7H, 0DCH, 0E0H..0E9H: RETURN TRUE
+			ELSE
+			END
+		| 018H: CASE low OF
+			| 010H..019H, 020H..077H, 080H..0A8H: RETURN TRUE
+			ELSE
+			END
+		| 019H: CASE low OF
+			| 000H..01CH, 046H..06DH, 070H..074H, 080H..0A9H, 0C1H..0C7H, 0D0H..0D9H: RETURN TRUE
+			ELSE
+			END
+		| 01AH: IF low < 017H THEN RETURN TRUE END
+		| 01DH: IF low < 0C0H THEN RETURN TRUE END
+		| 01EH: CASE low OF
+			| 000H..09BH, 0A0H..0F9H: RETURN TRUE
+			ELSE
+			END
+		| 01FH: CASE low OF
+			| 000H..015H, 018H..01DH, 020H..045H, 048H..04DH, 050H..057H, 059H, 05BH, 05DH, 05FH..07DH, 080H..0B4H, 0B6H..0BCH, 0BEH, 0C2H..0C4H, 0C6H..0CCH, 0D0H..0D3H, 0D6H..0DBH, 0E0H..0ECH, 0F2H..0F4H, 0F6H..0FCH: RETURN TRUE
+			ELSE
+			END
+		| 020H: CASE low OF
+			| 071H, 07FH, 090H..094H: RETURN TRUE
+			ELSE
+			END
+		| 021H: CASE low OF
+			| 002H, 007H, 00AH..013H, 015H, 019H..01DH, 024H, 026H, 028H, 02AH..02DH, 02FH..031H, 033H..039H, 03CH..03FH, 045H..049H: RETURN TRUE
+			ELSE
+			END
+		| 02CH: CASE low OF
+			| 000H..02EH, 030H..05EH, 080H..0E4H: RETURN TRUE
+			ELSE
+			END
+		| 02DH: CASE low OF
+			| 000H..025H, 030H..065H, 06FH, 080H..096H, 0A0H..0A6H, 0A8H..0AEH, 0B0H..0B6H, 0B8H..0BEH, 0C0H..0C6H, 0C8H..0CEH, 0D0H..0D6H, 0D8H..0DEH: RETURN TRUE
+			ELSE
+			END
+		| 030H: CASE low OF
+			| 005H..006H, 031H..035H, 03BH..03CH, 041H..096H, 09DH..09FH, 0A1H..0FAH, 0FCH..0FFH: RETURN TRUE
+			ELSE
+			END
+		| 031H: CASE low OF
+			| 005H..02CH, 031H..08EH, 0A0H..0B7H, 0F0H..0FFH: RETURN TRUE
+			ELSE
+			END
+		| 04DH: IF low < 0B6H THEN RETURN TRUE END
+		| 09FH: IF low < 0BCH THEN RETURN TRUE END
+		| 0A4H: IF low < 08DH THEN RETURN TRUE END
+		| 0A8H: CASE low OF
+			| 000H..001H, 003H..005H, 007H..00AH, 00CH..022H: RETURN TRUE
+			ELSE
+			END
+		| 0D7H: IF low < 0A4H THEN RETURN TRUE END
+		| 0FAH: CASE low OF
+			| 000H..02DH, 030H..06AH, 070H..0D9H: RETURN TRUE
+			ELSE
+			END
+		| 0FBH: CASE low OF
+			| 000H..006H, 013H..017H, 01DH, 01FH..028H, 02AH..036H, 038H..03CH, 03EH, 040H..041H, 043H..044H, 046H..0B1H, 0D3H..0FFH: RETURN TRUE
+			ELSE
+			END
+		| 0FDH: CASE low OF
+			| 000H..03DH, 050H..08FH, 092H..0C7H, 0F0H..0FBH: RETURN TRUE
+			ELSE
+			END
+		| 0FEH: CASE low OF
+			| 070H..074H, 076H..0FCH: RETURN TRUE
+			ELSE
+			END
+		| 0FFH: CASE low OF
+			| 010H..019H, 021H..03AH, 041H..05AH, 066H..0BEH, 0C2H..0C7H, 0CAH..0CFH, 0D2H..0D7H, 0DAH..0DCH: RETURN TRUE
+			ELSE
+			END
+		ELSE
+		END;
+		RETURN FALSE		
 	END WordPart;
 
 (*
@@ -456,17 +617,15 @@ rd.w := 0;
 		ELSIF rd.h > maxH THEN rd.h := maxH
 		END;
 		IF TextModels.maskChar IN rd.textOpts THEN
-			IF rd.mask < 100X THEN rd.sString[0] := SHORT(rd.mask)
-			ELSE rd.sString[0] := 0X; rd.string[0] := rd.mask; rd.string[1] := 0X
-			END
-		ELSE rd.sString[0] := TextModels.viewcode
+			rd.string[0] := rd.mask; rd.string[1] := 0X
+		ELSE rd.string[0] := TextModels.viewcode
 		END
 	END GetViewPref;
 
 	PROCEDURE GatherString (rd: StdReader);
 		VAR i, len: INTEGER; ch: CHAR;
 	BEGIN
-		i := 1; len := LEN(rd.sString) - 1; ch := rd.r.char;
+		i := 1; len := LEN(rd.string) - 1; ch := rd.r.char;
 		WHILE (i < len)
 			& (rd.r.view = NIL) & (rd.r.attr = rd.attr)
 			& (	 (" " < ch) & (ch <= "~") & (ch # "-")
@@ -474,22 +633,22 @@ rd.w := 0;
 				OR  (ch >= nbspace) & (ch < 100X) & (ch # softhyphen)
 				)
 		DO	(* rd.r.char > " " => ~rd.eot *)
-			rd.sString[i] := SHORT(ch); INC(i);
+			rd.string[i] := ch; INC(i);
 			rd.eot := rd.r.eot;
 			rd.r.Read; ch := rd.r.char; INC(rd.pos)
 		END;
-		rd.sString[i] := 0X; rd.setterOpts := {wordJoin};
+		rd.string[i] := 0X; rd.setterOpts := {wordJoin};
 		IF i = 1 THEN
-			IF WordPart(rd.sString[0], 0X) THEN INCL(rd.setterOpts, wordPart) END
+			IF WordPart(rd.string[0], 0X) THEN INCL(rd.setterOpts, wordPart) END
 		END;
-		rd.w := rd.attr.font.SStringWidth(rd.sString); rd.endW := rd.w
+		rd.w := rd.attr.font.StringWidth(rd.string); rd.endW := rd.w
 	END GatherString;
 
 	PROCEDURE SpecialChar (rd: StdReader);
 		VAR ra: TextRulers.Attributes; i, tabs, spaceW, dW: INTEGER; type: SET;
 	BEGIN
 		ra := rd.ruler.style.attr;
-		CASE ORD(rd.sString[0]) OF
+		CASE ORD(rd.string[0]) OF
 		  ORD(tab):
 			rd.textOpts := {TextModels.hideable};
 			rd.endW := minTabWidth;
@@ -543,7 +702,7 @@ rd.w := 0;
 (**)
 		| ORD(" "):
 			rd.setterOpts := {flexWidth};
-			rd.w := rd.attr.font.SStringWidth(rd.sString); rd.endW := 0; INC(rd.spaces)
+			rd.w := rd.attr.font.StringWidth(rd.string); rd.endW := 0; INC(rd.spaces)
 		| ORD(zwspace):
 			rd.w := 0; rd.endW := 0
 		| ORD(digitspace):
@@ -554,24 +713,24 @@ rd.w := 0;
 			rd.w := rd.attr.font.StringWidth("-"); rd.endW := rd.w
 		| ORD(hyphen):
 			rd.setterOpts := {};
-			rd.sString[0] := "-" (*softhyphen*);
+			rd.string[0] := "-" (*softhyphen*);
 			rd.w := rd.attr.font.StringWidth("-" (*softhyphen*)); rd.endW := rd.w
 		| ORD(nbhyphen):
 			rd.setterOpts := {wordJoin, wordPart};
-			rd.sString[0] := "-" (*softhyphen*);
+			rd.string[0] := "-" (*softhyphen*);
 			rd.w := rd.attr.font.StringWidth("-" (*softhyphen*)); rd.endW := rd.w
 		| ORD(softhyphen):
 			rd.setterOpts := {wordPart}; rd.textOpts := {TextModels.hideable};
-			rd.sString[0] := "-";
+			rd.string[0] := "-";
 			rd.endW := rd.attr.font.StringWidth("-" (*softhyphen*));
 			IF rd.hideMarks THEN rd.w := 0 ELSE rd.w := rd.endW END
 		ELSE
 			rd.setterOpts := {wordJoin};
-			IF WordPart(rd.sString[0], rd.r.char) THEN INCL(rd.setterOpts, wordPart) END;
-			rd.w := rd.attr.font.SStringWidth(rd.sString); rd.endW := rd.w
+			IF WordPart(rd.string[0], rd.r.char) THEN INCL(rd.setterOpts, wordPart) END;
+			rd.w := rd.attr.font.StringWidth(rd.string); rd.endW := rd.w
 		END
 	END SpecialChar;
-
+(*
 	PROCEDURE LongChar (rd: StdReader);
 		VAR ra: TextRulers.Attributes;
 	BEGIN
@@ -579,7 +738,7 @@ rd.w := 0;
 		rd.setterOpts := {wordJoin, wordPart};
 		rd.w := rd.attr.font.StringWidth(rd.string); rd.endW := rd.w
 	END LongChar;
-
+*)
 
 	PROCEDURE (rd: StdReader) Read;
 	(* pre: connected *)
@@ -594,20 +753,16 @@ rd.w := 0;
 				GetViewPref(rd)
 			END;
 			IF (rd.view = NIL) OR (TextModels.maskChar IN rd.textOpts) THEN
-				IF rd.string[0] # 0X THEN
-					LongChar(rd)
+				ch := rd.string[0];
+				IF (rd.view = NIL)
+				 & (	(" " < ch) & (ch < "~") & (ch # "-")
+				 	OR (ch = digitspace)
+				 	OR (ch >= nbspace) & (ch # softhyphen)
+				  	)
+				THEN
+					GatherString(rd)
 				ELSE
-					ch := rd.sString[0];
-					IF (rd.view = NIL)
-					 & (	(" " < ch) & (ch < "~") & (ch # "-")
-					 	OR (ch = digitspace)
-					 	OR (ch >= nbspace) & (ch # softhyphen)
-					  	)
-					THEN
-						GatherString(rd)
-					ELSE
-						SpecialChar(rd)
-					END
+					SpecialChar(rd)
 				END
 			END
 		ELSE
@@ -621,21 +776,21 @@ rd.w := 0;
 	BEGIN
 		IF box.adj & (pos >= start + box.adjOff) THEN
 			form := box.ruler.style.attr.opts * adjustMask;
-			IF (form = blocked) & (rd.sString[0] = " ") THEN
+			IF (form = blocked) & (rd.string[0] = " ") THEN
 				INC(w, box.adjW DIV box.spaces)
-			ELSIF (form # blocked) & (rd.sString[0] = tab) THEN
+			ELSIF (form # blocked) & (rd.string[0] = tab) THEN
 				INC(w, box.adjW)	(* is this correct ??? *)
 			END
 		END;
-		i := rd.tabIndex;	(* rd.sString[0] = tab  =>  i >= 0 *)
-		IF (rd.sString[0] = tab) & (i < box.ruler.style.attr.tabs.len) THEN
+		i := rd.tabIndex;	(* rd.string[0] = tab  =>  i >= 0 *)
+		IF (rd.string[0] = tab) & (i < box.ruler.style.attr.tabs.len) THEN
 			w := box.tabW[i]
 		END
 	END AdjustWidth;
 
 	PROCEDURE (rd: StdReader) SplitWidth (w: INTEGER): INTEGER;
 	BEGIN
-		IF (rd.sString[1] = 0X) & (rd.view = NIL) THEN
+		IF (rd.string[1] = 0X) & (rd.view = NIL) THEN
 			RETURN (w + 1) DIV 2
 		ELSE RETURN w
 		END
@@ -645,7 +800,7 @@ rd.w := 0;
 	(* Worder *)
 
 	PROCEDURE SetWorder (VAR w: Worder; s: StdSetter; pos: INTEGER; OUT start: INTEGER);
-		CONST wordCutoff = LEN(s.rd.sString);
+		CONST wordCutoff = LEN(s.rd.string);
 	BEGIN
 		start := s.ThisSequence(pos);
 		IF pos - start >= wordCutoff THEN
@@ -653,14 +808,14 @@ rd.w := 0;
 		END;
 		s.GetLine(start, w.box); w.next := start + w.box.len;
 		s.rd.Set(s.r, s.text, w.box.left, start, w.box.ruler, w.box.rpos, s.vw, s.hideMarks);
-		w.i := 0; s.rd.sString[0] := 0X
+		w.i := 0; s.rd.string[0] := 0X
 	END SetWorder;
 
 	PROCEDURE StepWorder (VAR w: Worder; s: StdSetter; VAR part: BOOLEAN);
 		VAR rd: Reader;
 	BEGIN
 		rd := s.rd;
-		IF rd.sString[w.i] = 0X THEN
+		IF rd.string[w.i] = 0X THEN
 			IF rd.pos < w.next THEN
 				rd.Read; w.i := 0
 			ELSE
@@ -670,16 +825,16 @@ rd.w := 0;
 					rd.Read; w.i := 0;
 					INC(w.next, w.box.len)
 				ELSE
-					rd.sString[0] := 0X
+					rd.string[0] := 0X
 				END
 			END
 		END;
-		IF rd.sString[0] = 0X THEN	(* end of text *)
+		IF rd.string[0] = 0X THEN	(* end of text *)
 			part := TRUE
-		ELSIF rd.sString[1] = 0X THEN	(* special character *)
+		ELSIF rd.string[1] = 0X THEN	(* special character *)
 			part := wordPart IN rd.setterOpts; INC(w.i)
 		ELSE	(* gathered sString *)
-			part := WordPart(rd.sString[w.i], rd.sString[w.i + 1]); INC(w.i)
+			part := WordPart(rd.string[w.i], rd.string[w.i + 1]); INC(w.i)
 		END
 	END StepWorder;
 
@@ -912,7 +1067,7 @@ rd.w := 0;
 	PROCEDURE (s: StdSetter) GetWord (pos: INTEGER; OUT beg, end: INTEGER);
 	(* pre: connected, 0 <= pos <= s.text.Length() *)
 	(* post: beg <= pos <= end *)
-		CONST wordCutoff = LEN(s.rd.sString);
+		CONST wordCutoff = LEN(s.rd.string);
 		VAR w: Worder; part: BOOLEAN;
 	BEGIN
 		ASSERT(s.text # NIL, 20); ASSERT(0 <= pos, 21); ASSERT(pos <= s.text.Length(), 22);
@@ -924,7 +1079,7 @@ rd.w := 0;
 		DEC(end);
 		REPEAT
 			StepWorder(w, s, part); INC(end)
-		UNTIL ~part OR (s.rd.sString[0] = 0X) OR (end - beg > wordCutoff)
+		UNTIL ~part OR (s.rd.string[0] = 0X) OR (end - beg > wordCutoff)
 	END GetWord;
 
 	PROCEDURE (s: StdSetter) GetLine (start: INTEGER; OUT box: LineBox);
@@ -935,7 +1090,7 @@ rd.w := 0;
 			VAR i: INTEGER; type: SET;
 		BEGIN
 			i := rd.tabIndex;
-			IF (0 <= i ) & (i < TextRulers.maxTabs) & (rd.sString[0] # tab) THEN
+			IF (0 <= i ) & (i < TextRulers.maxTabs) & (rd.string[0] # tab) THEN
 				type := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab};
 				IF type = {TextRulers.centerTab} THEN
 					DEC(w, b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w DIV 2))
@@ -955,7 +1110,7 @@ rd.w := 0;
 			IF rd.dsc - off > b.dsc THEN b.dsc := rd.dsc - off END;
 			IF rd.view # NIL THEN b.views := TRUE END;
 			IF (0 <= i ) & (i < TextRulers.maxTabs) THEN
-				IF rd.sString[0] = tab THEN
+				IF rd.string[0] = tab THEN
 					b.tabW[i] := w
 				ELSE
 					type := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab};
@@ -1027,7 +1182,7 @@ rd.w := 0;
 			box.eot := rd.eot; adj := FALSE; box.skipOff := box.len;
 			IF box.right + rd.w > right THEN	(* rd.w > 0 => ~rd.eot & ~(lineBreak IN setterOpts) *)
 				IF ~(wordJoin IN rd.setterOpts) & (box.right + rd.endW <= right) THEN
-					IF rd.sString[0] = " " THEN DEC(box.spaces) END;
+					IF rd.string[0] = " " THEN DEC(box.spaces) END;
 					Enclose(box, rd.endW);
 					adj := TRUE
 				ELSIF brk.right > 0 THEN
