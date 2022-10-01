@@ -1,4 +1,4 @@
-Sql Subsystem (only available for Windows)
+Sql Subsystem
 Developer Manual
 
 
@@ -19,14 +19,18 @@ Contents
 Design rules
 Example
 
-Introduction
+
+Introduction
+
 One of the most important applications of personal computers is as database frontends, i.e., as user interfaces to a database management system (DBMS). For small applications, the database resides on the same computer as the frontend, thus only one single user can access the database at any one time. For more demanding applications, the database is moved to a central server, to which several client PCs are connected, e.g. via a local area network. A client provides a graphical user interface and runs the application software; the server performs data storage. Typically, several clients may access the same database concurrently.
 Today, the most important DBMS systems are based on a relational data model and use the SQL language (Structured Query Language) as the means to define, retrieve, and manipulate data.
 The Sql subsystem for BlackBox provides a simple, portable, extensible, and integrated access mechanism to SQL databases. It is extensible, i.e., different database implementations can be interfaced through suitable driver modules. Today, there exists one driver module: a generic one that uses Microsoft's ODBC (Open Database Connectivity) standard. The ODBC driver comes standard with BlackBox (SqlOdbc and SqlOdbc3, respectively).
 
 It is assumed that the reader knows about database design, SQL, and BlackBox; in particular the latter's Form subsystem, controls, and module Dialog.
 
-Overview
+
+Overview
+
 The following goals have been pursued in the design of the Sql subsystem:
 
 Simplicity
@@ -61,7 +65,8 @@ Even an application which uses a blocking programming style is non-modal, meanin
 For an overview over the files of Sql, see its Map text.
 
 
-Databases, tables, and interactors
+Databases, tables, and interactors
+
 From a program's perspective, a database is represented by a SqlDB.Database object. As long as a database object is available, SQL commands can be executed. Execution may be local, or remote on a server.
 
 The following declaration describes the SqlDB.Database type:
@@ -135,7 +140,7 @@ Record fields and rows of a result table are matched in the order that they are 
 
 The following Component Pascal types are interpreted by SqlDB:
 	BOOLEAN
-	BYTE, SHORTINT, INTEGER
+	BYTE, SHORTINT, INTEGER, LONGINT
 	SHORTREAL, REAL
 	ARRAY OF CHAR
 	Dates.Date
@@ -148,7 +153,8 @@ The following Component Pascal types are interpreted by SqlDB:
 How these types are mapped to SQL data types depends on the actual SQL database product and the Sql driver. The following example table applies to Microsoft's Sql Server product which is accessed via ODBC:
 
 SQL	Component Pascal
-{bit, tinyint, smallint, integer, bigint}	{BOOLEAN(1), BYTE, SHORTINT, INTEGER, Dialog.List}
+{bit, tinyint, smallint, integer, bigint}	{BOOLEAN(1), BYTE, SHORTINT, INTEGER, 
+	LONGINT, Dialog.List}
 {real, float(p), double precision}	{SHORTREAL, REAL}
 {char(n)(2), varchar(n)(3), long varchar}	{ARRAY OF CHAR, Dialog.Combo}
 {decimal(p, s), numeric(p, s)}	Dialog.Currency
@@ -165,8 +171,9 @@ Note:
 Values of any SQL data type can be read in a textual form, into an ARRAY OF CHAR.
 SQL datetime values can be mapped either to Dates.Date or to Dates.Time, but not to both simultaneously.
 
+
+Interpreted embedded SQL
 
-Interpreted embedded SQL
 Consider the following simple SQL statement:
 
   SELECT * FROM Companies WHERE id = 249
@@ -218,7 +225,8 @@ assuming that company.id = 5, company.name = "Macrosoft Corp.", company.ceo = "D
 Note: A colon does not trigger string substitution if a Windows path name follows the colon (this is useful e.g. when using MS Access), as in "SELECT * FROM C:\directory\databaseName.tableName".
 
 
-Type Row
+Type Row
+
 Normally, a table's Read procedure is performed on an interactor that contains one record field per result table column. This is convenient, since it provides automatic mapping between relational data and Component Pascal objects, i.e., an object-oriented front-end for SQL databases.
 However, specialized tools such as database browsers don't know about the exact definition of the tables they will be accessing, and thus cannot define the necessary interactor types in advance. For those special cases, a more general dynamic mechanism is provided.
 Instead of passing a normal interactor to Read, a variable of the special type SqlDB.Row is passed for this purpose. As a result, it will contain an array of pointers to strings. Each string contains the textual representation of one table column of the row read. If SqlDB.names is passed as row parameter, the strings will contain the names of the table columns, instead of values.
@@ -231,11 +239,13 @@ Instead of passing a normal interactor to Read, a variable of the special type S
 
 
 SqlBrowser
+
 Module SqlBrowser implements a database browsing utility. The user can interactively enter the protocol, id, password, and datasource parameters in a dialog box. A further text entry field allows to enter arbitrary SQL statements. Clicking on the "Execute" button or pressing Enter executes the query. If the database is not already open, it is opened automatically and remains open until the Browser dialog box is closed. If the statement returns a result table, it is displayed in its own window. For statements not returning a result, the message "statement executed" is displayed. In case of an error, a suitable error message appears.
 The source of SqlBrowser is available. It demonstrates the use of SqlDB.Row to obtain data from tables that are not known at compile time, i.e., "dynamically".
 
 
 Blobs
+
 Binary Large Objects, or "blobs", allow to store unstructured data as large ARRAY OF BYTE variables. For example, large image bitmaps, serialized stores, or any other data may be stored in blobs. A blob is represented as a record
 
 	Blob = RECORD
@@ -247,8 +257,11 @@ The field len indicates the number of valid bytes in data. Data is a pointer to 
 
 
 Asynchronous operation
+
 There are different ways how a database can be accessed. In particular, access may occur to a local or to a remote server database. Access to remote databases may take considerably longer than access to local databases. If an operation takes long to complete, a user should not be blocked from other work during this time. This requires asynchronous operation, i.e., a query is started, but the user can immediately continue to work while the query is being completed.
+
 Asynchronous operation is usually associated with preemptive multitasking, so-called threads. However, threads incur considerable additional complexity, often also for programmers who don't even use this feature. Sql uses a more light-weight approach to the problem. It allows to open a database in an asynchronous mode, such that any Exec statement only starts a query. The procedure immediately returns; i.e., it doesn't block the rest of the framework, and thus the user, from further work. When the result of the query is ready, the program is notified and can continue its work, using the results of the query.
+
 Conceptually, the procedures Exec, Clear, Read and Call for an asynchronously accessed database are not executed right away when the procedure is called. Instead, the operations are queued in SqlDB, with one queue for the database and one queue for each table on this database. These queues are processed in the background. The results can be accessed when they are ready (indicated by Table.Available). Polling a table whether a pending Exec has returned a result may be done with a Services.Action. However, SqlDB provides a more convenient means, namely a table's or a database's Call procedure. The idea is that one or several asynchronous operations are started, and then a continuation procedure is set up by calling Call(ContinuationProc, someData). When the previous operations in the queue have terminated, the continuation procedure is called. In the continuation procedure, it can be assumed that the result of the most recent operation is now available. Thus, Call allows to chain several delayed operations, without having to deal explicitly with actions or with the synchronization problems of threads. Call must be used to break up a procedure into a chain of asynchronously executed procedures whenever the procedure needs to directly manipulate the results of an asynchronous query, i.e. before the next Read is performed. (Several successive Reads on the same result table need not be broken up by Call, since once the result table has become available, it remains available unless a new query is started.)
 The following example shows a chain of procedures linked by Call statements:
 
@@ -289,10 +302,13 @@ Even if a particular driver does not support true asynchronous operation, the as
 
 
 SqlDrivers
+
 File Sql/Mod/ObxDriv contains a template of a new Sql driver. Its empty parts can be filled out to create a new driver for a database not yet supported by Sql, or to avoid the use of ODBC.
 
 
-ODBC driver (Windows only)
+
+ODBC driver
+
 Microsoft's Open Database Connectivity (ODBC) is an interface standard for accessing relational SQL databases. There are ODBC drivers for most relational products, and even for some non-relational databases.
 
 SqlOdbc is an Sql driver which builds a bridge to the ODBC driver manager. Given a suitable 32-bit ODBC driver, this allows to use a database via ODBC and Sql.
@@ -319,10 +335,12 @@ For further information on ODBC, please consult the Microsoft literature and sof
 
 
 SqlDB
+
 See the on-line documentation.
 
 
 Clearing Database and Table pointers
+
 An open database need and cannot be closed explicitly. BlackBox closes it automatically when there exist no more references to it. This is accomplished by the garbage collector. When the garbage collector detects that a database object isn't accessible anymore, it finalizes (i.e., closes) it.
 For the programmer it is important to make sure that no global database or table pointers are left which anchor the database object, and thus would prevent garbage collection.
 
@@ -364,6 +382,7 @@ Note that actually the anchor controls can be used universally for any kind of p
 
 
 Displaying tables
+
 Often it is necessary to display result tables in tabular fashion. For this purpose, module SqlControls provides table controls. Tables cannot be edited, but its possible to select a field in a table.
 A table control needs to be linked to a global variable of type SqlDB.Table.
 A table control may also denote a notifier with the following signature:
@@ -378,6 +397,7 @@ When a table control is generated by a program, it is not necessary to link it t
 
 
 Design rules
+
 This section gives some rules which should be followed when designing a database application. The reason for each rule is given after the rule.
 
 Interactors or at least their types must be exported if they should be used as place holders in SQL statements.
@@ -403,7 +423,8 @@ After an SQL statement which may render a row inconsistent with the database, us
 (For example, an interactor may still contain the value of a row which has just been deleted through a DELETE statement. Exec on the table will flush the old result table and possibly assign a new one.)
 
 
-Example
+Example
+
 This very simple example allows to insert, update, delete, and find rows in a database. A row consists of an integer id, two strings name and ceo, and an integer employees. The application consists of a core logic module (SqlObxDB) and a user interface module with guards and notifiers (SqlObxUI).
 
 SqlObxDB			SqlObxUI
@@ -445,7 +466,7 @@ In order to run the examples provided by the Sql subsystem, some sample tables h
 		owned	INTEGER,
 		percent	INTEGER)
 
-Windows:
+
 By default, the ODBC Text drivers are installed, for which the example database has already been created, so you don't need to perform the above CREATE TABLE statements anymore.
 
 The modules SqlObxDB, SqlObxExt, SqlObxGen, and SqlObxInit contain ODBC-specific references (protocol, datasource, id, password) which have to be adapted before using them if another database driver is used instead of the SqlOdbc driver. It is sufficient to change the constant declarations appropriately.

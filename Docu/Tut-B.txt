@@ -1,4 +1,7 @@
-Appendix B: Differences between Pascal and Component Pascal
+
+Appendix B:
+Differences between Pascal and Component Pascal
+
 
 Eliminated Features
 
@@ -9,7 +12,7 @@ Use a standard integer type instead.
 Use integer constants instead.
 
 • Arbitrary array ranges
-Arrays are always defined over the integer range 0..max-1.
+Arrays are always defined over the integer range 0..length-1.
 
 Example
 	A = ARRAY 16 OF INTEGER	(* legal indices are in the range 0..15 *)
@@ -18,7 +21,8 @@ Example
 Type SET denotes the integer set which may include the elements 0..31.
 
 • No explicit DISPOSE
-Memory is reclaimed automatically by the garbage collector. Instead of calling DISPOSE, simply set the variable to NIL.
+Memory is reclaimed automatically by the garbage collector.
+Instead of calling DISPOSE, simply set the variable to NIL.
 	
 • No variant records
 Use record extension instead.
@@ -72,7 +76,9 @@ Small letters are distinguished from capital letters.
 Example	"proc" is not the same as "Proc".
 
 • String syntax
-String literals are either enclosed between " or between '. There cannot be both single and double quotes in one string. String literals of length one are assignment-compatible to character variables.
+String literals are either enclosed between " or between '.
+There cannot be both single and double quotes in one string.
+String literals of length one are assignment-compatible to character variables.
 
 Examples
 	"That's great"	'Write "hello world" to the screen'
@@ -134,8 +140,7 @@ Example
 BEGIN can only occur before a statement sequence, but not in it. IF, WHILE, and LOOP are always terminated by END.
 
 • WITH statement
-A WITH statement is a regional type guard, it does not imply a hidden variable and does not open a new scope.
-See language reference for more details.
+A WITH statement is a regional type guard, it does not imply a hidden variable and does not open a new scope. See language reference for more details.
 
 • ELSIF
 IF statements can have several branches.

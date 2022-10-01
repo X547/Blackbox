@@ -24,7 +24,7 @@ MODULE StdInterpreter;
 
 		
 	PROCEDURE (hook: CallHook) Call (IN proc, errorMsg: ARRAY OF CHAR; VAR res: INTEGER);
-		TYPE Ident = ARRAY 32 OF CHAR;
+		TYPE Ident = Kernel.Name;
 		CONST
 			modNotFound = 10; procNotFound = 11; identExpected = 12; unknownIdent = 13;
 			depositExpected = 14; noDepositExpected = 15; syntaxError = 16;
@@ -141,14 +141,10 @@ MODULE StdInterpreter;
 					type := int; j := 0;
 					REPEAT num[j] := ch; INC(j); GetCh UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "H");
 					num[j] := 0X; Strings.StringToInt(num, x, r)
-				ELSIF (ch >= "a") & (ch <= "z") OR (ch >= "A") & (ch <= "Z") OR
-						(ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_") THEN
+				ELSIF Strings.IsIdentStart(ch) THEN
 					type := ident;
 					id[0] := ch; j := 1; GetCh;
-					WHILE (ch # 0X) & (i < LEN(proc)) &
-								((ch >= "a") & (ch <= "z") OR (ch >= "A") & (ch <= "Z") OR
-								(ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR
-								(ch = "_") OR (ch >= "0") & (ch <= "9")) DO
+					WHILE (ch # 0X) & (i < LEN(proc)) & Strings.IsIdent(ch) DO
 						id[j] := ch; INC(j); GetCh
 					END;
 					id[j] := 0X

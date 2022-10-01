@@ -1,5 +1,4 @@
-ComEnumRect Example
-
+ComEnumRect Example
 This is a simple example adapted form the same example in the book "Inside OLE". 
 
 The interface IEnumRECT (an enumerator for rectangles) is defined and implemented in this module.
@@ -19,4 +18,3 @@ As the interface is implemented in one record (EnumRECT), the default implementa
 
 
 ComEnumRect  sources
-	

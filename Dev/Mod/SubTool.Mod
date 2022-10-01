@@ -11,7 +11,8 @@ MODULE DevSubTool;
 
 **)
 
-	IMPORT Files, Fonts, Views, TextModels, TextMappers, TextViews, StdCmds, StdLog, DevCommanders;
+	IMPORT Strings, Files, Fonts, Views, TextModels, TextMappers, TextViews, StdCmds, Dialog,
+		DevCommanders;
 
 	CONST
 		textCmds* = 0; formCmds* = 1; otherCmds = 2;
@@ -20,7 +21,7 @@ MODULE DevSubTool;
 
 	VAR
 		create*: RECORD
-			subsystem*: ARRAY 9 OF CHAR;
+			subsystem*: ARRAY 16 OF CHAR;
 			kind*: INTEGER;
 			Create*: PROCEDURE
 		END;
@@ -73,11 +74,12 @@ MODULE DevSubTool;
 			v: Views.View;
 
 		PROCEDURE Message (sub, dir, old: ARRAY OF CHAR);
+			VAR dummy: INTEGER;
 		BEGIN
 			IF res = 0 THEN
 				f.WriteString(sub); f.WriteString(dir); f.WriteLn
 			ELSE
-				StdLog.String(old); StdLog.Msg("#Dev:CannotTranslate"); StdLog.Ln
+				Dialog.GetOK("#Dev:CannotTranslate", old, "", "", {Dialog.ok}, dummy)
 			END
 		END Message;
 
@@ -147,35 +149,36 @@ MODULE DevSubTool;
 		IF t.Length() > 0 THEN Views.RegisterView(v, new, "List") END
 	END TranslateSubsystem;
 
-	PROCEDURE Len (s: ARRAY OF CHAR): INTEGER;
-		VAR n: INTEGER;
-	BEGIN
-		n := 0; WHILE s[n] # 0X DO INC(n) END;
-		RETURN n
-	END Len;
-
-	PROCEDURE SyntaxOK (s: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE SyntaxOK(IN s: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; ch: CHAR;
 	BEGIN
 		i := 0; ch := s[0];
-		WHILE (ch >= "A") & (ch <= "Z") DO INC(i); ch := s[i] END;
-		WHILE (i # 0) & (ch >= "a") & (ch <= "z") OR (ch >= "0") & (ch <= "9") DO INC(i); ch := s[i] END;
-		RETURN (i # 0) & (ch = 0X)
+		IF ~Strings.IsIdentStart(ch) THEN RETURN FALSE END ;
+		WHILE Strings.IsUpper(ch) DO INC(i); ch := s[i] END ;
+		IF ch = 0X THEN RETURN FALSE END ;
+		WHILE Strings.IsIdent(ch) & ~Strings.IsUpper(ch) DO INC(i); ch := s[i] END ;
+		RETURN ch = 0X
 	END SyntaxOK;
 
 	PROCEDURE Create;
+		VAR res: INTEGER;
 	BEGIN
-		IF Len(create.subsystem) >= 3 THEN
-			IF (create.kind >= textCmds) & (create.kind <= generalContainer) THEN
-				IF SyntaxOK(create.subsystem) THEN
-					StdCmds.CloseDialog;
-					TranslateSubsystem(create.kind, create.subsystem);
-					create.subsystem := ""
-				ELSE StdLog.Msg("#Dev:IllegalSyntax")
-				END
-			ELSE StdLog.Msg("#Dev:IllegalKind")
+		IF (LEN(create.subsystem$) < 3) THEN
+			Dialog.GetOK("#Dev:PrefixTooShort", "", "", "", {Dialog.ok, Dialog.cancel}, res);
+			IF res = Dialog.cancel THEN RETURN END
+		END ;
+		IF ~Strings.IsUpper(create.subsystem[0]) THEN
+			Dialog.GetOK("#Dev:NotUppercase", "", "", "", {Dialog.ok, Dialog.cancel}, res);
+			IF res = Dialog.cancel THEN RETURN END
+		END ;
+		IF (create.kind >= textCmds) & (create.kind <= generalContainer) THEN
+			IF SyntaxOK(create.subsystem) THEN
+				StdCmds.CloseDialog;
+				TranslateSubsystem(create.kind, create.subsystem);
+				create.subsystem := ""
+			ELSE Dialog.GetOK("#Dev:IllegalSyntax", "", "", "", {Dialog.ok}, res)
 			END
-		ELSE StdLog.Msg("#Dev:PrefixTooShort")
+		ELSE Dialog.GetOK("#Dev:IllegalKind", "", "", "", {Dialog.ok}, res)
 		END
 	END Create;
 

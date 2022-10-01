@@ -243,12 +243,12 @@ MODULE DevCPC486;
 			s1 := s - hint;
 			IF high IN hint THEN s1 := s1 * {0..3} END;
 			IF s1 # {} THEN s := s1 END;
-			IF 0 IN s THEN n := 0
-			ELSIF 2 IN s THEN n := 2
-			ELSIF 6 IN s THEN n := 6
-			ELSIF 7 IN s THEN n := 7
-			ELSIF 1 IN s THEN n := 1
-			ELSE n := 3
+			IF AX IN s THEN n := AX
+			ELSIF DX IN s THEN n := DX
+			ELSIF CX IN s THEN n := CX
+			ELSIF SI IN s THEN n := SI
+			ELSIF DI IN s THEN  n := DI
+			ELSE n := BX (* not used *)
 			END;
 			EXCL(WReg, n);
 			IF n < 4 THEN EXCL(BReg, n); EXCL(BReg, n + 4) END
@@ -381,7 +381,6 @@ MODULE DevCPC486;
 	END Push;
 	
 	PROCEDURE Assert* (VAR x: DevCPL486.Item; hint, stop: SET);
-		VAR r: DevCPL486.Item;
 	BEGIN
 		IF (short IN stop) & (x.form IN {Int8, Int16, Bool, Char8, Char16}) & (x.mode # Con) THEN
 			IF (wreg - stop = {}) & ~(stk IN stop) THEN Load(x, {}, {short}); Push(x)
@@ -597,7 +596,7 @@ MODULE DevCPC486;
 	PROCEDURE GuidFromString* (str: DevCPT.ConstExt; VAR x: DevCPL486.Item);
 		VAR cv: DevCPT.Const;
 	BEGIN
-		IF ~DevCPM.ValidGuid(str^) THEN DevCPM.err(165) END;
+		IF ~DevCPM.ValidGuid(str) THEN DevCPM.err(165) END;
 		cv := DevCPT.NewConst();
 		cv.intval := DevCPM.ConstNotAlloc; cv.intval2 := 16; cv.ext := str;
 		DevCPL486.AllocConst(x, cv, Guid); x.typ := DevCPT.guidtyp
@@ -970,7 +969,8 @@ MODULE DevCPC486;
 				| Int64:
 						IF f IN {Bool..Int32, Char16} THEN
 							(* make range checks !!! *)
-							FreeHi(y)
+							FreeHi(y);
+							IF f IN {Bool..Int8} THEN y.form := Int32; FreeHi(y) END
 						END
 				END
 			END;
@@ -1031,8 +1031,10 @@ MODULE DevCPC486;
 		IF (size >= 0)
 			& ((size # x.typ.size) & ((size > 4) OR (x.typ.size > 4))
 				OR (f IN {Comp, Real64}) & (x.mode IN {Reg, Stk})
-				OR (f  = Int64) & (x.mode = Stk)) THEN DevCPM.err(220) END;
-		y.mode := Undef; y.form := f; ConvMove(y, x, size >= 0, hint, stop)
+				OR (f = Int64) & (x.mode = Stk)) THEN DevCPM.err(261)
+		ELSE
+			y.mode := Undef; y.form := f; ConvMove(y, x, size >= 0, hint, stop)
+		END
 	END Convert;
 
 	PROCEDURE LoadCond* (VAR x, y: DevCPL486.Item; F, T: DevCPL486.Label; hint, stop: SET);
@@ -1146,6 +1148,7 @@ MODULE DevCPC486;
 			END
 		(* largeint support *)
 		| div:
+			IF y.mode # Reg THEN LoadR(y); rev := ~rev END;
 			IF rev THEN DevCPL486.GenFDOp(FDIVR, y) ELSE DevCPL486.GenFDOp(FDIV, y) END;
 			Floor(y, FALSE)
 		| mod:
@@ -1253,7 +1256,6 @@ MODULE DevCPC486;
 	END MakeCond;
 	
 	PROCEDURE Not* (VAR x: DevCPL486.Item);
-		VAR a: INTEGER;
 	BEGIN
 		x.offset := Inverted(x.offset); (* invert cc *)
 	END Not;
@@ -1311,7 +1313,7 @@ MODULE DevCPC486;
 	END Shift;
 
 	PROCEDURE DivMod* (VAR x, y: DevCPL486.Item; mod: BOOLEAN);
-		VAR s: SET; r: DevCPL486.Item; pos: BOOLEAN;
+		VAR r: DevCPL486.Item; pos: BOOLEAN;
 	BEGIN
 		ASSERT((x.mode = Reg) & (x.reg = AX)); pos := FALSE;
 		IF y.mode = Con THEN pos := (y.offset > 0) & (y.obj = NIL); Load(y, {}, {AX, DX, con}) END;
@@ -1359,7 +1361,6 @@ MODULE DevCPC486;
 	END StringWSize;
 
 	PROCEDURE CmpString* (VAR x, y: DevCPL486.Item; rel: BYTE; rev: BOOLEAN);
-		VAR sw, dw: INTEGER;
 	BEGIN
 		CheckAv(CX);
 		IF (x.typ = DevCPT.guidtyp) OR (y.typ = DevCPT.guidtyp) THEN
@@ -1859,8 +1860,9 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 					Result(x.obj.link, tag)	(* use result load for first parameter *)
 				END
 			END;
-			i := 1; n := ORD(x.obj.conval.ext^[0]);
-			WHILE i <= n DO DevCPL486.GenCode(ORD(x.obj.conval.ext^[i])); INC(i) END
+			IF x.obj.conval.ext # NIL THEN i := 0; n := LEN(x.obj.conval.ext^);
+				WHILE i < n DO DevCPL486.GenCode(ORD(x.obj.conval.ext^[i])); INC(i) END
+			END
 		ELSE	(* proc var *)
 			DevCPL486.GenCall(x); Free(x);
 			IF x.typ.sysflag = ccall THEN	(* remove parameters *)
@@ -2210,7 +2212,7 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 	END Enter;
 	
 	PROCEDURE Exit* (proc: DevCPT.Object; empty: BOOLEAN);
-		VAR sp, fp, r, x: DevCPL486.Item; mode: SHORTINT; size: INTEGER;
+		VAR sp, fp, r, x: DevCPL486.Item; size: INTEGER;
 	BEGIN
 		DevCPL486.MakeReg(sp, SP, Pointer); DevCPL486.MakeReg(fp, BP, Pointer);
 		IF proc # NIL THEN (* exit proc *)

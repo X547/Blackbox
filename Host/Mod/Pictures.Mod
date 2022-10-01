@@ -269,13 +269,13 @@ MODULE HostPictures;
 		PROCEDURE Polyline (VAR poly: ARRAY OF WinApi.POINT; len: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := WinApi.Polyline(dc, poly[0], len) END
+			IF ~clipped THEN res := WinApi.Polyline(dc, poly, len) END
 		END Polyline;
 		
 		PROCEDURE Polygon (VAR poly: ARRAY OF WinApi.POINT; len: INTEGER);
 			VAR res: INTEGER;
 		BEGIN
-			IF ~clipped THEN res := WinApi.Polygon(dc, poly[0], len) END
+			IF ~clipped THEN res := WinApi.Polygon(dc, poly, len) END
 		END Polygon;
 		
 	BEGIN

@@ -13,7 +13,7 @@ MODULE DevTypeLibs;
 
 	(* Code that is only reached with wrapper in options. Code that is not reached with wrapper in options. *)
 		
-	IMPORT COM, WinOle, WinOleAut, TextModels, TextMappers;
+	IMPORT COM, WinOle, WinOleAut, TextModels, TextMappers, Strings;
 
 	CONST
 		(* options *)
@@ -32,6 +32,7 @@ MODULE DevTypeLibs;
 		modules: ARRAY 16, 64 OF CHAR;
 		noMod: INTEGER;
 		retName: ARRAY 156 OF CHAR;
+		emptyenum: BOOLEAN; (* constant 'emptyenum' has been defined *)
 
 	PROCEDURE WriteBSTR (s: WinOle.BSTR; VAR out: TextMappers.Formatter);
 	BEGIN
@@ -388,7 +389,15 @@ MODULE DevTypeLibs;
 		VAR n: INTEGER; name, s, t: WinOle.BSTR; res: COM.RESULT; e: SHORTINT;
 	BEGIN
 		res := tinfo.GetNames(var.memid, name, 1, n);
-		out.WriteTab; out.WriteTab; out.WriteTab; WriteBSTR(name, out);
+		out.WriteTab; out.WriteTab; out.WriteTab;
+		IF name^ = "emptyenum" THEN (* required e.g. for Microsoft Word 15; define 'emptyenum' only once *)
+			IF emptyenum THEN (* already defined *)
+				out.WriteSString("(* emptyenum *)"); out.WriteLn;
+				WinOleAut.SysFreeString(name); RETURN
+			END;
+			emptyenum := TRUE
+		END;
+		WriteBSTR(name, out);
 		WinOleAut.SysFreeString(name);
 		IF var.varkind = WinOleAut.VAR_CONST THEN 
 			out.WriteSString("* = "); WriteVariant(var.u.lpvarValue^, out)
@@ -505,7 +514,7 @@ MODULE DevTypeLibs;
 			hasVar := FALSE;
 			IF par > 0 THEN
 				IF ~hasVar THEN out.WriteTab; out.WriteTab; out.WriteSString("VAR"); hasVar := TRUE END;
-				out.WriteString(" arg: ARRAY "); out.WriteInt(par);
+				out.WriteString(" argv: ARRAY "); out.WriteInt(par);
 				out.WriteString(" OF CtlT.Variant;")
 			END;
 			IF hasRet THEN
@@ -538,7 +547,7 @@ MODULE DevTypeLibs;
 				WriteShortType(type, tinfo, out);
 				out.WriteSString("Var("); WriteBSTR(names[i + 1], out);
 				IF (kind # value) & IsSpecial(type, tinfo) THEN out.WriteString("_TEMP") END;
-				out.WriteSString(", arg["); out.WriteInt(par - i - 1);
+				out.WriteSString(", argv["); out.WriteInt(par - i - 1);
 				out.WriteSString("]);"); out.WriteLn;
 				INC(i)
 			END;
@@ -553,7 +562,7 @@ MODULE DevTypeLibs;
 			ELSE out.WriteSString("CtlC.CallParMethod(this, ")
 			END;
 			out.WriteInt(id);
-			IF par > 0 THEN out.WriteSString(", arg") END;
+			IF par > 0 THEN out.WriteSString(", argv") END;
 			IF hasRet THEN out.WriteSString(", ret") ELSE out.WriteSString(", NIL") END;
 			out.WriteSString(");"); out.WriteLn;
 			i := 0;
@@ -792,6 +801,8 @@ MODULE DevTypeLibs;
 			i := 0;
 			WHILE i < func.cParams DO
 				IF i > 0 THEN out.WriteSString("; ") END;
+				names[i+1, 0] := Strings.Lower(names[i+1, 0]);  (* lowercase first char avoids many name conflicts 
+																					with type names, which typically start with uppercase *)
 				IF i = func.cParams - ABS(func.cParamsOpt) THEN out.WriteSString("(* optional *) ") END;
 				ShowParam(func.lprgelemdescParam[i], names[i + 1], tinfo, opts, out);
 				INC(i)
@@ -1270,6 +1281,7 @@ MODULE DevTypeLibs;
 			attr: WinOleAut.PtrTLIBATTR; tinfo, ti: WinOleAut.ITypeInfo; kind: WinOleAut.TYPEKIND;
 			t: WinOleAut.HREFTYPE;
 	BEGIN
+		emptyenum := FALSE;
 		res := tlib.GetDocumentation(-1, s1, s2, n, s3); ASSERT(res >= 0, 100);
 		modules[0] := s1$; WinOleAut.SysFreeString(s1);
 		modules[1] := "CtlT"; modules[2] := "CtlC"; noMod := 3;

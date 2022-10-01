@@ -6,7 +6,10 @@ MODULE HostMechanisms;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	changes	= ""
+	changes	= "
+	- 20070131, bh, Unicode support
+	- 20151204, center #91, bug fix in HostMechanisms.PopUpAndSelect
+	"
 	issues	= ""
 
 **)
@@ -734,7 +737,7 @@ MODULE HostMechanisms;
 				IF ~enabled[j] THEN
 					res := WinApi.EnableMenuItem(menu, 32000 + j, WinApi.MF_GRAYED)
 				ELSIF checked[j] THEN
-					res := WinApi.CheckMenuItem(menu, 32000 + j, WinApi.MF_GRAYED)
+					res := WinApi.CheckMenuItem(menu, 32000 + j, WinApi.MF_CHECKED)
 				END
 			END;
 			INC(j)

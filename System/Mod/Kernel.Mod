@@ -60,7 +60,8 @@ MODULE Kernel;
 
 
 	TYPE
-		Name* = ARRAY nameLen OF SHORTCHAR;
+		Name* = ARRAY nameLen OF CHAR;
+		Utf8Name* = ARRAY nameLen OF SHORTCHAR;
 		Command* = PROCEDURE;
 
 		Module* = POINTER TO RECORD [untagged]
@@ -78,7 +79,7 @@ MODULE Kernel;
 			ptrs-: POINTER TO ARRAY [untagged] OF INTEGER;
 			imports-: POINTER TO ARRAY [untagged] OF Module;
 			export-: Directory;	(* exported objects (name sorted) *)
-			name-: Name
+			name-: Utf8Name
 		END;
 
 		Type* = POINTER TO RECORD [untagged]
@@ -276,27 +277,27 @@ MODULE Kernel;
 
 	(* code procedures for exception handling *)
 
-	PROCEDURE [1] PushFP 055H;
-	PROCEDURE [1] PopFP 05DH;
-	PROCEDURE [1] PushBX 053H;
-	PROCEDURE [1] PopBX 05BH;
-	PROCEDURE [1] PushSI 056H;
-	PROCEDURE [1] PopSI 05EH;
-	PROCEDURE [1] PushDI 057H;
-	PROCEDURE [1] PopDI 05FH;
-	PROCEDURE [1] LdSP8 08DH, 065H, 0F8H;
-	PROCEDURE [1] Return0 (ret: INTEGER) 0C3H;
-	PROCEDURE [1] ReturnCX (ret: INTEGER) 05AH, 001H, 0CCH, 0FFH, 0E2H;
+	PROCEDURE [code] PushFP 055H;
+	PROCEDURE [code] PopFP 05DH;
+	PROCEDURE [code] PushBX 053H;
+	PROCEDURE [code] PopBX 05BH;
+	PROCEDURE [code] PushSI 056H;
+	PROCEDURE [code] PopSI 05EH;
+	PROCEDURE [code] PushDI 057H;
+	PROCEDURE [code] PopDI 05FH;
+	PROCEDURE [code] LdSP8 08DH, 065H, 0F8H;
+	PROCEDURE [code] Return0 (ret: INTEGER) 0C3H;
+	PROCEDURE [code] ReturnCX (ret: INTEGER) 05AH, 001H, 0CCH, 0FFH, 0E2H;
 		(* POP DX; ADD SP,CX; JP DX *)
-	PROCEDURE [1] FPageWord (offs: INTEGER): INTEGER 64H, 8BH, 0H;	(* MOV EAX,FS:[EAX] *)
-	PROCEDURE [1] InstallExcp* (VAR e: ExcpFrame) 64H, 8BH, 0DH, 0, 0, 0, 0, 89H, 8, 64H, 0A3H, 0, 0, 0, 0;
-	PROCEDURE [1] RemoveExcp* (VAR e: ExcpFrame) 8BH, 0, 64H, 0A3H, 0, 0, 0, 0;
+	PROCEDURE [code] FPageWord (offs: INTEGER): INTEGER 64H, 8BH, 0H;	(* MOV EAX,FS:[EAX] *)
+	PROCEDURE [code] InstallExcp* (VAR e: ExcpFrame) 64H, 8BH, 0DH, 0, 0, 0, 0, 89H, 8, 64H, 0A3H, 0, 0, 0, 0;
+	PROCEDURE [code] RemoveExcp* (VAR e: ExcpFrame) 8BH, 0, 64H, 0A3H, 0, 0, 0, 0;
 
 	(* code procedures for fpu *)
 
-	PROCEDURE [1] FINIT 0DBH, 0E3H;
-	PROCEDURE [1] FLDCW 0D9H, 06DH, 0FCH;	(* -4, FP *)
-	PROCEDURE [1] FSTCW 0D9H, 07DH, 0FCH;	(* -4, FP *)
+	PROCEDURE [code] FINIT 0DBH, 0E3H;
+	PROCEDURE [code] FLDCW 0D9H, 06DH, 0FCH;	(* -4, FP *)
+	PROCEDURE [code] FSTCW 0D9H, 07DH, 0FCH;	(* -4, FP *)
 
 	(* code procedure for memory erase *)
 
@@ -453,6 +454,103 @@ MODULE Kernel;
 
 	(* -------------------- miscellaneous tools -------------------- *)
 
+	PROCEDURE IsAlpha* (ch: CHAR): BOOLEAN;
+		VAR type: SHORTINT; res: INTEGER;
+	BEGIN
+		(* note that WinApi.IsCharAlphaW returns FALSE for all Hiragana and Katakana syllables and is slower *)
+		res := WinApi.GetStringTypeW(WinApi.CT_CTYPE1, S.VAL(WinApi.PtrWSTR, S.ADR(ch)), 1, type);
+		RETURN BITS(WinApi.C1_ALPHA) * BITS(type) # {}
+	END IsAlpha;
+
+	PROCEDURE Upper* (ch: CHAR): CHAR;
+	BEGIN
+		IF ("a" <= ch) & (ch <= "z") THEN RETURN CAP(ch) (* common case optimized *)
+		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharUpperW( S.VAL(WinApi.PtrWSTR, ch )))
+		ELSE RETURN ch
+		END
+	END Upper;
+
+	PROCEDURE IsUpper* (ch: CHAR): BOOLEAN;
+	BEGIN
+		IF ("A" <= ch) & (ch <= "Z") THEN RETURN TRUE
+		ELSIF ch > 7FX THEN RETURN WinApi.IsCharUpperW(ch) # 0
+		ELSE RETURN FALSE
+		END
+	END IsUpper;
+
+	PROCEDURE Lower* (ch: CHAR): CHAR;
+	BEGIN
+		IF ("A" <= ch) & (ch <= "Z") THEN RETURN CHR(ORD(ch) + 32)
+		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ch)))
+		ELSE RETURN ch
+		END
+	END Lower;
+
+	PROCEDURE IsLower* (ch: CHAR): BOOLEAN;
+	BEGIN
+		IF ("a" <= ch) & (ch <= "z") THEN RETURN TRUE
+		ELSIF ch > 7FX THEN RETURN WinApi.IsCharLowerW(ch) # 0
+		ELSE RETURN FALSE
+		END
+	END IsLower;
+
+	PROCEDURE Utf8ToString* (IN in: ARRAY OF SHORTCHAR; OUT out: ARRAY OF CHAR; 
+											OUT res: INTEGER);
+		VAR i, j, val, max: INTEGER; ch: SHORTCHAR;
+		
+		PROCEDURE FormatError();
+		BEGIN out := in$; res := 2 (*format error*)
+		END FormatError;
+		
+	BEGIN
+		ch := in[0]; i := 1; j := 0; max := LEN(out) - 1;
+		WHILE (ch # 0X) & (j < max) DO
+			IF ch < 80X THEN
+				out[j] := ch; INC(j)
+			ELSIF ch < 0E0X THEN
+				val := ORD(ch) - 192;
+				IF val < 0 THEN FormatError; RETURN END ;
+				ch := in[i]; INC(i); val := val * 64 + ORD(ch) - 128;
+				IF (ch < 80X) OR (ch >= 0E0X) THEN FormatError; RETURN END ;
+				out[j] := CHR(val); INC(j)
+			ELSIF ch < 0F0X THEN 
+				val := ORD(ch) - 224;
+				ch := in[i]; INC(i); val := val * 64 + ORD(ch) - 128;
+				IF (ch < 80X) OR (ch >= 0E0X) THEN FormatError; RETURN END ;
+				ch := in[i]; INC(i); val := val * 64 + ORD(ch) - 128;
+				IF (ch < 80X) OR (ch >= 0E0X) THEN FormatError; RETURN END ;
+				out[j] := CHR(val); INC(j)
+			ELSE
+				FormatError; RETURN
+			END ;
+			ch := in[i]; INC(i)
+		END;
+		out[j] := 0X;
+		IF ch = 0X THEN res := 0 (*ok*) ELSE res := 1 (*truncated*) END
+	END Utf8ToString;
+
+	PROCEDURE StringToUtf8* (IN in: ARRAY OF CHAR; OUT out: ARRAY OF SHORTCHAR; 
+											OUT res: INTEGER);
+		VAR i, j, val, max: INTEGER;
+	BEGIN
+		i := 0; j := 0; max := LEN(out) - 3;
+		WHILE (in[i] # 0X) & (j < max) DO
+			val := ORD(in[i]); INC(i);
+			IF val < 128 THEN
+				out[j] := SHORT(CHR(val)); INC(j)
+			ELSIF val < 2048 THEN
+				out[j] := SHORT(CHR(val DIV 64 + 192)); INC(j);
+				out[j] := SHORT(CHR(val MOD 64 + 128)); INC(j)
+			ELSE
+				out[j] := SHORT(CHR(val DIV 4096 + 224)); INC(j); 
+				out[j] := SHORT(CHR(val DIV 64 MOD 64 + 128)); INC(j);
+				out[j] := SHORT(CHR(val MOD 64 + 128)); INC(j)
+			END;
+		END;
+		out[j] := 0X;
+		IF in[i] = 0X THEN res := 0 (*ok*) ELSE res :=  1 (*truncated*) END
+	END StringToUtf8;
+
 	PROCEDURE SplitName* (name: ARRAY OF CHAR; VAR head, tail: ARRAY OF CHAR);
 		(* portable *)
 		VAR i, j: INTEGER; ch, lch: CHAR;
@@ -461,9 +559,8 @@ MODULE Kernel;
 		IF ch # 0X THEN
 			REPEAT
 				head[i] := ch; lch := ch; INC(i); ch := name[i]
-			UNTIL (ch = 0X)
-				OR ((ch >= "A") & (ch <= "Z") OR (ch >= "À") & (ch # "×") & (ch <= "Þ"))
-					& ((lch < "A") OR (lch > "Z") & (lch < "À") OR (lch = "×") OR (lch > "Þ"));
+			UNTIL (ch = 0X) OR (ch = ".") OR IsUpper(ch) & ~IsUpper(lch);
+			IF ch = "." THEN i := 0; ch := name[0] END;
 			head[i] := 0X; j := 0;
 			WHILE ch # 0X DO tail[j] := ch; INC(i); INC(j); ch := name[i] END;
 			tail[j] := 0X;
@@ -479,16 +576,15 @@ MODULE Kernel;
 		WHILE (name[i] # 0X) & (name[i] # ".") DO INC(i) END;
 		IF name[i] = "." THEN
 			IF name[i + 1] = 0X THEN name[i] := 0X END
-		ELSIF i < LEN(name) - 4 THEN
+		ELSE
 			IF type = "" THEN ext := docType ELSE ext := type$ END;
-			name[i] := "."; INC(i); j := 0; ch := ext[0];
-			WHILE ch # 0X DO
-				IF (ch >= "A") & (ch <= "Z") THEN
-					ch := CHR(ORD(ch) + ORD("a") - ORD("A"))
+			IF i < LEN(name) - LEN(ext$) - 1 THEN
+				name[i] := "."; INC(i); j := 0; ch := ext[0];
+				WHILE ch # 0X DO
+					name[i] := Lower(ch); INC(i); INC(j); ch := ext[j]
 				END;
-				name[i] := ch; INC(i); INC(j); ch := ext[j]
-			END;
-			name[i] := 0X
+				name[i] := 0X
+			END
 		END
 	END MakeFileName;
 
@@ -864,7 +960,7 @@ MODULE Kernel;
 
 	(* -------------------- meta information (portable) --------------------- *)
 
-	PROCEDURE (h: LoaderHook) ThisMod* (IN name: ARRAY OF SHORTCHAR): Module, NEW, ABSTRACT;
+	PROCEDURE (h: LoaderHook) ThisMod* (IN name: ARRAY OF CHAR): Module, NEW, ABSTRACT;
 
 	PROCEDURE SetLoaderHook*(h: LoaderHook);
 	BEGIN
@@ -882,26 +978,25 @@ MODULE Kernel;
 		END
 	END InitModule;
 
-	PROCEDURE ThisLoadedMod* (IN name: ARRAY OF SHORTCHAR): Module;	(* loaded modules only *)
-		VAR m: Module;
+	PROCEDURE ThisLoadedMod* (IN name: ARRAY OF CHAR): Module;	(* loaded modules only *)
+		VAR m: Module; res: INTEGER; n: Utf8Name;
 	BEGIN
+		StringToUtf8(name, n, res); ASSERT(res = 0);
 		loadres := done;
 		m := modList;
-		WHILE (m # NIL) & ((m.name # name) OR (m.refcnt < 0)) DO m := m.next END;
+		WHILE (m # NIL) & ((m.name # n) OR (m.refcnt < 0)) DO m := m.next END;
 		IF (m # NIL) & ~(init IN m.opts) THEN InitModule(m) END;
 		IF m = NIL THEN loadres := moduleNotFound END;
 		RETURN m
 	END ThisLoadedMod;
 
 	PROCEDURE ThisMod* (IN name: ARRAY OF CHAR): Module;
-		VAR n : Name;
 	BEGIN
-		n := SHORT(name$);
 		IF loader # NIL THEN
 			loader.res := done;
-			RETURN loader.ThisMod(n)
+			RETURN loader.ThisMod(name)
 		ELSE
-			RETURN ThisLoadedMod(n)
+			RETURN ThisLoadedMod(name)
 		END
 	END ThisMod;
 
@@ -926,15 +1021,16 @@ MODULE Kernel;
 		END
 	END GetLoaderResult;
 
-	PROCEDURE ThisObject* (mod: Module; name: ARRAY OF SHORTCHAR): Object;
-		VAR l, r, m: INTEGER; p: StrPtr;
+	PROCEDURE ThisObject* (mod: Module; IN name: ARRAY OF CHAR): Object;
+		VAR l, r, m, res: INTEGER; p: StrPtr; n: Utf8Name;
 	BEGIN
+		StringToUtf8(name, n, res); ASSERT(res = 0);
 		l := 0; r := mod.export.num;
 		WHILE l < r DO	(* binary search *)
 			m := (l + r) DIV 2;
 			p := S.VAL(StrPtr, S.ADR(mod.names[mod.export.obj[m].id DIV 256]));
-			IF p^ = name THEN RETURN S.VAL(Object, S.ADR(mod.export.obj[m])) END;
-			IF p^ < name THEN l := m + 1 ELSE r := m END
+			IF p^ = n THEN RETURN S.VAL(Object, S.ADR(mod.export.obj[m])) END;
+			IF p^ < n THEN l := m + 1 ELSE r := m END
 		END;
 		RETURN NIL
 	END ThisObject;
@@ -950,20 +1046,21 @@ MODULE Kernel;
 		RETURN NIL
 	END ThisDesc;
 
-	PROCEDURE ThisField* (rec: Type; name: ARRAY OF SHORTCHAR): Object;
-		VAR n: INTEGER; p: StrPtr; obj: Object; m: Module;
+	PROCEDURE ThisField* (rec: Type; IN name: ARRAY OF CHAR): Object;
+		VAR n, res: INTEGER; p: StrPtr; obj: Object; m: Module; nn: Utf8Name;
 	BEGIN
+		StringToUtf8(name, nn, res); ASSERT(res = 0);
 		m := rec.mod;
 		obj := S.VAL(Object, S.ADR(rec.fields.obj[0])); n := rec.fields.num;
 		WHILE n > 0 DO
 			p := S.VAL(StrPtr, S.ADR(m.names[obj.id DIV 256]));
-			IF p^ = name THEN RETURN obj END;
+			IF p^ = nn THEN RETURN obj END;
 			DEC(n); INC(S.VAL(INTEGER, obj), 16)
 		END;
 		RETURN NIL
 	END ThisField;
 
-	PROCEDURE ThisCommand* (mod: Module; name: ARRAY OF SHORTCHAR): Command;
+	PROCEDURE ThisCommand* (mod: Module; IN name: ARRAY OF CHAR): Command;
 		VAR x: Object; sig: Signature;
 	BEGIN
 		x := ThisObject(mod, name);
@@ -974,7 +1071,7 @@ MODULE Kernel;
 		RETURN NIL
 	END ThisCommand;
 
-	PROCEDURE ThisType* (mod: Module; name: ARRAY OF SHORTCHAR): Type;
+	PROCEDURE ThisType* (mod: Module; IN name: ARRAY OF CHAR): Type;
 		VAR x: Object;
 	BEGIN
 		x := ThisObject(mod, name);
@@ -1006,18 +1103,24 @@ MODULE Kernel;
 		END
 	END NewObj;
 
-	PROCEDURE GetObjName* (mod: Module; obj: Object; VAR name: Name);
-		VAR p: StrPtr;
+	PROCEDURE GetModName* (mod: Module; OUT name: Name);
+		VAR res: INTEGER;
+	BEGIN
+		Utf8ToString(mod.name, name, res); ASSERT(res = 0)
+	END GetModName;
+
+	PROCEDURE GetObjName* (mod: Module; obj: Object; OUT name: Name);
+		VAR p: StrPtr; res: INTEGER;
 	BEGIN
 		p := S.VAL(StrPtr, S.ADR(mod.names[obj.id DIV 256]));
-		name := p^$
+		Utf8ToString(p^$, name, res); ASSERT(res = 0)
 	END GetObjName;
 
-	PROCEDURE GetTypeName* (t: Type; VAR name: Name);
-		VAR p: StrPtr;
+	PROCEDURE GetTypeName* (t: Type; OUT name: Name);
+		VAR p: StrPtr; res: INTEGER;
 	BEGIN
 		p := S.VAL(StrPtr, S.ADR(t.mod.names[t.id DIV 256]));
-		name := p^$
+		Utf8ToString(p^$, name, res); ASSERT(res = 0)
 	END GetTypeName;
 
 	PROCEDURE RegisterMod* (mod: Module);
@@ -1066,10 +1169,10 @@ MODULE Kernel;
 
 	(* -------------------- dynamic procedure call --------------------- *)	(* COMPILER DEPENDENT *)
 
-	PROCEDURE [1] PUSH (p: INTEGER) 050H;	(* push AX *)
-	PROCEDURE [1] CALL (a: INTEGER) 0FFH, 0D0H;	(* call AX *)
-	PROCEDURE [1] RETI (): LONGINT;
-	PROCEDURE [1] RETR (): REAL;
+	PROCEDURE [code] PUSH (p: INTEGER) 050H;	(* push AX *)
+	PROCEDURE [code] CALL (a: INTEGER) 0FFH, 0D0H;	(* call AX *)
+	PROCEDURE [code] RETI (): LONGINT;
+	PROCEDURE [code] RETR (): REAL;
 
 	(*
 		type				par
@@ -1134,12 +1237,12 @@ MODULE Kernel;
 
 	(* -------------------- reference information (portable) --------------------- *)
 
-	PROCEDURE RefCh (VAR ref: INTEGER; VAR ch: SHORTCHAR);
+	PROCEDURE RefCh (VAR ref: INTEGER; OUT ch: SHORTCHAR);
 	BEGIN
 		S.GET(ref, ch); INC(ref)
 	END RefCh;
 
-	PROCEDURE RefNum (VAR ref: INTEGER; VAR x: INTEGER);
+	PROCEDURE RefNum (VAR ref: INTEGER; OUT x: INTEGER);
 		VAR s, n: INTEGER; ch: SHORTCHAR;
 	BEGIN
 		s := 0; n := 0; RefCh(ref, ch);
@@ -1147,7 +1250,7 @@ MODULE Kernel;
 		x := n + ASH(ORD(ch) MOD 64 - ORD(ch) DIV 64 * 64, s)
 	END RefNum;
 
-	PROCEDURE RefName (VAR ref: INTEGER; VAR n: Name);
+	PROCEDURE RefName (VAR ref: INTEGER; OUT n: Utf8Name);
 		VAR i: INTEGER; ch: SHORTCHAR;
 	BEGIN
 		i := 0; RefCh(ref, ch);
@@ -1155,7 +1258,7 @@ MODULE Kernel;
 		n[i] := 0X
 	END RefName;
 
-	PROCEDURE GetRefProc* (VAR ref: INTEGER; VAR adr: INTEGER; VAR name: Name);
+	PROCEDURE GetRefProc* (VAR ref: INTEGER; OUT adr: INTEGER; OUT name: Utf8Name);
 		VAR ch: SHORTCHAR;
 	BEGIN
 		S.GET(ref, ch);
@@ -1172,8 +1275,8 @@ MODULE Kernel;
 		END
 	END GetRefProc;
 
-	PROCEDURE GetRefVar* (VAR ref: INTEGER; VAR mode, form: SHORTCHAR; VAR desc: Type;
-																VAR adr: INTEGER; VAR name: Name);
+	PROCEDURE GetRefVar* (VAR ref: INTEGER; OUT mode, form: SHORTCHAR; OUT desc: Type;
+																OUT adr: INTEGER; OUT name: Utf8Name);
 	BEGIN
 		S.GET(ref, mode); desc := NIL;
 		IF mode >= 0FDX THEN
@@ -1189,42 +1292,49 @@ MODULE Kernel;
 	END GetRefVar;
 
 	PROCEDURE SourcePos* (mod: Module; codePos: INTEGER): INTEGER;
-		VAR ref, pos, ad, d: INTEGER; ch: SHORTCHAR; name: Name;
+		VAR ref, pos, ad, d: INTEGER; ch: SHORTCHAR; name: Utf8Name;
 	BEGIN
-		ref := mod.refs; pos := 0; ad := 0; S.GET(ref, ch);
-		WHILE ch # 0X DO
-			WHILE (ch > 0X) & (ch < 0FCX) DO
-				INC(ad, ORD(ch)); INC(ref); RefNum(ref, d);
-				IF ad > codePos THEN RETURN pos END;
-				INC(pos, d); S.GET(ref, ch)
+		IF mod # NIL THEN	(* mf, 12.02.04 *)
+			ref := mod.refs; pos := 0; ad := 0; S.GET(ref, ch);
+			WHILE ch # 0X DO
+				WHILE (ch > 0X) & (ch < 0FCX) DO	(* srcref: {dAdr,dPos} *)
+					INC(ad, ORD(ch)); INC(ref); RefNum(ref, d);
+					IF ad > codePos THEN RETURN pos END;
+					INC(pos, d); S.GET(ref, ch)
+				END;
+				IF ch = 0FCX THEN	(* proc: 0FCX,Adr,Name *)
+					INC(ref); RefNum(ref, d); RefName(ref, name); S.GET(ref, ch);
+					IF (d > codePos) & (pos > 0) THEN RETURN pos END 
+				END;
+				WHILE ch >= 0FDX DO	(* skip variables: Mode, Form, adr, Name *)
+					INC(ref); RefCh(ref, ch);
+					IF ch = 10X THEN INC(ref, 4) END;
+					RefNum(ref, d); RefName(ref, name); S.GET(ref, ch)
+				END
 			END;
-			IF ch = 0FCX THEN INC(ref); RefNum(ref, d); RefName(ref, name); S.GET(ref, ch) END;
-			WHILE ch >= 0FDX DO	(* skip variables *)
-				INC(ref); RefCh(ref, ch);
-				IF ch = 10X THEN INC(ref, 4) END;
-				RefNum(ref, d); RefName(ref, name); S.GET(ref, ch)
-			END
 		END;
 		RETURN -1
 	END SourcePos;
 
 	(* -------------------- dynamic link libraries --------------------- *)
 
-	PROCEDURE LoadDll* (IN name: ARRAY OF SHORTCHAR; VAR ok: BOOLEAN);
+	PROCEDURE LoadDll* (IN name: ARRAY OF CHAR; VAR ok: BOOLEAN);
 		VAR h: WinApi.HANDLE;
 	BEGIN
 		ok := FALSE;
-		h := WinApi.LoadLibraryA(name);
+		h := WinApi.LoadLibraryW(name);
 		IF h # 0 THEN ok := TRUE END
 	END LoadDll;
 
-	PROCEDURE ThisDllObj* (mode, fprint: INTEGER; IN dll, name: ARRAY OF SHORTCHAR): INTEGER;
-		VAR ad: WinApi.FARPROC; h: WinApi.HANDLE;
+	PROCEDURE ThisDllObj* (mode, fprint: INTEGER; IN dll, name: ARRAY OF CHAR): INTEGER;
+		VAR ad: WinApi.FARPROC; h: WinApi.HANDLE; res: INTEGER; sname: Utf8Name;
 	BEGIN
 		ad := NIL;
 		IF mode = mProc THEN
-			h := WinApi.GetModuleHandleA(dll);
-			IF h # 0 THEN ad := WinApi.GetProcAddress(h, name) END
+			h := WinApi.GetModuleHandleW(dll);
+			IF h # 0 THEN StringToUtf8(name, sname, res); ASSERT(res = 0);
+				ad := WinApi.GetProcAddress(h, sname)
+			END
 		END;
 		RETURN S.VAL(INTEGER, ad)
 	END ThisDllObj;
@@ -1715,6 +1825,10 @@ MODULE Kernel;
 		title[6] := CHR(id DIV 10 + ORD("0"));
 		title[7] := CHR(id MOD 10 + ORD("0"));
 		res := WinApi.MessageBoxW(0, str, title, {});
+		IF res = 0 THEN (* win2000/XP *)
+			res := WinApi.LoadLibraryA("COMCTL32.dll");
+			res := WinApi.MessageBoxW(0, str, title, {})
+		END;
 		WinOle.OleUninitialize();
 		IF ~inDll THEN RemoveExcp(excpPtr^) END;
 		WinApi.ExitProcess(1)
@@ -1723,9 +1837,9 @@ MODULE Kernel;
 
 	PROCEDURE DefaultTrapViewer;
 		VAR len, ref, end, x, a, b, c: INTEGER; mod: Module;
-			name: Name; out: ARRAY 1024 OF SHORTCHAR;
+			modName, name: Name; res: INTEGER; n: Utf8Name; out: ARRAY 1024 OF CHAR;
 
-		PROCEDURE WriteString (s: ARRAY OF SHORTCHAR);
+		PROCEDURE WriteString (IN s: ARRAY OF CHAR);
 			VAR i: INTEGER;
 		BEGIN
 			i := 0;
@@ -1740,7 +1854,7 @@ MODULE Kernel;
 				WHILE i >= len DO
 					y := x MOD 16; x := x DIV 16;
 					IF y > 9 THEN y := y + (ORD("A") - ORD("0") - 10) END;
-					out[i] := SHORT(CHR(y + ORD("0"))); DEC(i)
+					out[i] := CHR(y + ORD("0")); DEC(i)
 				END;
 				INC(len, n)
 			END
@@ -1789,13 +1903,13 @@ MODULE Kernel;
 			IF mod # NIL THEN
 				DEC(a, mod.code);
 				IF mod.refcnt >= 0 THEN
-					WriteString(mod.name); ref := mod.refs;
-					REPEAT GetRefProc(ref, end, name) UNTIL (end = 0) OR (a < end);
+					GetModName(mod, modName); WriteString(modName); ref := mod.refs;
+					REPEAT GetRefProc(ref, end, n) UNTIL (end = 0) OR (a < end);
 					IF a < end THEN
-						WriteString("."); WriteString(name)
+						Utf8ToString(n, name, res); WriteString("."); WriteString(name)
 					END
 				ELSE
-					WriteString("("); WriteString(mod.name); WriteString(")")
+					GetModName(mod, modName); WriteString("("); WriteString(modName); WriteString(")")
 				END;
 				WriteString("  ")
 			END;
@@ -1809,7 +1923,11 @@ MODULE Kernel;
 			END
 		UNTIL c = 0;
 		out[len] := 0X;
-		x := WinApi.MessageBoxA(0, out, "BlackBox", {})
+		x := WinApi.MessageBoxW(0, out, "BlackBox", {});
+		IF x = 0 THEN (* win2000/XP *)
+			res := WinApi.LoadLibraryA("COMCTL32.dll");
+			res := WinApi.MessageBoxW(0, out, "BlackBox", {})
+		END;
 	END DefaultTrapViewer;
 
 	PROCEDURE TrapCleanup;
@@ -1829,6 +1947,17 @@ MODULE Kernel;
 		(* Label: *)
 		PopFP
 	END Unwind;
+	
+	(* stack overflow is detected by means of a so-called 'page guard', which offers a one-shot protection *)
+	PROCEDURE ResetStackGuard;
+		VAR stackLimit, regionSize: INTEGER; si: WinApi.SYSTEM_INFO;
+	BEGIN
+		stackLimit := FPageWord(8); (* cf. WinApi.NT_TIB.StackLimit *)
+		WinApi.GetSystemInfo(si);
+		regionSize := si.dwPageSize * 2; (* 2 pages must be protected in order to catch all kinds of stack overflows *)
+		res := WinApi.VirtualProtect(stackLimit, regionSize, WinApi.PAGE_READWRITE+WinApi.PAGE_GUARD, old);
+		IF res = 0 THEN res := WinApi.VirtualProtect(stackLimit, regionSize, WinApi.PAGE_NOACCESS, old) END
+	END ResetStackGuard;
 
 	PROCEDURE TrapHandler (excpRec: WinApi.PtrEXCEPTION_RECORD; estFrame: ExcpFramePtr;
 											context: WinApi.PtrCONTEXT; dispCont: INTEGER): INTEGER;
@@ -1894,8 +2023,7 @@ MODULE Kernel;
 				S.PUTREG(SP, S.VAL(INTEGER, estFrame) + 12);
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					ResetStackGuard
 				END;
 				PopSI; PopDI; PopBX; PopFP;
 				ReturnCX(WinApi.E_UNEXPECTED)
@@ -1906,8 +2034,7 @@ MODULE Kernel;
 				S.PUTREG(SP, res - 4);	(* restore stack *)
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					ResetStackGuard
 				END;
 				PopBX;
 				RETURN 0	(* return from Try *)
@@ -1916,8 +2043,7 @@ MODULE Kernel;
 				S.PUTREG(SP, baseStack);	(* restore stack *)
 				IF err = 137 THEN	(* retrigger stack overflow *)
 					TrapCleanup; DefaultTrapViewer;
-					res := WinApi.VirtualProtect(FPageWord(8), 1024, {2, 8}, old);
-					IF res = 0 THEN res := WinApi.VirtualProtect(FPageWord(8), 1024, {0}, old) END
+					ResetStackGuard
 				END;
 				restart();
 				Quit(1)

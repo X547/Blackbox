@@ -1,5 +1,4 @@
-ComKoalaExe Example
-
+ComKoalaExe Example
 This version of the Koala example can be linked as an independent exe. It can be tested with the ObjUser.exe program which is provided with the book "Inside OLE". Note that you have to set the ObjUser.exe program into EXE mode.
 
 The EXE file opens its application window which is closed as soon as the last interface pointer is released. It also must implement a main loop which polls and dispatches all Windows events. Additionally, the body of the module must register the factory upon start up and remove the factory from the registry as soon as the EXE is unloaded.

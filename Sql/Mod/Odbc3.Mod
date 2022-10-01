@@ -11,7 +11,7 @@ MODULE SqlOdbc3;
 
 **)
 
-	IMPORT SYSTEM, WinApi, WinSql, Services, Dates, Dialog, Log, SqlDrivers, HostWindows;
+	IMPORT SYSTEM, WinApi, WinSql, Services, Dates, Dialog, Log, SqlDrivers, HostWindows, Strings;
 
 	(* ODBC functions used:
 		core:
@@ -46,19 +46,25 @@ MODULE SqlOdbc3;
 		This is cumbersome and difficult to test exhaustively. *)
 
 	CONST
+		(* results for driver open and methods *)
 		outOfTables = 5;
 		notExecutable = 6;
 		cannotOpenDB = 7;
 		wrongIdentification = 8;
 		tooManyBlobs = 9;
-		(* not public *)
-		invalidTransaction = 10;
 
+		(* results  as in SqlDB, 0 = ok *)
+		converted = 1;
 		truncated = 2;
 		overflow = 3;
 		incompatible = 4;
 		noData = 5;
+		
+		(* internal result codes *)
+		invalidTransaction = 10;
+		moreData = 11;	(* like truncated but remaining data needs to be read in order to avoid a deadlock *)
 
+		(* driver states *)
 		connecting = 1;
 		connected = 2;
 		preparing = 3;
@@ -82,14 +88,18 @@ MODULE SqlOdbc3;
 			stmt: WinSql.HSTMT;
 			driver: Driver
 		END;
+		
+		DelayedCleanupAction = POINTER TO RECORD (Services.Action) table: Table END;
 
 
 	VAR
 		debug*: BOOLEAN;	(* if TRUE, show more information about what's happening *)
 		autoCommit*: BOOLEAN;	(* by default, automatic commit is disabled *)
-		rowcount*: INTEGER;	(* jt: number of rows affected in last update, insert, delete *)
+		rowcount*: INTEGER;	(* number of rows affected in last update, insert, delete *)
 		environment: WinSql.HENV;	(* ODBC environment, in which everything happens *)
 		numConnections: INTEGER;	(* free the environment, if the number of connections goes to zero *)
+		emptyStr: SqlDrivers.String;	(* reusable string for empty or NULL VARCHARs*)
+		delayedCleanup: BOOLEAN;	(* delay cleanup in table finalizer because connection is blocked *)
 
 
 	(* miscellaneous *)
@@ -115,7 +125,7 @@ MODULE SqlOdbc3;
 				END;
 			END;
 			IF debug THEN Log.String(msg$); Log.Ln END;
-			IF state = "01004" THEN res := truncated ELSE res := 0 END
+			IF state = "01004" THEN res := moreData ELSE res := 0 END
 		| WinSql.SQL_ERROR:
 			res := WinSql.SQLGetDiagRecW(WinSql.SQL_HANDLE_STMT, stmt, 1, state, err, msg, LEN(msg), len);
 			IF (res = WinSql.SQL_NO_DATA) OR (res = WinSql.SQL_INVALID_HANDLE) OR (msg = "") THEN
@@ -305,7 +315,7 @@ MODULE SqlOdbc3;
 						d.state := executing; res := 0
 					ELSE
 						Check(d.actRes, d, stmt, res);
-						IF res = 0 THEN d.state := executed END
+						IF (res = 0) OR (res = noData) THEN d.state := executed; res := 0 END
 					END
 				END
 			END;
@@ -325,8 +335,8 @@ MODULE SqlOdbc3;
 	BEGIN
 		ASSERT(d.state # connected, 20); ASSERT(d.state = executed, 21);
 		d.state := connected;
-		Check(d.actRes, d, d.actStmt, res);
-		IF res = 0 THEN
+		Check(d.actRes, d, d.actStmt, res);	(* recompute res, it is an OUT parameter *)
+		IF (res = 0) OR (res = noData) THEN
 			Check(WinSql.SQLNumResultCols(d.actStmt, cols), d, d.actStmt, res);
 			IF (res = 0) & (cols > 0) THEN	(* legal statement returning a result set *)
 				NEW(h); h.Init(d); h.driver := d;
@@ -391,6 +401,21 @@ MODULE SqlOdbc3;
 		t.res := res
 	END ReadInteger;
 
+	PROCEDURE (t: Table) ReadLong (row, column: INTEGER; OUT val: LONGINT);
+		VAR res, len: INTEGER;
+	BEGIN
+		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
+		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
+		ASSERT(t.stmt # 0, 24);
+		SetPos(t, row, column, res);
+		IF res = 0 THEN
+			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_BIGINT + WinSql.SQL_SIGNED_OFFSET,
+														SYSTEM.ADR(val), 0, len), NIL, t.stmt, res);
+			IF len = WinSql.SQL_NULL_DATA THEN val := 0 END
+		END;
+		t.res := res
+	END ReadLong;
+
 	PROCEDURE (t: Table) ReadReal (row, column: INTEGER; OUT val: REAL);
 		VAR res, len: INTEGER;
 	BEGIN
@@ -451,7 +476,7 @@ MODULE SqlOdbc3;
 			Check(WinSql.SQLDescribeColW(t.stmt, SHORT(column + 1), str, LEN(str), a, b, i, scale, c), NIL, t.stmt, res);
 			IF scale < 0 THEN scale := 0 END;
 			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
-														SYSTEM.ADR(str), LEN(str), len), NIL, t.stmt, res);
+														SYSTEM.ADR(str), LEN(str) * SIZE(CHAR), len), NIL, t.stmt, res);
 			IF len # WinSql.SQL_NULL_DATA THEN
 				x := 0; i := 0;
 				IF str[0] < "." THEN INC(i) END;
@@ -475,6 +500,7 @@ MODULE SqlOdbc3;
 
 	PROCEDURE (t: Table) ReadString (row, column: INTEGER; OUT str: ARRAY OF CHAR);
 		VAR res, len: INTEGER;
+			dummy: ARRAY 256 OF CHAR;
 	BEGIN
 		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
 		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
@@ -482,11 +508,17 @@ MODULE SqlOdbc3;
 		SetPos(t, row, column, res);
 		IF res = 0 THEN
 			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
-														SYSTEM.ADR(str), LEN(str), len),
+														SYSTEM.ADR(str), LEN(str) * SIZE(CHAR), len),
 					NIL, t.stmt, res);
-			IF (len = 0) OR (len = WinSql.SQL_NULL_DATA) THEN str := "" END
-		END;
-		t.res := res
+			IF (len = 0) OR (len = WinSql.SQL_NULL_DATA) THEN str := "" END;
+			IF res = moreData THEN t.res := truncated ELSE t.res := res END;
+			WHILE res = moreData DO	(* skip rest of string but don't change t.res *)
+				Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR, 
+														SYSTEM.ADR(dummy), LEN(dummy) * SIZE(CHAR), len),
+						NIL, t.stmt, res);
+			END;
+		ELSE t.res := res
+		END
 	END ReadString;
 
 	PROCEDURE (t: Table) ReadVarString (row, column: INTEGER; OUT str: SqlDrivers.String);
@@ -498,23 +530,30 @@ MODULE SqlOdbc3;
 		SetPos(t, row, column, res);
 		IF res = 0 THEN
 			Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
-														SYSTEM.ADR(s), LEN(s), len),
+														SYSTEM.ADR(s), LEN(s) * SIZE(CHAR), len),
 					NIL, t.stmt, res);
 			IF res # noData THEN
 				IF (len = 0) OR (len = WinSql.SQL_NULL_DATA) THEN
-					IF str = NIL THEN NEW(str, 1) END;	(* allow recycling of string by making parameter a VAR again? *)
-					str^ := ""
+					str := emptyStr
 				ELSIF len = WinSql.SQL_NO_TOTAL THEN
 					(* how to improve handling of strings with undefined length? *)
-					IF (str = NIL) OR (LEN(str^) < LEN(s)) THEN NEW(str, LEN(s)) END;
+					NEW(str, LEN(s));
 					str^ := s$
 				ELSE
-					IF (str = NIL) OR (LEN(str^) < len + 1) THEN NEW(str, len + 1) END;
-					IF len >= LEN(s) THEN
-						str^ := s$;
+					(* len is in bytes but without terminating 0X *)
+					len := len DIV SIZE(CHAR) + 1;
+					IF res = moreData THEN
+						delayedCleanup := TRUE; (* no DB operation in finalizers because the connection is blocked here *)
+						NEW(str, len);
+						delayedCleanup := FALSE;
+						str^ := s$; (* first part is zero terminated *)
+						(* read remaining data at once *)
 						Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_WCHAR,
-												SYSTEM.ADR(str^) + (LEN(s) - 1), LEN(str^) - (LEN(s) - 1), len), NIL, t.stmt, res);
+																SYSTEM.ADR(str[LEN(s) - 1]), (len - (LEN(s) - 1)) * SIZE(CHAR), len), 
+									NIL, t.stmt, res);
+						ASSERT(res = 0, 100)
 					ELSE
+						NEW(str, len);
 						str^ := s$
 					END
 				END
@@ -526,7 +565,6 @@ MODULE SqlOdbc3;
 	PROCEDURE (t: Table) ReadBlob (row, column: INTEGER; OUT len: INTEGER;
 														OUT data: POINTER TO ARRAY OF BYTE);
 		VAR res, x: INTEGER; s: ARRAY 128000 OF BYTE;
-	(* This version fails for some large blobs for an unknown reason. Buffer is so large that error happens rarely *)
 	BEGIN
 		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
 		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
@@ -538,28 +576,21 @@ MODULE SqlOdbc3;
 					NIL, t.stmt, res);
 			IF res # noData THEN
 				IF len = WinSql.SQL_NULL_DATA THEN len := 0
-				ELSIF len = WinSql.SQL_NO_TOTAL THEN len := 256
-				END;
-				IF len > 0 THEN
+				ELSIF len = WinSql.SQL_NO_TOTAL THEN len := -1
+				ELSIF len > 0 THEN
 					IF len > LEN(s) THEN
-						IF (data = NIL) OR (LEN(data^) < len) THEN
-						(* brute force unblock the connection for the following NEW, which may invoke finalizers that access
-							the connection: *)
-							IF row = 0 THEN SetPos(t, row+1, column, res) ELSE SetPos(t, row-1, column, res) END ;
-							(* TODO: what happens if the table has only one row?*)
-							SetPos(t, row, column, res);
-							NEW(data, len);
-							(* read all data at once *)
-							Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_BINARY,
-															SYSTEM.ADR(data^), len, x), NIL, t.stmt, res)
-						ELSE
-							SYSTEM.MOVE(SYSTEM.ADR(s), SYSTEM.ADR(data^), LEN(s));
-							Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_BINARY,
-															SYSTEM.ADR(data^) + LEN(s), len - LEN(s), x), NIL, t.stmt, res)
-						END
+						delayedCleanup := TRUE; (* no DB operation in finalizers because the connection is blocked here *)
+						NEW(data, len);
+						delayedCleanup := FALSE;
+						SYSTEM.MOVE(SYSTEM.ADR(s), SYSTEM.ADR(data^), LEN(s));
+						(* read remaining data at once *)
+						Check(WinSql.SQLGetData(t.stmt, SHORT(column + 1), WinSql.SQL_C_BINARY,
+																SYSTEM.ADR(data^) + LEN(s), len - LEN(s), x),
+									NIL, t.stmt, res);
+						ASSERT(res = 0)
 					ELSE
-						IF (data = NIL) OR (LEN(data^) < len) THEN NEW(data, len) END;
-						SYSTEM.MOVE(SYSTEM.ADR(s), SYSTEM.ADR(data^), len);
+						NEW(data, len);
+						SYSTEM.MOVE(SYSTEM.ADR(s), SYSTEM.ADR(data^), len)
 					END
 				END
 			END
@@ -599,7 +630,7 @@ MODULE SqlOdbc3;
 			| WinSql.SQL_TINYINT: str^ := "BYTE"
 			| WinSql.SQL_SMALLINT: str^ := "SHORTINT"
 			| WinSql.SQL_INTEGER: str^ := "INTEGER"
-			| WinSql.SQL_BIGINT: str^ := "String"
+			| WinSql.SQL_BIGINT: str^ := "LONGINT"
 			| WinSql.SQL_DATE: str^ := "Date"
 			| WinSql.SQL_TIME: str^ := "Time"
 			| WinSql.SQL_TIMESTAMP: str^ := "Time&Date"
@@ -614,11 +645,21 @@ MODULE SqlOdbc3;
 		ELSE str^ := "unknown"
 		END
 	END ReadType;
-
-	PROCEDURE (t: Table) Cleanup;
+	
+	PROCEDURE (this: DelayedCleanupAction) Do;
 		VAR res: INTEGER;
 	BEGIN
-		Check(WinSql.SQLFreeHandle(WinSql.SQL_HANDLE_STMT, t.stmt), NIL, t.stmt, res)
+		Check(WinSql.SQLFreeHandle(WinSql.SQL_HANDLE_STMT, this.table.stmt), NIL, this.table.stmt, res)
+	END Do;
+
+	PROCEDURE (t: Table) Cleanup;
+		VAR res: INTEGER; a: DelayedCleanupAction;
+	BEGIN
+		IF delayedCleanup THEN
+			NEW(a); a.table := t; Services.DoLater(a, Services.now)
+		ELSE
+			Check(WinSql.SQLFreeHandle(WinSql.SQL_HANDLE_STMT, t.stmt), NIL, t.stmt, res)
+		END
 	END Cleanup;
 
 
@@ -658,7 +699,8 @@ MODULE SqlOdbc3;
 						Check(WinSql.SQLSetConnectAttr(h.dbc, WinSql.SQL_AUTOCOMMIT,
 																			WinSql.SQL_AUTOCOMMIT_OFF, 0), h, 0, r)
 					END;
-					Check(WinSql.SQLGetInfoW(h.dbc, WinSql.SQL_DBMS_NAME, SYSTEM.ADR(str), 255, len), h, 0, r);
+					Check(WinSql.SQLGetInfoW(h.dbc, WinSql.SQL_DBMS_NAME, SYSTEM.ADR(str), 
+																LEN(str) * SIZE(CHAR), len), h, 0, r);
 					IF str = "Microsoft SQL Server" THEN
 						(* If SQLServer is used Preserve Cursors must be set to ON.
 						Other drivers probably don't support this. *)
@@ -697,4 +739,5 @@ MODULE SqlOdbc3;
 		END
 	END SetMode;
 
+BEGIN NEW(emptyStr, 1); emptyStr^ := ""
 END SqlOdbc3.

@@ -22,7 +22,7 @@ MODULE DevLinkChk;
 	VAR
 		par*: RECORD
 			scope*: INTEGER;	(* IN {oneSubsystem, globalSubsystem, allSubsystems} *)
-			subsystem*: ARRAY 9 OF CHAR;
+			subsystem*: ARRAY 16 OF CHAR;
 			legal: BOOLEAN	(* legal => correct syntax for a subsystem name # "" *)
 		END;
 
@@ -172,17 +172,11 @@ MODULE DevLinkChk;
 	END CheckLoc;
 
 	PROCEDURE Equal (IN a, b: ARRAY OF CHAR): BOOLEAN;
-		VAR i: INTEGER; ai, bi: CHAR;
-
-		PROCEDURE Eq (a, b: CHAR): BOOLEAN;
-		BEGIN
-			RETURN (a = b) OR (a >= "A") & (a <= "Z") & (a = CAP(b)) OR (b >= "A") & (b <= "Z") & (b = CAP(a))
-		END Eq;
-
+		VAR al, bl: Files.Name;
 	BEGIN
-		i := 0; ai := a[0]; bi := b[0];
-		WHILE Eq(ai, bi) & (ai # 0X) DO INC(i); ai := a[i]; bi := b[i] END;
-		RETURN ai = bi
+		IF a = b THEN RETURN TRUE
+		ELSE Strings.ToLower(a, al); Strings.ToLower(b, bl); RETURN al = bl
+		END
 	END Equal;
 
 	PROCEDURE Check* (subsystem: ARRAY OF CHAR; scope: INTEGER; check: BOOLEAN);
@@ -292,13 +286,15 @@ MODULE DevLinkChk;
 		p.disabled := (par.scope = oneSubsystem) & ~par.legal
 	END CommandGuard;
 
-	PROCEDURE SyntaxOK (VAR s: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE SyntaxOK(IN s: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; ch: CHAR;
 	BEGIN
 		i := 0; ch := s[0];
-		WHILE (ch >= "A") & (ch <= "Z") DO INC(i); ch := s[i] END;
-		WHILE (i # 0) & (ch >= "a") & (ch <= "z") OR (ch >= "0") & (ch <= "9") DO INC(i); ch := s[i] END;
-		RETURN (i >= 3) & (i <= 8) & (ch = 0X)
+		IF ~Strings.IsIdentStart(ch) THEN RETURN FALSE END ;
+		WHILE Strings.IsUpper(ch) DO INC(i); ch := s[i] END ;
+		IF ch = 0X THEN RETURN FALSE END ;
+		WHILE Strings.IsIdent(ch) & ~Strings.IsUpper(ch) DO INC(i); ch := s[i] END ;
+		RETURN ch = 0X
 	END SyntaxOK;
 
 	PROCEDURE SubsystemNotifier* (op, from, to: INTEGER);

@@ -1,13 +1,14 @@
-MENU "COM"
-	"Show Error"	""	"DevComDebug.ShowError"	"TextCmds.SelectionGuard"
-	"Show Interfaces"	""	"DevComDebug.ShowInterfaceRecords"	""
+MENU "#Com:&COM"
+	"#Com:&Show Error"	""	"DevComDebug.ShowError"	"TextCmds.SelectionGuard"
+	"#Com:&Show Interfaces"	""	"DevComDebug.ShowInterfaceRecords"	""
 	SEPARATOR
-	"Interface Info"	""	"DevBrowser.ShowInterface('+!')"	"TextCmds.SelectionGuard"
+	"#Com:&Interface Info"	""	"DevBrowser.ShowInterface('+!')"	"TextCmds.SelectionGuard"
+	"#Com:&Type Libraries"	""	"DevComInterfaceGen.Open"	""
 	SEPARATOR
-	"New GUID"	""	"DevComDebug.NewGuid"	""
+	"#Com:&New GUID"	""	"DevComDebug.NewGuid"	""
 	SEPARATOR
-	"Collect"	""	"HostMenus.Collect"	""
+	"#Com:&Collect"	""	"HostMenus.Collect"	""
 	SEPARATOR
-	"DTC Help"	""	"StdCmds.OpenBrowser('Docu/DTC-Help', 'Help Contents')"	""
-	"DTC Examples"	""	"StdCmds.OpenBrowser('Com/Docu/Sys-Map', 'DTC Examples')"	""
+	"#Com:&DTC Help"	""	"StdCmds.OpenBrowser('Docu/DTC-Help', '#Com:DTC Help')"	""
+	"#Com:&DTC Examples"	""	"StdCmds.OpenBrowser('Com/Docu/Sys-Map', '#Com:DTC Examples')"	""
 END

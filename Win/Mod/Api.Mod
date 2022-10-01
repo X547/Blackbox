@@ -27,6 +27,8 @@ MODULE WinApi ["KERNEL32.dll"];
 		HKEY_CURRENT_USER* = 80000001H;
 		HKEY_LOCAL_MACHINE* = 80000002H;
 		HKEY_USERS* = 80000003H;
+		HKEY_PERFORMANCE_DATA* = 80000004H;
+		HKEY_CURRENT_CONFIG* = 80000005H;
 		
 	CONST (* macros *)
 		INVALID_HANDLE_VALUE* = -1;
@@ -807,6 +809,7 @@ MODULE WinApi ["KERNEL32.dll"];
 		REG_RESOURCE_LIST* = 8 (* {3} *);
 		REG_FULL_RESOURCE_DESCRIPTOR* = 9 (* {0, 3} *);
 		REG_RESOURCE_REQUIREMENTS_LIST* = 10 (* {1, 3} *);
+		REG_QWORD* = 11; (* not supported under Windows XP; limited support  from Vista on; see http://msdn.microsoft.com/en-us/library/windows/desktop/ms724884(v=vs.85).aspx *)
 		SERVICE_KERNEL_DRIVER* = {0};
 		SERVICE_FILE_SYSTEM_DRIVER* = {1};
 		SERVICE_ADAPTER* = {2};
@@ -3890,8 +3893,8 @@ MODULE WinApi ["KERNEL32.dll"];
 		WM_SYSKEYUP* = 261 (* {0, 2, 8} *);
 		WM_SYSCHAR* = 262 (* {1, 2, 8} *);
 		WM_SYSDEADCHAR* = 263 (* {0..2, 8} *);
+		WM_KEYLAST* = 264 (* {3, 8} *);
 		WM_UNICHAR* = 265;
-		WM_KEYLAST* = 265;
 		WM_IME_STARTCOMPOSITION* = 269 (* {0, 2, 3, 8} *);
 		WM_IME_ENDCOMPOSITION* = 270 (* {1..3, 8} *);
 		WM_IME_COMPOSITION* = 271 (* {0..3, 8} *);
@@ -4297,6 +4300,10 @@ MODULE WinApi ["KERNEL32.dll"];
 		SWP_NOREPOSITION* = {9};
 		SWP_DEFERERASE* = {13};
 		SWP_ASYNCWINDOWPOS* = {14};
+		HWND_TOP* = 0;
+		HWND_BOTTOM* = 1;
+		HWND_TOPMOST* = -1;
+		HWND_NOTOPMOST* = -2;
 		DLGWINDOWEXTRA* = 30 (* {1..4} *);
 		KEYEVENTF_EXTENDEDKEY* = {0};
 		KEYEVENTF_KEYUP* = {1};
@@ -11438,6 +11445,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE FreeEnvironmentStrings* ["FreeEnvironmentStringsA"] (p0: PtrSTR): BOOL;
 	(*END FreeEnvironmentStrings;*)
 
+
 	PROCEDURE RaiseException* (dwExceptionCode: INTEGER; dwExceptionFlags: INTEGER; nNumberOfArguments: INTEGER; VAR [nil] lpArguments: INTEGER);
 	(*END RaiseException;*)
 
@@ -11665,6 +11673,9 @@ MODULE WinApi ["KERNEL32.dll"];
 
 	PROCEDURE SetFilePointer* (hFile: HANDLE; lDistanceToMove: INTEGER; VAR [nil] lpDistanceToMoveHigh: INTEGER; dwMoveMethod: INTEGER): INTEGER;
 	(*END SetFilePointer;*)
+
+	PROCEDURE SetFilePointerEx* (hFile: HANDLE; liDistanceToMove: LONGINT; VAR [nil] lpNewFilePointer: LONGINT; dwMoveMethod: INTEGER): BOOL;
+	(*END SetFilePointerEx;*)
 
 	PROCEDURE FindClose* (hFindFile: HANDLE): BOOL;
 	(*END FindClose;*)
@@ -13502,13 +13513,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE DescribePixelFormat* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: PIXELFORMATDESCRIPTOR): INTEGER;
 	(*END DescribePixelFormat;*)
 
-	PROCEDURE DeviceCapabilitiesA* ["WINSPOOL.dll", ""] (p0: PtrSTR; p1: PtrSTR; p2: SHORTINT; p3: PtrSTR; VAR [nil] p4: DEVMODEA): INTEGER;
+	PROCEDURE DeviceCapabilitiesA* ["WINSPOOL.drv", ""] (p0: PtrSTR; p1: PtrSTR; p2: SHORTINT; p3: PtrSTR; VAR [nil] p4: DEVMODEA): INTEGER;
 	(*END DeviceCapabilitiesA;*)
 
-	PROCEDURE DeviceCapabilitiesW* ["WINSPOOL.dll", ""] (p0: PtrWSTR; p1: PtrWSTR; p2: SHORTINT; p3: PtrWSTR; VAR [nil] p4: DEVMODEW): INTEGER;
+	PROCEDURE DeviceCapabilitiesW* ["WINSPOOL.drv", ""] (p0: PtrWSTR; p1: PtrWSTR; p2: SHORTINT; p3: PtrWSTR; VAR [nil] p4: DEVMODEW): INTEGER;
 	(*END DeviceCapabilitiesW;*)
 
-	PROCEDURE DeviceCapabilities* ["WINSPOOL.dll", "DeviceCapabilitiesA"] (p0: PtrSTR; p1: PtrSTR; p2: SHORTINT; p3: PtrSTR; VAR [nil] p4: DEVMODEA): INTEGER;
+	PROCEDURE DeviceCapabilities* ["WINSPOOL.drv", "DeviceCapabilitiesA"] (p0: PtrSTR; p1: PtrSTR; p2: SHORTINT; p3: PtrSTR; VAR [nil] p4: DEVMODEA): INTEGER;
 	(*END DeviceCapabilities;*)
 
 	PROCEDURE DrawEscape* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: PtrSTR): INTEGER;
@@ -13598,22 +13609,22 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE GetBrushOrgEx* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT): BOOL;
 	(*END GetBrushOrgEx;*)
 
-	PROCEDURE GetCharWidthA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidthA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidthA;*)
 
-	PROCEDURE GetCharWidthW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidthW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidthW;*)
 
-	PROCEDURE GetCharWidth* ["GDI32.dll", "GetCharWidthA"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidth* ["GDI32.dll", "GetCharWidthA"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidth;*)
 
-	PROCEDURE GetCharWidth32A* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidth32A* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidth32A;*)
 
-	PROCEDURE GetCharWidth32W* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidth32W* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidth32W;*)
 
-	PROCEDURE GetCharWidth32* ["GDI32.dll", "GetCharWidth32A"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: INTEGER): BOOL;
+	PROCEDURE GetCharWidth32* ["GDI32.dll", "GetCharWidth32A"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END GetCharWidth32;*)
 
 	PROCEDURE GetCharWidthFloatA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: SHORTREAL): BOOL;
@@ -13625,13 +13636,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE GetCharWidthFloat* ["GDI32.dll", "GetCharWidthFloatA"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: SHORTREAL): BOOL;
 	(*END GetCharWidthFloat;*)
 
-	PROCEDURE GetCharABCWidthsA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ABC): BOOL;
+	PROCEDURE GetCharABCWidthsA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF ABC): BOOL;
 	(*END GetCharABCWidthsA;*)
 
-	PROCEDURE GetCharABCWidthsW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ABC): BOOL;
+	PROCEDURE GetCharABCWidthsW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF ABC): BOOL;
 	(*END GetCharABCWidthsW;*)
 
-	PROCEDURE GetCharABCWidths* ["GDI32.dll", "GetCharABCWidthsA"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ABC): BOOL;
+	PROCEDURE GetCharABCWidths* ["GDI32.dll", "GetCharABCWidthsA"] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ARRAY [untagged] OF ABC): BOOL;
 	(*END GetCharABCWidths;*)
 
 	PROCEDURE GetCharABCWidthsFloatA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: ABCFLOAT): BOOL;
@@ -14222,13 +14233,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE TextOut* ["GDI32.dll", "TextOutA"] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: PtrSTR; p4: INTEGER): BOOL;
 	(*END TextOut;*)
 
-	PROCEDURE ExtTextOutA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrSTR; p6: INTEGER; VAR [nil] p7: INTEGER): BOOL;
+	PROCEDURE ExtTextOutA* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrSTR; p6: INTEGER; VAR [nil] p7: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END ExtTextOutA;*)
 
-	PROCEDURE ExtTextOutW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrWSTR; p6: INTEGER; VAR [nil] p7: INTEGER): BOOL;
+	PROCEDURE ExtTextOutW* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrWSTR; p6: INTEGER; VAR [nil] p7: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END ExtTextOutW;*)
 
-	PROCEDURE ExtTextOut* ["GDI32.dll", "ExtTextOutA"] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrSTR; p6: INTEGER; VAR [nil] p7: INTEGER): BOOL;
+	PROCEDURE ExtTextOut* ["GDI32.dll", "ExtTextOutA"] (p0: HDC; p1: INTEGER; p2: INTEGER; p3: INTEGER; VAR [nil] p4: RECT; p5: PtrSTR; p6: INTEGER; VAR [nil] p7: ARRAY [untagged] OF INTEGER): BOOL;
 	(*END ExtTextOut;*)
 
 	PROCEDURE PolyTextOutA* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POLYTEXTA; p2: INTEGER): BOOL;
@@ -14249,19 +14260,19 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE LPtoDP* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
 	(*END LPtoDP;*)
 
-	PROCEDURE Polygon* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
+	PROCEDURE Polygon* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: ARRAY [untagged] OF POINT; p2: INTEGER): BOOL;
 	(*END Polygon;*)
 
-	PROCEDURE Polyline* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
+	PROCEDURE Polyline* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: ARRAY [untagged] OF POINT; p2: INTEGER): BOOL;
 	(*END Polyline;*)
 
-	PROCEDURE PolyBezier* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
+	PROCEDURE PolyBezier* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: ARRAY [untagged] OF POINT; p2: INTEGER): BOOL;
 	(*END PolyBezier;*)
 
-	PROCEDURE PolyBezierTo* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
+	PROCEDURE PolyBezierTo* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: ARRAY [untagged] OF POINT; p2: INTEGER): BOOL;
 	(*END PolyBezierTo;*)
 
-	PROCEDURE PolylineTo* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: POINT; p2: INTEGER): BOOL;
+	PROCEDURE PolylineTo* ["GDI32.dll", ""] (p0: HDC; VAR [nil] p1: ARRAY [untagged] OF POINT; p2: INTEGER): BOOL;
 	(*END PolylineTo;*)
 
 	PROCEDURE SetViewportExtEx* ["GDI32.dll", ""] (p0: HDC; p1: INTEGER; p2: INTEGER; VAR [nil] p3: SIZE): BOOL;
@@ -14672,7 +14683,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE PeekMessage* ["USER32.dll", "PeekMessageA"] (VAR [nil] lpMsg: MSG; hWnd: HWND; wMsgFilterMin: INTEGER; wMsgFilterMax: INTEGER; wRemoveMsg: INTEGER): BOOL;
 	(*END PeekMessage;*)
 
-	PROCEDURE RegisterHotKey* ["USER32.dll", ""] (hWnd: HWND; id: INTEGER; fsModifiers: INTEGER; vk: INTEGER): BOOL;
+	PROCEDURE RegisterHotKey* ["USER32.dll", ""] (hWnd: HWND; id: INTEGER; fsModifiers: SET; vk: INTEGER): BOOL;
 	(*END RegisterHotKey;*)
 
 	PROCEDURE UnregisterHotKey* ["USER32.dll", ""] (hWnd: HWND; id: INTEGER): BOOL;
@@ -16859,13 +16870,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegEnumKeyEx* ["ADVAPI32.dll", "RegEnumKeyExA"] (hKey: HKEY; dwIndex: INTEGER; lpName: PtrSTR; VAR [nil] lpcbName: INTEGER; VAR [nil] lpReserved: INTEGER; lpClass: PtrSTR; VAR [nil] lpcbClass: INTEGER; VAR [nil] lpftLastWriteTime: FILETIME): INTEGER;
 	(*END RegEnumKeyEx;*)
 
-	PROCEDURE RegEnumValueA* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegEnumValueA* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegEnumValueA;*)
 
-	PROCEDURE RegEnumValueW* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrWSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegEnumValueW* ["ADVAPI32.dll", ""] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrWSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegEnumValueW;*)
 
-	PROCEDURE RegEnumValue* ["ADVAPI32.dll", "RegEnumValueA"] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegEnumValue* ["ADVAPI32.dll", "RegEnumValueA"] (hKey: HKEY; dwIndex: INTEGER; lpValueName: PtrSTR; VAR [nil] lpcbValueName: INTEGER; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegEnumValue;*)
 
 	PROCEDURE RegFlushKey* ["ADVAPI32.dll", ""] (hKey: HKEY): INTEGER;
@@ -16931,13 +16942,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegQueryMultipleValues* ["ADVAPI32.dll", "RegQueryMultipleValuesA"] (hKey: HKEY; VAR [nil] val_list: VALENTA; num_vals: INTEGER; lpValueBuf: PtrSTR; VAR [nil] ldwTotsize: INTEGER): INTEGER;
 	(*END RegQueryMultipleValues;*)
 
-	PROCEDURE RegQueryValueExA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegQueryValueExA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegQueryValueExA;*)
 
-	PROCEDURE RegQueryValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegQueryValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegQueryValueExW;*)
 
-	PROCEDURE RegQueryValueEx* ["ADVAPI32.dll", "RegQueryValueExA"] (hKey: HKEY; lpValueName: PtrSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; VAR [nil] lpData: SHORTCHAR; VAR [nil] lpcbData: INTEGER): INTEGER;
+	PROCEDURE RegQueryValueEx* ["ADVAPI32.dll", "RegQueryValueExA"] (hKey: HKEY; lpValueName: PtrSTR; VAR [nil] lpReserved: INTEGER; VAR [nil] lpType: INTEGER; lpData: PtrVoid; VAR [nil] lpcbData: INTEGER): INTEGER;
 	(*END RegQueryValueEx;*)
 
 	PROCEDURE RegReplaceKeyA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpSubKey: PtrSTR; lpNewFile: PtrSTR; lpOldFile: PtrSTR): INTEGER;
@@ -16979,13 +16990,13 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE RegSetValue* ["ADVAPI32.dll", "RegSetValueA"] (hKey: HKEY; lpSubKey: PtrSTR; dwType: INTEGER; lpData: PtrSTR; cbData: INTEGER): INTEGER;
 	(*END RegSetValue;*)
 
-	PROCEDURE RegSetValueExA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; VAR [nil] lpData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE RegSetValueExA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; lpData: PtrVoid; cbData: INTEGER): INTEGER;
 	(*END RegSetValueExA;*)
 
-	PROCEDURE RegSetValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; Reserved: INTEGER; dwType: INTEGER; lpData: PtrWSTR; cbData: INTEGER): INTEGER;
+	PROCEDURE RegSetValueExW* ["ADVAPI32.dll", ""] (hKey: HKEY; lpValueName: PtrWSTR; Reserved: INTEGER; dwType: INTEGER; lpData: PtrVoid; cbData: INTEGER): INTEGER;
 	(*END RegSetValueExW;*)
 
-	PROCEDURE RegSetValueEx* ["ADVAPI32.dll", "RegSetValueExA"] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; VAR [nil] lpData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE RegSetValueEx* ["ADVAPI32.dll", "RegSetValueExA"] (hKey: HKEY; lpValueName: PtrSTR; Reserved: INTEGER; dwType: INTEGER; lpData: PtrVoid; cbData: INTEGER): INTEGER;
 	(*END RegSetValueEx;*)
 
 	PROCEDURE RegUnLoadKeyA* ["ADVAPI32.dll", ""] (hKey: HKEY; lpSubKey: PtrSTR): INTEGER;
@@ -17336,430 +17347,430 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE PropertySheet* ["COMCTL32.dll", "PropertySheetA"] (VAR [nil] p0: PROPSHEETHEADERA): INTEGER;
 	(*END PropertySheet;*)
 
-	PROCEDURE EnumPrintersA* ["WINSPOOL.dll", ""] (Flags: SET; Name: PtrSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintersA* ["WINSPOOL.drv", ""] (Flags: SET; Name: PtrSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintersA;*)
 
-	PROCEDURE EnumPrintersW* ["WINSPOOL.dll", ""] (Flags: SET; Name: PtrWSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintersW* ["WINSPOOL.drv", ""] (Flags: SET; Name: PtrWSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintersW;*)
 
-	PROCEDURE EnumPrinters* ["WINSPOOL.dll", "EnumPrintersA"] (Flags: SET; Name: PtrSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrinters* ["WINSPOOL.drv", "EnumPrintersA"] (Flags: SET; Name: PtrSTR; Level: INTEGER; VAR [nil] pPrinterEnum: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrinters;*)
 
-	PROCEDURE OpenPrinterA* ["WINSPOOL.dll", ""] (pPrinterName: PtrSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
+	PROCEDURE OpenPrinterA* ["WINSPOOL.drv", ""] (pPrinterName: PtrSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
 	(*END OpenPrinterA;*)
 
-	PROCEDURE OpenPrinterW* ["WINSPOOL.dll", ""] (pPrinterName: PtrWSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSW): BOOL;
+	PROCEDURE OpenPrinterW* ["WINSPOOL.drv", ""] (pPrinterName: PtrWSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSW): BOOL;
 	(*END OpenPrinterW;*)
 
-	PROCEDURE OpenPrinter* ["WINSPOOL.dll", "OpenPrinterA"] (pPrinterName: PtrSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
+	PROCEDURE OpenPrinter* ["WINSPOOL.drv", "OpenPrinterA"] (pPrinterName: PtrSTR; VAR [nil] phPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
 	(*END OpenPrinter;*)
 
-	PROCEDURE ResetPrinterA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
+	PROCEDURE ResetPrinterA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
 	(*END ResetPrinterA;*)
 
-	PROCEDURE ResetPrinterW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSW): BOOL;
+	PROCEDURE ResetPrinterW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSW): BOOL;
 	(*END ResetPrinterW;*)
 
-	PROCEDURE ResetPrinter* ["WINSPOOL.dll", "ResetPrinterA"] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
+	PROCEDURE ResetPrinter* ["WINSPOOL.drv", "ResetPrinterA"] (hPrinter: HANDLE; VAR [nil] pDefault: PRINTER_DEFAULTSA): BOOL;
 	(*END ResetPrinter;*)
 
-	PROCEDURE SetJobA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetJobA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetJobA;*)
 
-	PROCEDURE SetJobW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetJobW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetJobW;*)
 
-	PROCEDURE SetJob* ["WINSPOOL.dll", "SetJobA"] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetJob* ["WINSPOOL.drv", "SetJobA"] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetJob;*)
 
-	PROCEDURE GetJobA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetJobA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetJobA;*)
 
-	PROCEDURE GetJobW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetJobW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetJobW;*)
 
-	PROCEDURE GetJob* ["WINSPOOL.dll", "GetJobA"] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetJob* ["WINSPOOL.drv", "GetJobA"] (hPrinter: HANDLE; JobId: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetJob;*)
 
-	PROCEDURE EnumJobsA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumJobsA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumJobsA;*)
 
-	PROCEDURE EnumJobsW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumJobsW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumJobsW;*)
 
-	PROCEDURE EnumJobs* ["WINSPOOL.dll", "EnumJobsA"] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumJobs* ["WINSPOOL.drv", "EnumJobsA"] (hPrinter: HANDLE; FirstJob: INTEGER; NoJobs: INTEGER; Level: INTEGER; VAR [nil] pJob: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumJobs;*)
 
-	PROCEDURE AddPrinterA* ["WINSPOOL.dll", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
+	PROCEDURE AddPrinterA* ["WINSPOOL.drv", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
 	(*END AddPrinterA;*)
 
-	PROCEDURE AddPrinterW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
+	PROCEDURE AddPrinterW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
 	(*END AddPrinterW;*)
 
-	PROCEDURE AddPrinter* ["WINSPOOL.dll", "AddPrinterA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
+	PROCEDURE AddPrinter* ["WINSPOOL.drv", "AddPrinterA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR): HANDLE;
 	(*END AddPrinter;*)
 
-	PROCEDURE DeletePrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE DeletePrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END DeletePrinter;*)
 
-	PROCEDURE SetPrinterA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetPrinterA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetPrinterA;*)
 
-	PROCEDURE SetPrinterW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetPrinterW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetPrinterW;*)
 
-	PROCEDURE SetPrinter* ["WINSPOOL.dll", "SetPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
+	PROCEDURE SetPrinter* ["WINSPOOL.drv", "SetPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; Command: INTEGER): BOOL;
 	(*END SetPrinter;*)
 
-	PROCEDURE GetPrinterA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterA;*)
 
-	PROCEDURE GetPrinterW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterW;*)
 
-	PROCEDURE GetPrinter* ["WINSPOOL.dll", "GetPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinter* ["WINSPOOL.drv", "GetPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pPrinter: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinter;*)
 
-	PROCEDURE AddPrinterDriverA* ["WINSPOOL.dll", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrinterDriverA* ["WINSPOOL.drv", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
 	(*END AddPrinterDriverA;*)
 
-	PROCEDURE AddPrinterDriverW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrinterDriverW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
 	(*END AddPrinterDriverW;*)
 
-	PROCEDURE AddPrinterDriver* ["WINSPOOL.dll", "AddPrinterDriverA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrinterDriver* ["WINSPOOL.drv", "AddPrinterDriverA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR): BOOL;
 	(*END AddPrinterDriver;*)
 
-	PROCEDURE EnumPrinterDriversA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrinterDriversA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrinterDriversA;*)
 
-	PROCEDURE EnumPrinterDriversW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrinterDriversW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrinterDriversW;*)
 
-	PROCEDURE EnumPrinterDrivers* ["WINSPOOL.dll", "EnumPrinterDriversA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrinterDrivers* ["WINSPOOL.drv", "EnumPrinterDriversA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrinterDrivers;*)
 
-	PROCEDURE GetPrinterDriverA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriverA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriverA;*)
 
-	PROCEDURE GetPrinterDriverW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriverW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriverW;*)
 
-	PROCEDURE GetPrinterDriver* ["WINSPOOL.dll", "GetPrinterDriverA"] (hPrinter: HANDLE; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriver* ["WINSPOOL.drv", "GetPrinterDriverA"] (hPrinter: HANDLE; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriver;*)
 
-	PROCEDURE GetPrinterDriverDirectoryA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriverDirectoryA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriverDirectoryA;*)
 
-	PROCEDURE GetPrinterDriverDirectoryW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriverDirectoryW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriverDirectoryW;*)
 
-	PROCEDURE GetPrinterDriverDirectory* ["WINSPOOL.dll", "GetPrinterDriverDirectoryA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrinterDriverDirectory* ["WINSPOOL.drv", "GetPrinterDriverDirectoryA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pDriverDirectory: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrinterDriverDirectory;*)
 
-	PROCEDURE DeletePrinterDriverA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pDriverName: PtrSTR): BOOL;
+	PROCEDURE DeletePrinterDriverA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pDriverName: PtrSTR): BOOL;
 	(*END DeletePrinterDriverA;*)
 
-	PROCEDURE DeletePrinterDriverW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pDriverName: PtrWSTR): BOOL;
+	PROCEDURE DeletePrinterDriverW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pDriverName: PtrWSTR): BOOL;
 	(*END DeletePrinterDriverW;*)
 
-	PROCEDURE DeletePrinterDriver* ["WINSPOOL.dll", "DeletePrinterDriverA"] (pName: PtrSTR; pEnvironment: PtrSTR; pDriverName: PtrSTR): BOOL;
+	PROCEDURE DeletePrinterDriver* ["WINSPOOL.drv", "DeletePrinterDriverA"] (pName: PtrSTR; pEnvironment: PtrSTR; pDriverName: PtrSTR): BOOL;
 	(*END DeletePrinterDriver;*)
 
-	PROCEDURE AddPrintProcessorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPathName: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
+	PROCEDURE AddPrintProcessorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPathName: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
 	(*END AddPrintProcessorA;*)
 
-	PROCEDURE AddPrintProcessorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPathName: PtrWSTR; pPrintProcessorName: PtrWSTR): BOOL;
+	PROCEDURE AddPrintProcessorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPathName: PtrWSTR; pPrintProcessorName: PtrWSTR): BOOL;
 	(*END AddPrintProcessorW;*)
 
-	PROCEDURE AddPrintProcessor* ["WINSPOOL.dll", "AddPrintProcessorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPathName: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
+	PROCEDURE AddPrintProcessor* ["WINSPOOL.drv", "AddPrintProcessorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPathName: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
 	(*END AddPrintProcessor;*)
 
-	PROCEDURE EnumPrintProcessorsA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessorsA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessorsA;*)
 
-	PROCEDURE EnumPrintProcessorsW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessorsW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessorsW;*)
 
-	PROCEDURE EnumPrintProcessors* ["WINSPOOL.dll", "EnumPrintProcessorsA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessors* ["WINSPOOL.drv", "EnumPrintProcessorsA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessors;*)
 
-	PROCEDURE GetPrintProcessorDirectoryA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrintProcessorDirectoryA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrintProcessorDirectoryA;*)
 
-	PROCEDURE GetPrintProcessorDirectoryW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrintProcessorDirectoryW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrintProcessorDirectoryW;*)
 
-	PROCEDURE GetPrintProcessorDirectory* ["WINSPOOL.dll", "GetPrintProcessorDirectoryA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetPrintProcessorDirectory* ["WINSPOOL.drv", "GetPrintProcessorDirectoryA"] (pName: PtrSTR; pEnvironment: PtrSTR; Level: INTEGER; VAR [nil] pPrintProcessorInfo: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetPrintProcessorDirectory;*)
 
-	PROCEDURE EnumPrintProcessorDatatypesA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pPrintProcessorName: PtrSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessorDatatypesA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pPrintProcessorName: PtrSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessorDatatypesA;*)
 
-	PROCEDURE EnumPrintProcessorDatatypesW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pPrintProcessorName: PtrWSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessorDatatypesW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pPrintProcessorName: PtrWSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessorDatatypesW;*)
 
-	PROCEDURE EnumPrintProcessorDatatypes* ["WINSPOOL.dll", "EnumPrintProcessorDatatypesA"] (pName: PtrSTR; pPrintProcessorName: PtrSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPrintProcessorDatatypes* ["WINSPOOL.drv", "EnumPrintProcessorDatatypesA"] (pName: PtrSTR; pPrintProcessorName: PtrSTR; Level: INTEGER; VAR [nil] pDatatypes: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPrintProcessorDatatypes;*)
 
-	PROCEDURE DeletePrintProcessorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
+	PROCEDURE DeletePrintProcessorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
 	(*END DeletePrintProcessorA;*)
 
-	PROCEDURE DeletePrintProcessorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPrintProcessorName: PtrWSTR): BOOL;
+	PROCEDURE DeletePrintProcessorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPrintProcessorName: PtrWSTR): BOOL;
 	(*END DeletePrintProcessorW;*)
 
-	PROCEDURE DeletePrintProcessor* ["WINSPOOL.dll", "DeletePrintProcessorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
+	PROCEDURE DeletePrintProcessor* ["WINSPOOL.drv", "DeletePrintProcessorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProcessorName: PtrSTR): BOOL;
 	(*END DeletePrintProcessor;*)
 
-	PROCEDURE StartDocPrinterA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
+	PROCEDURE StartDocPrinterA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
 	(*END StartDocPrinterA;*)
 
-	PROCEDURE StartDocPrinterW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
+	PROCEDURE StartDocPrinterW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
 	(*END StartDocPrinterW;*)
 
-	PROCEDURE StartDocPrinter* ["WINSPOOL.dll", "StartDocPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
+	PROCEDURE StartDocPrinter* ["WINSPOOL.drv", "StartDocPrinterA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pDocInfo: SHORTCHAR): INTEGER;
 	(*END StartDocPrinter;*)
 
-	PROCEDURE StartPagePrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE StartPagePrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END StartPagePrinter;*)
 
-	PROCEDURE WritePrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pBuf: PtrVoid; cbBuf: INTEGER; VAR [nil] pcWritten: INTEGER): BOOL;
+	PROCEDURE WritePrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pBuf: PtrVoid; cbBuf: INTEGER; VAR [nil] pcWritten: INTEGER): BOOL;
 	(*END WritePrinter;*)
 
-	PROCEDURE EndPagePrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE EndPagePrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END EndPagePrinter;*)
 
-	PROCEDURE AbortPrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE AbortPrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END AbortPrinter;*)
 
-	PROCEDURE ReadPrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pBuf: PtrVoid; cbBuf: INTEGER; VAR [nil] pNoBytesRead: INTEGER): BOOL;
+	PROCEDURE ReadPrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pBuf: PtrVoid; cbBuf: INTEGER; VAR [nil] pNoBytesRead: INTEGER): BOOL;
 	(*END ReadPrinter;*)
 
-	PROCEDURE EndDocPrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE EndDocPrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END EndDocPrinter;*)
 
-	PROCEDURE AddJobA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE AddJobA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END AddJobA;*)
 
-	PROCEDURE AddJobW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE AddJobW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END AddJobW;*)
 
-	PROCEDURE AddJob* ["WINSPOOL.dll", "AddJobA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE AddJob* ["WINSPOOL.drv", "AddJobA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pData: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END AddJob;*)
 
-	PROCEDURE ScheduleJob* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; JobId: INTEGER): BOOL;
+	PROCEDURE ScheduleJob* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; JobId: INTEGER): BOOL;
 	(*END ScheduleJob;*)
 
-	PROCEDURE PrinterProperties* ["WINSPOOL.dll", ""] (hWnd: HWND; hPrinter: HANDLE): BOOL;
+	PROCEDURE PrinterProperties* ["WINSPOOL.drv", ""] (hWnd: HWND; hPrinter: HANDLE): BOOL;
 	(*END PrinterProperties;*)
 
-	PROCEDURE DocumentPropertiesA* ["WINSPOOL.dll", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA; fMode: SET): INTEGER;
+	PROCEDURE DocumentPropertiesA* ["WINSPOOL.drv", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA; fMode: SET): INTEGER;
 	(*END DocumentPropertiesA;*)
 
-	PROCEDURE DocumentPropertiesW* ["WINSPOOL.dll", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrWSTR; VAR [nil] pDevModeOutput: DEVMODEW; VAR [nil] pDevModeInput: DEVMODEW; fMode: SET): INTEGER;
+	PROCEDURE DocumentPropertiesW* ["WINSPOOL.drv", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrWSTR; VAR [nil] pDevModeOutput: DEVMODEW; VAR [nil] pDevModeInput: DEVMODEW; fMode: SET): INTEGER;
 	(*END DocumentPropertiesW;*)
 
-	PROCEDURE DocumentProperties* ["WINSPOOL.dll", "DocumentPropertiesA"] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA; fMode: SET): INTEGER;
+	PROCEDURE DocumentProperties* ["WINSPOOL.drv", "DocumentPropertiesA"] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA; fMode: SET): INTEGER;
 	(*END DocumentProperties;*)
 
-	PROCEDURE AdvancedDocumentPropertiesA* ["WINSPOOL.dll", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA): INTEGER;
+	PROCEDURE AdvancedDocumentPropertiesA* ["WINSPOOL.drv", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA): INTEGER;
 	(*END AdvancedDocumentPropertiesA;*)
 
-	PROCEDURE AdvancedDocumentPropertiesW* ["WINSPOOL.dll", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrWSTR; VAR [nil] pDevModeOutput: DEVMODEW; VAR [nil] pDevModeInput: DEVMODEW): INTEGER;
+	PROCEDURE AdvancedDocumentPropertiesW* ["WINSPOOL.drv", ""] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrWSTR; VAR [nil] pDevModeOutput: DEVMODEW; VAR [nil] pDevModeInput: DEVMODEW): INTEGER;
 	(*END AdvancedDocumentPropertiesW;*)
 
-	PROCEDURE AdvancedDocumentProperties* ["WINSPOOL.dll", "AdvancedDocumentPropertiesA"] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA): INTEGER;
+	PROCEDURE AdvancedDocumentProperties* ["WINSPOOL.drv", "AdvancedDocumentPropertiesA"] (hWnd: HWND; hPrinter: HANDLE; pDeviceName: PtrSTR; VAR [nil] pDevModeOutput: DEVMODEA; VAR [nil] pDevModeInput: DEVMODEA): INTEGER;
 	(*END AdvancedDocumentProperties;*)
 
-	PROCEDURE GetPrinterDataA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pValueName: PtrSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
+	PROCEDURE GetPrinterDataA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pValueName: PtrSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
 	(*END GetPrinterDataA;*)
 
-	PROCEDURE GetPrinterDataW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pValueName: PtrWSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
+	PROCEDURE GetPrinterDataW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pValueName: PtrWSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
 	(*END GetPrinterDataW;*)
 
-	PROCEDURE GetPrinterData* ["WINSPOOL.dll", "GetPrinterDataA"] (hPrinter: HANDLE; pValueName: PtrSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
+	PROCEDURE GetPrinterData* ["WINSPOOL.drv", "GetPrinterDataA"] (hPrinter: HANDLE; pValueName: PtrSTR; VAR [nil] pType: INTEGER; VAR [nil] pData: SHORTCHAR; nSize: INTEGER; VAR [nil] pcbNeeded: INTEGER): INTEGER;
 	(*END GetPrinterData;*)
 
-	PROCEDURE SetPrinterDataA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pValueName: PtrSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE SetPrinterDataA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pValueName: PtrSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
 	(*END SetPrinterDataA;*)
 
-	PROCEDURE SetPrinterDataW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pValueName: PtrWSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE SetPrinterDataW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pValueName: PtrWSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
 	(*END SetPrinterDataW;*)
 
-	PROCEDURE SetPrinterData* ["WINSPOOL.dll", "SetPrinterDataA"] (hPrinter: HANDLE; pValueName: PtrSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
+	PROCEDURE SetPrinterData* ["WINSPOOL.drv", "SetPrinterDataA"] (hPrinter: HANDLE; pValueName: PtrSTR; Type: INTEGER; VAR [nil] pData: SHORTCHAR; cbData: INTEGER): INTEGER;
 	(*END SetPrinterData;*)
 
-	PROCEDURE WaitForPrinterChange* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Flags: SET): INTEGER;
+	PROCEDURE WaitForPrinterChange* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Flags: SET): INTEGER;
 	(*END WaitForPrinterChange;*)
 
-	PROCEDURE FindFirstPrinterChangeNotification* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; fdwFlags: SET; fdwOptions: INTEGER; pPrinterNotifyOptions: PtrVoid): HANDLE;
+	PROCEDURE FindFirstPrinterChangeNotification* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; fdwFlags: SET; fdwOptions: INTEGER; pPrinterNotifyOptions: PtrVoid): HANDLE;
 	(*END FindFirstPrinterChangeNotification;*)
 
-	PROCEDURE FindNextPrinterChangeNotification* ["WINSPOOL.dll", ""] (hChange: HANDLE; VAR [nil] pdwChange: INTEGER; pvReserved: PtrVoid; ppPrinterNotifyInfo: POINTER TO (*?*) ARRAY [untagged] OF PtrVoid): BOOL;
+	PROCEDURE FindNextPrinterChangeNotification* ["WINSPOOL.drv", ""] (hChange: HANDLE; VAR [nil] pdwChange: INTEGER; pvReserved: PtrVoid; ppPrinterNotifyInfo: POINTER TO (*?*) ARRAY [untagged] OF PtrVoid): BOOL;
 	(*END FindNextPrinterChangeNotification;*)
 
-	PROCEDURE FreePrinterNotifyInfo* ["WINSPOOL.dll", ""] (VAR [nil] pPrinterNotifyInfo: PRINTER_NOTIFY_INFO): BOOL;
+	PROCEDURE FreePrinterNotifyInfo* ["WINSPOOL.drv", ""] (VAR [nil] pPrinterNotifyInfo: PRINTER_NOTIFY_INFO): BOOL;
 	(*END FreePrinterNotifyInfo;*)
 
-	PROCEDURE FindClosePrinterChangeNotification* ["WINSPOOL.dll", ""] (hChange: HANDLE): BOOL;
+	PROCEDURE FindClosePrinterChangeNotification* ["WINSPOOL.drv", ""] (hChange: HANDLE): BOOL;
 	(*END FindClosePrinterChangeNotification;*)
 
-	PROCEDURE PrinterMessageBoxA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrSTR; pCaption: PtrSTR; dwType: INTEGER): INTEGER;
+	PROCEDURE PrinterMessageBoxA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrSTR; pCaption: PtrSTR; dwType: INTEGER): INTEGER;
 	(*END PrinterMessageBoxA;*)
 
-	PROCEDURE PrinterMessageBoxW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrWSTR; pCaption: PtrWSTR; dwType: INTEGER): INTEGER;
+	PROCEDURE PrinterMessageBoxW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrWSTR; pCaption: PtrWSTR; dwType: INTEGER): INTEGER;
 	(*END PrinterMessageBoxW;*)
 
-	PROCEDURE PrinterMessageBox* ["WINSPOOL.dll", "PrinterMessageBoxA"] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrSTR; pCaption: PtrSTR; dwType: INTEGER): INTEGER;
+	PROCEDURE PrinterMessageBox* ["WINSPOOL.drv", "PrinterMessageBoxA"] (hPrinter: HANDLE; Error: INTEGER; hWnd: HWND; pText: PtrSTR; pCaption: PtrSTR; dwType: INTEGER): INTEGER;
 	(*END PrinterMessageBox;*)
 
-	PROCEDURE ClosePrinter* ["WINSPOOL.dll", ""] (hPrinter: HANDLE): BOOL;
+	PROCEDURE ClosePrinter* ["WINSPOOL.drv", ""] (hPrinter: HANDLE): BOOL;
 	(*END ClosePrinter;*)
 
-	PROCEDURE AddFormA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE AddFormA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END AddFormA;*)
 
-	PROCEDURE AddFormW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE AddFormW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END AddFormW;*)
 
-	PROCEDURE AddForm* ["WINSPOOL.dll", "AddFormA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE AddForm* ["WINSPOOL.drv", "AddFormA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END AddForm;*)
 
-	PROCEDURE DeleteFormA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrSTR): BOOL;
+	PROCEDURE DeleteFormA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrSTR): BOOL;
 	(*END DeleteFormA;*)
 
-	PROCEDURE DeleteFormW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrWSTR): BOOL;
+	PROCEDURE DeleteFormW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrWSTR): BOOL;
 	(*END DeleteFormW;*)
 
-	PROCEDURE DeleteForm* ["WINSPOOL.dll", "DeleteFormA"] (hPrinter: HANDLE; pFormName: PtrSTR): BOOL;
+	PROCEDURE DeleteForm* ["WINSPOOL.drv", "DeleteFormA"] (hPrinter: HANDLE; pFormName: PtrSTR): BOOL;
 	(*END DeleteForm;*)
 
-	PROCEDURE GetFormA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetFormA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetFormA;*)
 
-	PROCEDURE GetFormW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrWSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetFormW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrWSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetFormW;*)
 
-	PROCEDURE GetForm* ["WINSPOOL.dll", "GetFormA"] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
+	PROCEDURE GetForm* ["WINSPOOL.drv", "GetFormA"] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER): BOOL;
 	(*END GetForm;*)
 
-	PROCEDURE SetFormA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE SetFormA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END SetFormA;*)
 
-	PROCEDURE SetFormW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; pFormName: PtrWSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE SetFormW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; pFormName: PtrWSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END SetFormW;*)
 
-	PROCEDURE SetForm* ["WINSPOOL.dll", "SetFormA"] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
+	PROCEDURE SetForm* ["WINSPOOL.drv", "SetFormA"] (hPrinter: HANDLE; pFormName: PtrSTR; Level: INTEGER; VAR [nil] pForm: SHORTCHAR): BOOL;
 	(*END SetForm;*)
 
-	PROCEDURE EnumFormsA* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumFormsA* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumFormsA;*)
 
-	PROCEDURE EnumFormsW* ["WINSPOOL.dll", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumFormsW* ["WINSPOOL.drv", ""] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumFormsW;*)
 
-	PROCEDURE EnumForms* ["WINSPOOL.dll", "EnumFormsA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumForms* ["WINSPOOL.drv", "EnumFormsA"] (hPrinter: HANDLE; Level: INTEGER; VAR [nil] pForm: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumForms;*)
 
-	PROCEDURE EnumMonitorsA* ["WINSPOOL.dll", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumMonitorsA* ["WINSPOOL.drv", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumMonitorsA;*)
 
-	PROCEDURE EnumMonitorsW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumMonitorsW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumMonitorsW;*)
 
-	PROCEDURE EnumMonitors* ["WINSPOOL.dll", "EnumMonitorsA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumMonitors* ["WINSPOOL.drv", "EnumMonitorsA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumMonitors;*)
 
-	PROCEDURE AddMonitorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
+	PROCEDURE AddMonitorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
 	(*END AddMonitorA;*)
 
-	PROCEDURE AddMonitorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
+	PROCEDURE AddMonitorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
 	(*END AddMonitorW;*)
 
-	PROCEDURE AddMonitor* ["WINSPOOL.dll", "AddMonitorA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
+	PROCEDURE AddMonitor* ["WINSPOOL.drv", "AddMonitorA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pMonitors: SHORTCHAR): BOOL;
 	(*END AddMonitor;*)
 
-	PROCEDURE DeleteMonitorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pMonitorName: PtrSTR): BOOL;
+	PROCEDURE DeleteMonitorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pMonitorName: PtrSTR): BOOL;
 	(*END DeleteMonitorA;*)
 
-	PROCEDURE DeleteMonitorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pMonitorName: PtrWSTR): BOOL;
+	PROCEDURE DeleteMonitorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pMonitorName: PtrWSTR): BOOL;
 	(*END DeleteMonitorW;*)
 
-	PROCEDURE DeleteMonitor* ["WINSPOOL.dll", "DeleteMonitorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pMonitorName: PtrSTR): BOOL;
+	PROCEDURE DeleteMonitor* ["WINSPOOL.drv", "DeleteMonitorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pMonitorName: PtrSTR): BOOL;
 	(*END DeleteMonitor;*)
 
-	PROCEDURE EnumPortsA* ["WINSPOOL.dll", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPortsA* ["WINSPOOL.drv", ""] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPortsA;*)
 
-	PROCEDURE EnumPortsW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPortsW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPortsW;*)
 
-	PROCEDURE EnumPorts* ["WINSPOOL.dll", "EnumPortsA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
+	PROCEDURE EnumPorts* ["WINSPOOL.drv", "EnumPortsA"] (pName: PtrSTR; Level: INTEGER; VAR [nil] pPorts: SHORTCHAR; cbBuf: INTEGER; VAR [nil] pcbNeeded: INTEGER; VAR [nil] pcReturned: INTEGER): BOOL;
 	(*END EnumPorts;*)
 
-	PROCEDURE AddPortA* ["WINSPOOL.dll", ""] (pName: PtrSTR; hWnd: HWND; pMonitorName: PtrSTR): BOOL;
+	PROCEDURE AddPortA* ["WINSPOOL.drv", ""] (pName: PtrSTR; hWnd: HWND; pMonitorName: PtrSTR): BOOL;
 	(*END AddPortA;*)
 
-	PROCEDURE AddPortW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; hWnd: HWND; pMonitorName: PtrWSTR): BOOL;
+	PROCEDURE AddPortW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; hWnd: HWND; pMonitorName: PtrWSTR): BOOL;
 	(*END AddPortW;*)
 
-	PROCEDURE AddPort* ["WINSPOOL.dll", "AddPortA"] (pName: PtrSTR; hWnd: HWND; pMonitorName: PtrSTR): BOOL;
+	PROCEDURE AddPort* ["WINSPOOL.drv", "AddPortA"] (pName: PtrSTR; hWnd: HWND; pMonitorName: PtrSTR): BOOL;
 	(*END AddPort;*)
 
-	PROCEDURE ConfigurePortA* ["WINSPOOL.dll", ""] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
+	PROCEDURE ConfigurePortA* ["WINSPOOL.drv", ""] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
 	(*END ConfigurePortA;*)
 
-	PROCEDURE ConfigurePortW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; hWnd: HWND; pPortName: PtrWSTR): BOOL;
+	PROCEDURE ConfigurePortW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; hWnd: HWND; pPortName: PtrWSTR): BOOL;
 	(*END ConfigurePortW;*)
 
-	PROCEDURE ConfigurePort* ["WINSPOOL.dll", "ConfigurePortA"] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
+	PROCEDURE ConfigurePort* ["WINSPOOL.drv", "ConfigurePortA"] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
 	(*END ConfigurePort;*)
 
-	PROCEDURE DeletePortA* ["WINSPOOL.dll", ""] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
+	PROCEDURE DeletePortA* ["WINSPOOL.drv", ""] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
 	(*END DeletePortA;*)
 
-	PROCEDURE DeletePortW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; hWnd: HWND; pPortName: PtrWSTR): BOOL;
+	PROCEDURE DeletePortW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; hWnd: HWND; pPortName: PtrWSTR): BOOL;
 	(*END DeletePortW;*)
 
-	PROCEDURE DeletePort* ["WINSPOOL.dll", "DeletePortA"] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
+	PROCEDURE DeletePort* ["WINSPOOL.drv", "DeletePortA"] (pName: PtrSTR; hWnd: HWND; pPortName: PtrSTR): BOOL;
 	(*END DeletePort;*)
 
-	PROCEDURE AddPrinterConnectionA* ["WINSPOOL.dll", ""] (pName: PtrSTR): BOOL;
+	PROCEDURE AddPrinterConnectionA* ["WINSPOOL.drv", ""] (pName: PtrSTR): BOOL;
 	(*END AddPrinterConnectionA;*)
 
-	PROCEDURE AddPrinterConnectionW* ["WINSPOOL.dll", ""] (pName: PtrWSTR): BOOL;
+	PROCEDURE AddPrinterConnectionW* ["WINSPOOL.drv", ""] (pName: PtrWSTR): BOOL;
 	(*END AddPrinterConnectionW;*)
 
-	PROCEDURE AddPrinterConnection* ["WINSPOOL.dll", "AddPrinterConnectionA"] (pName: PtrSTR): BOOL;
+	PROCEDURE AddPrinterConnection* ["WINSPOOL.drv", "AddPrinterConnectionA"] (pName: PtrSTR): BOOL;
 	(*END AddPrinterConnection;*)
 
-	PROCEDURE DeletePrinterConnectionA* ["WINSPOOL.dll", ""] (pName: PtrSTR): BOOL;
+	PROCEDURE DeletePrinterConnectionA* ["WINSPOOL.drv", ""] (pName: PtrSTR): BOOL;
 	(*END DeletePrinterConnectionA;*)
 
-	PROCEDURE DeletePrinterConnectionW* ["WINSPOOL.dll", ""] (pName: PtrWSTR): BOOL;
+	PROCEDURE DeletePrinterConnectionW* ["WINSPOOL.drv", ""] (pName: PtrWSTR): BOOL;
 	(*END DeletePrinterConnectionW;*)
 
-	PROCEDURE DeletePrinterConnection* ["WINSPOOL.dll", "DeletePrinterConnectionA"] (pName: PtrSTR): BOOL;
+	PROCEDURE DeletePrinterConnection* ["WINSPOOL.drv", "DeletePrinterConnectionA"] (pName: PtrSTR): BOOL;
 	(*END DeletePrinterConnection;*)
 
-	PROCEDURE ConnectToPrinterDlg* ["WINSPOOL.dll", ""] (hwnd: HWND; Flags: SET): HANDLE;
+	PROCEDURE ConnectToPrinterDlg* ["WINSPOOL.drv", ""] (hwnd: HWND; Flags: SET): HANDLE;
 	(*END ConnectToPrinterDlg;*)
 
-	PROCEDURE AddPrintProvidorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrintProvidorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
 	(*END AddPrintProvidorA;*)
 
-	PROCEDURE AddPrintProvidorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrintProvidorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
 	(*END AddPrintProvidorW;*)
 
-	PROCEDURE AddPrintProvidor* ["WINSPOOL.dll", "AddPrintProvidorA"] (pName: PtrSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
+	PROCEDURE AddPrintProvidor* ["WINSPOOL.drv", "AddPrintProvidorA"] (pName: PtrSTR; level: INTEGER; VAR [nil] pProvidorInfo: SHORTCHAR): BOOL;
 	(*END AddPrintProvidor;*)
 
-	PROCEDURE DeletePrintProvidorA* ["WINSPOOL.dll", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProvidorName: PtrSTR): BOOL;
+	PROCEDURE DeletePrintProvidorA* ["WINSPOOL.drv", ""] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProvidorName: PtrSTR): BOOL;
 	(*END DeletePrintProvidorA;*)
 
-	PROCEDURE DeletePrintProvidorW* ["WINSPOOL.dll", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPrintProvidorName: PtrWSTR): BOOL;
+	PROCEDURE DeletePrintProvidorW* ["WINSPOOL.drv", ""] (pName: PtrWSTR; pEnvironment: PtrWSTR; pPrintProvidorName: PtrWSTR): BOOL;
 	(*END DeletePrintProvidorW;*)
 
-	PROCEDURE DeletePrintProvidor* ["WINSPOOL.dll", "DeletePrintProvidorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProvidorName: PtrSTR): BOOL;
+	PROCEDURE DeletePrintProvidor* ["WINSPOOL.drv", "DeletePrintProvidorA"] (pName: PtrSTR; pEnvironment: PtrSTR; pPrintProvidorName: PtrSTR): BOOL;
 	(*END DeletePrintProvidor;*)
 
 	PROCEDURE ChangeServiceConfigA* ["ADVAPI32.dll", ""] (hService: SC_HANDLE; dwServiceType: SET; dwStartType: INTEGER; dwErrorControl: INTEGER; lpBinaryPathName: PtrSTR; lpLoadOrderGroup: PtrSTR; VAR [nil] lpdwTagId: INTEGER; lpDependencies: PtrSTR; lpServiceStartName: PtrSTR; lpPassword: PtrSTR; lpDisplayName: PtrSTR): BOOL;

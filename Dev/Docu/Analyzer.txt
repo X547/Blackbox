@@ -1,7 +1,5 @@
 DevAnalyzer
 
-Stefan H.-M. Ludwig
-
 
 Overview
 
@@ -156,8 +154,8 @@ Try it out and see for yourself.
 
 
 
-Contacting the Author
 
-You can contact me directly or through Oberon microsystems. If you find errors or wish new features in a next version of DevAnalyzer, please let me know. Also, if you would like to report on your (positive or negative) experience with this product, please do so (support@oberon.ch).
 
-		Stefan H.-M. Ludwig	24 March 1998
+
+
+Stefan H.-M. Ludwig	24 March 1998

@@ -23,6 +23,8 @@ MODULE CommTCP;
 		FIONBIO = WinNet.IOC_IN + 00040000H + ASH(ORD("f"), 8) + 126;			(* set/clear non-blocking i/o *)
 		FIOASYNC = WinNet.IOC_IN + 00040000H + ASH(ORD("f"), 8) + 125;		(* set/clear async i/o *)
 
+		localhost = "127.0.0.1";
+		
 	TYPE
 		Stream = POINTER TO RECORD (CommStreams.Stream)
 			sock: WinNet.SOCKET;	(* socket must be in non-blocking mode, otherwise recv() or send() could block *)
@@ -44,7 +46,7 @@ MODULE CommTCP;
 	PROCEDURE CopyOfAdrString (a: CommStreams.Adr): CommStreams.Adr;
 		VAR b: CommStreams.Adr;
 	BEGIN
-		NEW(b, LEN(a)); b := a;
+		NEW(b, LEN(a)); b^ := a$;
 		RETURN b
 	END CopyOfAdrString;
 
@@ -103,12 +105,12 @@ MODULE CommTCP;
 		VAR i, res: INTEGER;
 	BEGIN
 		IF adr = "" THEN
-			port := 0; peername := ""; ok := TRUE	(* default port number 0 means 'don't care which port is used' *)
+			port := 0; peername := localhost; ok := TRUE	(* default port number 0 means 'don't care which port is used' *)
 		ELSE
 			i := 0;
 			WHILE (adr[i] # 0X) & ((adr[i] >= "0") & (adr[i] <= "9")) OR (adr[i] = " ") DO INC(i) END;
 			IF adr[i] # 0X THEN ParseAdr(adr, peername, port, ok)
-			ELSE Strings.StringToInt(adr, port, res); peername := ""; ok := res = 0
+			ELSE Strings.StringToInt(adr, port, res); peername := localhost; ok := res = 0
 			END
 		END
 	END ParseLocalAdr;
@@ -124,7 +126,7 @@ MODULE CommTCP;
 			hostentry := WinNet.gethostbyname(shortPName);
 			ok := hostentry # NIL;
 			IF ok THEN
-				inaddr := hostentry.h_addr_list^[0]^[0]
+				inaddr := SYSTEM.VAL(WinNet.in_addr, hostentry.h_addr_list^[0]^)
 			ELSE
 				Error("gethostbyname()", WinNet.WSAGetLastError())
 			END

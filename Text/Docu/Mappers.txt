@@ -92,7 +92,8 @@ Possible element of Scanner.opts. If present, the scanner will recognize Boolean
 
 CONST interpretSets
 Option element
-Possible element of Scanner.opts. If present, the scanner will recognize set values: sets of integers in the range MIN(SET) .. MAX(SET) as defined by the language Component Pascal; otherwise "{", ".", and enclosed integers will be returned individually. (The syntax of set values is {" integer [".." integer "]" { "," integer [".." integer] "}.)
+Possible element of Scanner.opts. If present, the scanner will recognize set values: sets of integers in the range MIN(SET) .. MAX(SET) as defined by the language Component Pascal; otherwise "{", ".", and enclosed integers will be returned individually.
+(The syntax of set values is "{" [integer [".." integer] { "," integer [".." integer] } ] "}".)
 
 CONST maskViews
 Option element

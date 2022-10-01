@@ -111,7 +111,7 @@ MODULE HostFonts;
 			res := WinApi.SelectObject(dc, df.id);
 			res := WinApi.GetTextMetricsW(dc, tm);
 			a := f.size MOD grid; b := f.size DIV grid; f.id := df.id;
-			res := WinApi.GetCharABCWidthsW(dc, 0, 255, abc[0]);
+			res := WinApi.GetCharABCWidthsW(dc, 0, 255, abc);
 			IF res # 0 THEN
 				i := 0; max := 0;
 				WHILE i < 256 DO
@@ -168,15 +168,15 @@ MODULE HostFonts;
 		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC; wt: ARRAY 1 OF INTEGER;
 	BEGIN
 		IF ch < 100X THEN RETURN f.wtab[ORD(ch)] END;
-		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
 		IF res # 0 THEN
 			w := abc[0].abcA + abc[0].abcB + abc[0].abcC;
 			w := w * f.a DIV grid + w * f.b
 		ELSE
-			res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt[0]);
+			res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt);
 			IF res # 0 THEN w := wt[0] * f.a DIV grid + wt[0] * f.b
 			ELSE
-				res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt[0]);
+				res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt);
 				IF res # 0 THEN w := wt[0] * f.a DIV grid + wt[0] * f.b
 				ELSE w := f.wtab[1]
 				END
@@ -189,7 +189,7 @@ MODULE HostFonts;
 		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
 		IF ch < 100X THEN RETURN f.ftab[ORD(ch)] END;
-		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
 		IF (res # 0) & (abc[0].abcA < 0) THEN
 			w := -abc[0].abcA;
 			w := w * f.a DIV grid + w * f.b
@@ -202,7 +202,7 @@ MODULE HostFonts;
 		VAR res, w: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
 		IF ch < 100X THEN RETURN f.ttab[ORD(ch)] END;
-		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc[0]);
+		res := WinApi.GetCharABCWidthsW(dc, ORD(ch), ORD(ch), abc);
 		IF (res # 0) & (abc[0].abcC < 0) THEN
 			w := -abc[0].abcC;
 			w := w * f.a DIV grid + w * f.b
@@ -215,8 +215,8 @@ MODULE HostFonts;
 		VAR res, w: INTEGER; wt: ARRAY 1 OF INTEGER;
 	BEGIN
 		IF ch < 100X THEN RETURN df.wtab[ORD(ch)] END;
-		res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt[0]);
-		IF res = 0 THEN res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt[0]) END;
+		res := WinApi.GetCharWidth32W(dc, ORD(ch), ORD(ch), wt);
+		IF res = 0 THEN res := WinApi.GetCharWidthW(dc, ORD(ch), ORD(ch), wt) END;
 		IF res # 0 THEN w := wt[0] ELSE w := df.wtab[1] END;
 		RETURN w
 	END wTab;
@@ -275,10 +275,10 @@ MODULE HostFonts;
 	PROCEDURE SetupDevFont (dc: WinApi.HANDLE; df: DevFont);
 		VAR res: INTEGER; abc: ARRAY 1 OF WinApi.ABC;
 	BEGIN
-		res := WinApi.GetCharABCWidthsW(dc, ORD("H"), ORD("H"), abc[0]);
+		res := WinApi.GetCharABCWidthsW(dc, ORD("H"), ORD("H"), abc);
 		IF res # 0 THEN	(* true type *)
 			df.noGap := (res # 0) & (abc[0].abcA <= 0);
-			res := WinApi.GetCharWidth32W(dc, 0, 255, df.wtab[0]);
+			res := WinApi.GetCharWidth32W(dc, 0, 255, df.wtab);
 		ELSE	(* raster *)
 			df.noGap := FALSE;
 			GetRasterWidth(dc, df.wtab)

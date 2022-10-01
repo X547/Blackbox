@@ -148,7 +148,3 @@ MODULE ObxCtrls;
 	END Guard;
 
 END ObxCtrls.
-
-"ObxCtrls.Deposit; StdCmds.PasteView"
-
-

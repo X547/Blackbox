@@ -311,6 +311,14 @@ MODULE OleStorage;
 		END
 	END Close;
 	
+	PROCEDURE (f: StreamFile) Closed(): BOOLEAN;
+	BEGIN RETURN f.stream = NIL
+	END Closed;
+	
+	PROCEDURE (f: StreamFile) Shared(): BOOLEAN;
+	BEGIN RETURN TRUE (* Stream is always shared *)
+	END Shared;
+	
 	PROCEDURE (f: StreamFile) Register (name: Files.Name; type: Files.Type; ask: BOOLEAN; OUT res: INTEGER);
 	BEGIN
 		res := 10

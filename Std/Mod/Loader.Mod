@@ -21,8 +21,6 @@ MODULE StdLoader;
 		illegalFPrint = Kernel.illegalFPrint;
 		cyclicImport = Kernel.cyclicImport;
 		noMem = Kernel.noMem;
-		commNotFound = Kernel.commNotFound;
-		commSyntaxError = Kernel.commSyntaxError;
 		descNotFound = -1;
 
 		OFdir = "Code";
@@ -41,13 +39,14 @@ MODULE StdLoader;
 		absolute = 100; relative = 101; copy = 102; table = 103; tableend = 104; deref = 105; halfword = 106;
 		
 	TYPE
-		Name = ARRAY 256 OF CHAR;
+		Name = Kernel.Name;
 		ModSpec = POINTER TO RECORD
 			next, link, imp: ModSpec;
 			name: Name;
 			file: Files.File;
 			mod: Kernel.Module;
-			hs, ms, ds, cs, vs, mad, dad: INTEGER
+			hs, ms, ds, cs, vs: INTEGER; (* headSize, metaSize, descSize, codeSize, dataSize *)
+			mad, dad: INTEGER (* modAdr, descAdr *)
 		END;
 		
 		Hook = POINTER TO RECORD (Kernel.LoaderHook) END;
@@ -105,12 +104,13 @@ MODULE StdLoader;
 	END RNum;
 	
 	PROCEDURE RName (VAR name: ARRAY OF CHAR);
-		VAR b: BYTE; i, n: INTEGER;
+		VAR b: BYTE; i, n, res: INTEGER; s: Kernel.Utf8Name;
 	BEGIN
 		i := 0; n := LEN(name) - 1; inp.ReadByte(b);
-		WHILE (i < n) & (b # 0) DO name[i] := CHR(b MOD 256); INC(i); inp.ReadByte(b) END;
+		WHILE (i < n) & (b # 0) DO s[i] := SHORT(CHR(b MOD 256)); INC(i); inp.ReadByte(b) END;
 		WHILE b # 0 DO inp.ReadByte(b) END;
-		name[i] := 0X
+		s[i] := 0X;
+		Kernel.Utf8ToString(s, name, res); ASSERT(res = 0)
 	END RName;
 
 	PROCEDURE Fixup (adr: INTEGER; mod: ModSpec);
@@ -182,9 +182,9 @@ MODULE StdLoader;
 	END ReadHeader;
 	
 	PROCEDURE ReadModule (mod: ModSpec);
-		TYPE BlockPtr = POINTER TO ARRAY [1] 1000000H OF BYTE;
+		TYPE BlockPtr = POINTER TO ARRAY [untagged] 1000000H OF BYTE;
 		VAR imptab, x, fp, ofp, opt, a: INTEGER;
-			name: Name; dp, mp: BlockPtr; imp: ModSpec; obj: Kernel.Object; in, n: Kernel.Name;
+			name: Name; dp, mp: BlockPtr; imp: ModSpec; obj: Kernel.Object;
 	BEGIN
 		IF mod.file = NIL THEN mod.file := ThisObjFile(mod.name) END;
 		inp := mod.file.NewReader(inp);
@@ -210,7 +210,8 @@ MODULE StdLoader;
 						RName(name); RNum(fp); opt := 0;
 						IF imp.mod # NIL THEN
 							IF name = "" THEN obj := Kernel.ThisDesc(imp.mod, fp)
-							ELSE n := SHORT(name$); obj := Kernel.ThisObject(imp.mod, n)
+							ELSE
+								obj := Kernel.ThisObject(imp.mod, name)
 							END;
 							IF (obj # NIL) & (obj.id MOD 16 = x) THEN
 								ofp := obj.fprint;
@@ -235,8 +236,7 @@ MODULE StdLoader;
 							END
 						ELSE	(* imp is dll *)
 							IF x IN {mVar, mProc} THEN
-								in := SHORT(imp.name$); n := SHORT(name$);
-								a := Kernel.ThisDllObj(x, fp, in, n);
+								a := Kernel.ThisDllObj(x, fp, imp.name, name);
 								IF a # 0 THEN Fixup(a, mod)
 								ELSE Error(objNotFound, imp, mod); object := name$
 								END
@@ -260,7 +260,7 @@ MODULE StdLoader;
 	END ReadModule;
 	
 	PROCEDURE LoadMod (mod: ModSpec);
-		VAR i: ModSpec; ok: BOOLEAN; j: INTEGER; n: Kernel.Name;
+		VAR i: ModSpec; ok: BOOLEAN; j: INTEGER;
 	BEGIN
 		importing := ""; imported := ""; object := ""; i := mod;
 		WHILE (i.link # NIL) & (i.link.name # mod.name) DO i := i.link END;
@@ -273,19 +273,17 @@ MODULE StdLoader;
 			IF i.name[0] = "$" THEN	(* dll *)
 				j := 1;
 				WHILE i.name[j] # 0X DO i.name[j - 1] := i.name[j]; INC(j) END;
-				i.name[j - 1] := 0X; n := SHORT(i.name$);
-				Kernel.LoadDll(n, ok);
+				i.name[j - 1] := 0X;
+				Kernel.LoadDll(i.name, ok);
 				IF ~ok THEN Error(fileNotFound, i, NIL) END
 			ELSE
-				n := SHORT(i.name$);
-				i.mod := Kernel.ThisLoadedMod(n);	(* loaded module *)
+				i.mod := Kernel.ThisLoadedMod(i.name);	(* loaded module *)
 				IF i.mod = NIL THEN i.link := mod; LoadMod(i) END	(* new module *)
 			END;
 			i := i.next
 		END;
 		IF res = done THEN
-			n := SHORT(mod.name$);
-			mod.mod := Kernel.ThisLoadedMod(n);	(* guaranties uniqueness *)
+			mod.mod := Kernel.ThisLoadedMod(mod.name); (* guaranties uniqueness *)
 			IF mod.mod = NIL THEN
 				ReadModule(mod);
 				IF res = done THEN
@@ -298,7 +296,7 @@ MODULE StdLoader;
 		IF object # "" THEN Append(imported, "."); Append(imported, object); object := "" END
 	END LoadMod;
 
-	PROCEDURE (h: Hook) ThisMod (IN name: ARRAY OF SHORTCHAR): Kernel.Module;
+	PROCEDURE (h: Hook) ThisMod (IN name: ARRAY OF CHAR): Kernel.Module;
 		VAR m: Kernel.Module; ms: ModSpec;
 	BEGIN
 		res := done;

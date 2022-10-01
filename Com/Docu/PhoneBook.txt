@@ -1,5 +1,4 @@
-ComPhoneBook Example
-
+ComPhoneBook Example
 In this example we show the implementation of a COM component which implements a simple phone directory database that manages customer names and telephone numbers. This database can be queried by name and by number.
 
 For our phone directory service we define the interface ILookup. This interface contains the methods LookupByName and LookupByNumber, which return a phone number for a given name, and vice versa. Clients of the phonebook component can access the component's services through this interface only. The interface identifier (IID) of this interface is {C4910D71-BA7D-11CD-94E8-08001701A8A3}. This IID is a globally unique identifier (GUID), i.e., unique in time and space. The definition of this interface ILookup.idl in the Microsoft interface definition language (MIDL) is shown below:

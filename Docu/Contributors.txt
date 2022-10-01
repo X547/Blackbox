@@ -19,20 +19,35 @@ BlackBox is based on the foundation laid at ETH Zürich by the professors Niklau
 
 The following members of the BlackBox community have contributed to BlackBox:
 
+- Werner Bossert
 - Werner Braun
-- Robert Campbell
+- Chris Burrows
+- Robert D. Campbell
 - Oleg N. Cher
 - Marco Ciot
 - Doug Danforth
+- Ivan Denisov
 - Koen Desaeger
 - Ilya Ermakov
+- Ivan Goryachev
 - Alexander Iljin
-- luowy
+- Boris Ilov
+- Ivan Kuzmitski
+- Wenying Luo (Luowy)
+- Gerhard Marent
 - Gérard Meunier
+- Rainer Neubauer
+- Katarzyna Regent Nguyen 
+- Roman Miro (Romiras)
+- Manuel Martín Sánchez
 - Wojtek Skulski
-- Andrew Thomas
+- Dmitry Solomennikov
 - Eugene Temirgaleev
+- Josef Templ
+- Andrew Thomas
 - Fyodor Tkachov
+- Bernhard Treutwein
+- Igor Dehtyarenko (Trurl)
 - Eric Wehrli
 - Mathieu Westerweele
 - Helmut Zinn

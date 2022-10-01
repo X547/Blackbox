@@ -160,7 +160,7 @@ MODULE Services;
 	PROCEDURE ThisDesc (IN type: ARRAY OF CHAR; load: BOOLEAN): Kernel.Type;
 		CONST record = 1; pointer = 3;
 		VAR m: Kernel.Module; t: Kernel.Type; i, j: INTEGER; ch: CHAR;
-			typ: Kernel.Name; mod: ARRAY 256 OF CHAR;
+			typ, mod: Kernel.Name;
 	BEGIN
 		ASSERT(type # "", 20);
 		i := 0; ch := type[0];
@@ -169,11 +169,12 @@ MODULE Services;
 		mod[i] := 0X; INC(i); t := NIL;
 		IF load THEN
 			m := Kernel.ThisMod(mod)
-		ELSE typ := SHORT(mod$); m := Kernel.ThisLoadedMod(typ)
+		ELSE
+			m := Kernel.ThisLoadedMod(mod)
 		END;
 		
 		IF m # NIL THEN
-			j := 0; REPEAT ch := type[i]; typ[j] := SHORT(ch); INC(i); INC(j) UNTIL ch = 0X;
+			j := 0; REPEAT ch := type[i]; typ[j] := ch; INC(i); INC(j) UNTIL ch = 0X;
 			t := Kernel.ThisType(m, typ);
 			IF t = NIL THEN typ[j - 1] := "^"; typ[j] := 0X; t := Kernel.ThisType(m, typ) END
 		END;
@@ -185,14 +186,21 @@ MODULE Services;
 	END ThisDesc;
 
 	PROCEDURE GetTypeName* (IN rec: ANYREC; OUT type: ARRAY OF CHAR);
-		VAR i, j: INTEGER; ch: CHAR; t: Kernel.Type; name: Kernel.Name;
+		VAR i, j: INTEGER; ch: CHAR; t: Kernel.Type; modName, name: Kernel.Name;
 	BEGIN
 		t := Kernel.TypeOf(rec);
-		Kernel.GetTypeName(t, name); type := t.mod.name$;
+		Kernel.GetModName(t.mod, modName);
+		Kernel.GetTypeName(t, name);
+		type := modName$;
 		i := 0; ch := type[0]; WHILE ch # 0X DO INC(i); ch := type[i] END;
 		type[i] := "."; INC(i);
 		j := 0; REPEAT ch := name[j]; type[i] := ch; INC(i); INC(j) UNTIL ch = 0X;
 		IF type[i - 2] = "^" THEN type[i - 2] := 0X END
+		(*
+		type := modName$ + "." + name$;
+		i := LEN(type$); 
+		IF type[i - 1] = "^" THEN type[i - 1] := 0X END
+		*)
 	END GetTypeName;
 
 	PROCEDURE SameType* (IN ra, rb: ANYREC): BOOLEAN;

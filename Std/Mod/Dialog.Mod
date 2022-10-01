@@ -196,10 +196,9 @@ MODULE StdDialog;
 		WHILE (i < LEN(t) - 1) & (title[i] # 0X) DO t[i] := title[i]; INC(i) END;
 		t[i] := 0X;
 		IF ~allowDuplicates THEN
-			IF ~asTool & ~asAux THEN
-				IF (loc # NIL) & (name # "") THEN Windows.SelectBySpec(loc, name, conv, done) END
-			ELSE
-				IF title # "" THEN Windows.SelectByTitle(v, flags, t, done) END
+			Windows.SelectBySpec(loc, name, conv, flags, done);
+			IF ~done & (title # "") & (loc = NIL) & (name = "") THEN
+				Windows.SelectByTitle(v, flags, t, done)
 			END
 		ELSE
 			INCL(flags, Windows.allowDuplicates)
@@ -270,15 +269,10 @@ MODULE StdDialog;
 	BEGIN
 		ASSERT(loc # NIL, 20); ASSERT(name # "", 21);
 		Kernel.MakeFileName(name, ""); s := NIL;
-		IF loc.res # 77 THEN
-			w := Windows.dir.First(); c := conv;
-			IF c = NIL THEN c := Converters.list END;	(* use document converter *)
-			WHILE (w # NIL) & ((w.loc = NIL) OR (w.name = "") OR (w.loc.res = 77) OR
-											~Files.dir.SameFile(loc, name, w.loc, w.name) OR (w.conv # c)) DO
-				w := Windows.dir.Next(w)
-			END;
-			IF w # NIL THEN s := w.doc.ThisView() END
-		END;
+		c := conv;
+		IF c = NIL THEN c := Converters.list END;	(* use document converter *)
+		w := Windows.GetBySpec(loc, name, c, {});
+		IF w # NIL THEN s := w.doc.ThisView() END;
 		IF s = NIL THEN
 			Converters.Import(loc, name, conv, s);
 			IF s # NIL THEN RecalcView(s(Views.View)) END

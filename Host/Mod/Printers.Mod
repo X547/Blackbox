@@ -19,7 +19,7 @@ MODULE HostPrinters;
 	CONST
 		eduMsgH = 30 * Ports.point;
 
-		dialogCommand = "StdCmds.OpenToolDialog('HostPrinters.printing', '#Host:Print')";
+		dialogCommand = "StdCmds.OpenToolDialog('Host/Rsrc/Printing', '#Host:Print')";
 	
 	TYPE
 		Printer = POINTER TO RECORD (Printers.Printer)
@@ -267,7 +267,7 @@ MODULE HostPrinters;
 	BEGIN
 		port := p.ThisPort()(HostPorts.Port);
 		IF ~aborted THEN p.res := Error(WinApi.StartPage(port.dc)) END;
-		printing.pnum := Printing.Current() (* Printing.par.page.current *) + 1;
+		INC(printing.pnum);
 		Dialog.Update(printing);
 		res := WinApi.UpdateWindow(p.cancel(HostWindows.Window).wnd);
 		port.SetDC(port.dc, 0)	(* reinitialize dc *)

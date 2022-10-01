@@ -525,14 +525,18 @@ MODULE Windows;
 		ELSIF (s.entryLevel = 0)	(* don't record when called from within op.Do *)
 		& AffectsDoc(s, st) THEN	(* don't record when Do affected child window only *)
 			s.lastSt := st; s.lastOp := op;
-			s.redo := NIL;	(* clear redo stack *)
+			IF s.notRecordedLevel = 0 THEN
+				s.redo := NIL;	(* clear redo stack *)
+			END;
 			IF s.script # NIL THEN
 				Prepend(s.script, st, name, op)
 			ELSE
 				IF (s.invisibleLevel = 0) & (s.transparentLevel = 0) & (s.notRecordedLevel = 0) THEN INC(s.modLevel) END;
-				NEW(e); e.st := st; e.op := op; e.name := name;
-				e.invisible := s.invisibleLevel > 0; e.transparent := s.transparentLevel > 0;
-				IF (s.notRecordedLevel=0) THEN Push(s.undo, e) END
+				IF s.notRecordedLevel = 0 THEN
+					NEW(e); e.st := st; e.op := op; e.name := name;
+					e.invisible := s.invisibleLevel > 0; e.transparent := s.transparentLevel > 0;
+					Push(s.undo, e)
+				END
 			END
 		END
 	END Do;
@@ -732,16 +736,32 @@ MODULE Windows;
 		dir := d
 	END SetDir;
 
-	PROCEDURE SelectBySpec* (loc: Files.Locator; name: Files.Name; conv: Converters.Converter; VAR done: BOOLEAN);
+	(* reuse of open documents; relevant flags are isAux, isTool, allowDuplicates *)
+	PROCEDURE GetBySpec* (loc: Files.Locator; name: Files.Name; conv: Converters.Converter;
+											flags: SET): Window;
+		VAR tool, aux: BOOLEAN; w: Window;
+	BEGIN
+		IF ~(allowDuplicates IN flags) & (loc # NIL) & (loc.res # 77) & (name # "") THEN
+			Kernel.MakeFileName(name, "");
+			tool := isTool IN flags; aux := isAux IN flags;
+			w := dir.First();
+			WHILE w # NIL DO
+				IF ~(allowDuplicates IN w.flags) & (w.loc # NIL) & (w.loc.res # 77) & (w.name # "")
+				& Files.dir.SameFile(loc, name, w.loc, w.name) & (w.conv = conv)
+				& (tool = (isTool IN w.flags)) & (aux = (isAux IN w.flags)) THEN
+					RETURN w
+				END ;
+				w := dir.Next(w)
+			END
+		END ;
+		RETURN NIL
+	END GetBySpec;
+
+	PROCEDURE SelectBySpec* (loc: Files.Locator; name: Files.Name; conv: Converters.Converter; 
+												flags: SET; VAR done: BOOLEAN);
 		VAR w: Window;
 	BEGIN
-		Kernel.MakeFileName(name, "");
-		w := dir.First();
-		WHILE (w # NIL) & ((loc = NIL) OR (w.loc = NIL) OR (loc.res = 77) OR  (w.loc.res = 77) OR
-										 (name = "") OR (w.name = "") OR
-										~Files.dir.SameFile(loc, name, w.loc, w.name) OR (w.conv # conv)) DO
-			w := dir.Next(w)
-		END;
+		w := GetBySpec(loc, name, conv, flags);
 		IF w # NIL THEN dir.Select(w, lazy); done := TRUE ELSE done := FALSE END
 	END SelectBySpec;
 

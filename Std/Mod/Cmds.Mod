@@ -476,9 +476,7 @@ MODULE StdCmds;
 		i := 0; ch := name[0]; key[0] := "#"; j := 1;
 		REPEAT
 			key[j] := ch; INC(j); lch := ch; INC(i); ch := name[i]
-		UNTIL (ch = 0X) OR (ch = ".")
-			OR ((ch >= "A") & (ch <= "Z") OR (ch >= "À") & (ch # "×") & (ch <= "Þ"))
-				& ((lch < "A") OR (lch > "Z") & (lch < "À") OR (lch = "×") OR (lch > "Þ"));
+		UNTIL (ch = 0X) OR (ch = ".") OR Strings.IsUpper(ch) & ~Strings.IsUpper(lch);
 		IF ch = "." THEN
 			key := "#System:" + name
 		ELSE

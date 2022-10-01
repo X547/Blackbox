@@ -41,6 +41,11 @@ MODULE Controls;
 		
 		maxAdr = 8;
 
+		(* unicode non-characters, known in HostMenus, HostCFrames, Controls *)
+		apps = 0FDD0X;	(* 'menu key',  WinApi.VK_APPS, bypasses BB's popup mechanism for edit controls *)
+		ctrlZ = 0FDD1X;	(* bypasses BB's undo mechanism for edit controls *)
+		ctrlA = 0FDD2X;	(* send ctrl-A (select all) to edit controls *)
+
 	TYPE
 		Prop* = POINTER TO RECORD (Properties.Property)
 			opt*: ARRAY 5 OF BOOLEAN;
@@ -185,8 +190,7 @@ MODULE Controls;
 
 	PROCEDURE IsShortcut (ch: CHAR; c: Control): BOOLEAN;
 	BEGIN
-		IF (ch >= "a") & (ch <= "z") OR (ch >= 0E0X) THEN ch := CAP(ch) END;
-		RETURN ch = c.shortcut
+		RETURN Strings.Upper(ch) = c.shortcut
 	END IsShortcut;
 
 	PROCEDURE ExtractShortcut (c: Control);
@@ -200,8 +204,7 @@ MODULE Controls;
 			ELSE INC(i); sCh := label[i]; INC(i); ch := label[i]
 			END
 		END;
-		IF (sCh >= "a") & (sCh <= "z") OR (sCh >= 0E0X) THEN sCh := CAP(sCh) END;
-		c.shortcut := sCh
+		c.shortcut := Strings.Upper(sCh)
 	END ExtractShortcut;
 
 	PROCEDURE GetGuardProc (name: ARRAY OF CHAR; VAR i: Meta.Item; VAR err: BOOLEAN;
@@ -368,8 +371,7 @@ MODULE Controls;
 		VAR j: INTEGER; ch: CHAR;
 	BEGIN
 		j := 0; ch := path[i];
-		WHILE (j < LEN(name) - 1) & ((ch >= "0") & (ch <= "9") OR (CAP(ch) >= "A") & (CAP(ch) <= "Z")
-												OR (ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_")) DO
+		WHILE (j < LEN(name) - 1) & Strings.IsIdent(ch) DO
 			name[j] := ch; INC(i); INC(j); ch := path[i]
 		END;
 		IF (ch = 0X) OR (ch = ".") OR (ch = "[") OR (ch = "^") THEN name[j] := 0X
@@ -390,7 +392,7 @@ MODULE Controls;
 				adr[num] := i.adr;
 				IF num < LEN(adr) - 1 THEN INC(num) END;
 				IF ch = 0X THEN RETURN 
-				ELSIF i.typ = Meta.ptrTyp THEN
+				ELSIF i.typ IN {Meta.ptrTyp, Meta.anyPtrTyp, Meta.sysPtrTyp} THEN
 					IF ch = "^" THEN ch := path[j]; INC(j) END;
 					i.Deref(i)
 				ELSIF (i.typ = Meta.recTyp) & (ch = ".") THEN
@@ -1323,7 +1325,7 @@ MODULE Controls;
 				c.item.GetStringVal(s, ok);
 				IF ~ok OR (s$ # x$) THEN
 					c.item.PutStringVal(x, ok);
-					IF ok THEN Notify(c, f, Dialog.changed, 0, 0) ELSE Dialog.Beep END
+					IF ok THEN Notify(c, f, Dialog.changed, 0, 0) ELSE Dialog.Beep; f.Update END
 				END
 			| Meta.byteTyp:
 				IF x = "" THEN i := 0; res := 0
@@ -1334,7 +1336,7 @@ MODULE Controls;
 					old := c.item.IntVal();
 					IF i # old THEN c.item.PutIntVal(i); Notify(c, f, Dialog.changed, old, i) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.sIntTyp:
 				IF x = "" THEN i := 0; res := 0
@@ -1345,7 +1347,7 @@ MODULE Controls;
 					old := c.item.IntVal();
 					IF i # old THEN c.item.PutIntVal(i); Notify(c, f, Dialog.changed, old, i) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.intTyp:
 				IF x = "" THEN i := 0; res := 0
@@ -1356,7 +1358,7 @@ MODULE Controls;
 					old := c.item.IntVal();
 					IF i # old THEN c.item.PutIntVal(i); Notify(c, f, Dialog.changed, old, i) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.longTyp:
 				IF x = "" THEN long := 0; res := 0
@@ -1366,7 +1368,7 @@ MODULE Controls;
 					long0 := c.item.LongVal();
 					IF long # long0 THEN c.item.PutLongVal(long); Notify(c, f, Dialog.changed, 0, 0) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.sRealTyp:
 				IF (x = "") OR (x = "-") THEN r := 0; res := 0 ELSE Strings.StringToReal(x, r, res) END;
@@ -1374,7 +1376,7 @@ MODULE Controls;
 					or := c.item.RealVal();
 					IF r # or THEN c.item.PutRealVal(r); Notify(c, f, Dialog.changed, 0, 0) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.realTyp:
 				IF (x = "") OR (x = "-") THEN r := 0; res := 0 ELSE Strings.StringToReal(x, r, res) END;
@@ -1382,7 +1384,7 @@ MODULE Controls;
 					or := c.item.RealVal();
 					IF r # or THEN c.item.PutRealVal(r); Notify(c, f, Dialog.changed, 0, 0) END
 				ELSIF x # "-" THEN
-					Dialog.Beep
+					Dialog.Beep; f.Update
 				END
 			| Meta.recTyp:
 				c.item.GetTypeName(mod, name);
@@ -1396,7 +1398,7 @@ MODULE Controls;
 							long0 := v.LongVal();
 							IF long # long0 THEN v.PutLongVal(long); Notify(c, f, Dialog.changed, 0, 0) END
 						ELSIF x # "-" THEN
-							Dialog.Beep
+							Dialog.Beep; f.Update
 						END
 					ELSE	(* name = "Combo" *)
 						c.item.Lookup("item", v);
@@ -1404,7 +1406,7 @@ MODULE Controls;
 							v.GetStringVal(s, ok);
 							IF ~ok OR (s$ # x$) THEN
 								v.PutStringVal(x, ok);
-								IF ok THEN Notify(c, f, Dialog.changed, 0, 0) ELSE Dialog.Beep END
+								IF ok THEN Notify(c, f, Dialog.changed, 0, 0) ELSE Dialog.Beep; f.Update END
 							END
 						END
 					END
@@ -1501,14 +1503,17 @@ MODULE Controls;
 
 	PROCEDURE (c: Field) HandleCtrlMsg2 (f: Views.Frame; VAR msg: Controllers.Message;
 																		VAR focus: Views.View);
-		VAR ch: CHAR; mod, name: Meta.Name;
+		VAR ch: CHAR; mod, name: Meta.Name; from, to: INTEGER;
 	BEGIN
 		WITH f: StdCFrames.Field DO
 			IF ~c.disabled & ~c.readOnly THEN
 				WITH msg: Controllers.PollOpsMsg DO
-					msg.selectable := TRUE;
-					(* should ask Frame if there is a selection for cut or copy! *)
-					msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					f.GetSelection(from, to);
+					msg.selectable := (f.Length() > 0) & (f.Length() # to - from);
+					IF (to > from) & ~f.password THEN
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					ELSE msg.valid := {Controllers.pasteChar, Controllers.paste}
+					END
 				| msg: Controllers.TickMsg DO
 					f.Idle
 				| msg: Controllers.EditMsg DO
@@ -1519,6 +1524,7 @@ MODULE Controls;
 							OR (c.item.typ = Meta.arrTyp)
 							OR (c.item.typ IN {Meta.sRealTyp, Meta.realTyp}) & ((ch = ".") OR (ch = "E"))
 							OR (c.prop.level > 0) & (ch = ".")
+							OR (ch = apps) OR (ch = ctrlZ) OR (ch = ctrlA)
 							THEN f.KeyDown(ch)
 						ELSIF c.item.typ = Meta.recTyp THEN
 							c.item.GetTypeName(mod, name);
@@ -1613,7 +1619,7 @@ MODULE Controls;
 			IF (val >= c.min) & (val <= c.max) THEN
 				old := c.item.IntVal();
 				IF old # val THEN c.item.PutIntVal(val); Notify(c, f, Dialog.changed, old, val) END
-			ELSE Dialog.Beep
+			ELSE Dialog.Beep; f.Update
 			END
 		END
 	END SetUpDownField;
@@ -1661,14 +1667,18 @@ MODULE Controls;
 
 	PROCEDURE (c: UpDownField) HandleCtrlMsg2 (f: Views.Frame; VAR msg: Controllers.Message;
 																		VAR focus: Views.View);
-		VAR ch: CHAR;
+		VAR ch: CHAR; from, to, i: INTEGER; s: ARRAY 16 OF CHAR;
 	BEGIN
 		IF ~c.disabled & ~c.readOnly THEN
 			WITH f: StdCFrames.UpDownField DO
 				WITH msg: Controllers.PollOpsMsg DO
-					msg.selectable := TRUE;
-					(* should ask view if there is a selection for cut or copy! *)
-					msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					f.GetSelection(from, to);
+					IF c.item.Valid() THEN f.Get(f, i); Strings.IntToString(i, s) ELSE s := "" END;
+					msg.selectable := (LEN(s$) > 0) & (LEN(s$) # to - from);
+					IF to > from THEN
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					ELSE msg.valid := {Controllers.pasteChar, Controllers.paste}
+					END
 				| msg: Controllers.TickMsg DO
 					f.Idle
 				| msg: Controllers.EditMsg DO
@@ -1677,6 +1687,7 @@ MODULE Controls;
 						IF (ch = ldel) OR (ch = rdel) OR (ch >= 10X) & (ch <= 1FX)
 							OR ("0" <= ch) & (ch <= "9") OR (ch = "+") OR (ch = "-")
 							OR (c.item.typ = Meta.arrTyp)
+							OR (ch = apps) OR (ch = ctrlZ) OR (ch = ctrlA)
 							THEN f.KeyDown(ch)
 						ELSE Dialog.Beep
 						END
@@ -2522,13 +2533,17 @@ MODULE Controls;
 
 	PROCEDURE (c: ComboBox) HandleCtrlMsg2 (f: Views.Frame; VAR msg: Controllers.Message;
 																			VAR focus: Views.View);
+		VAR from, to: INTEGER;
 	BEGIN
 		WITH f: StdCFrames.ComboBox DO
 			IF ~c.disabled & ~c.readOnly THEN
 				WITH msg: Controllers.PollOpsMsg DO
-					msg.selectable := TRUE;
-					(* should ask Frame if there is a selection for cut or copy! *)
-					msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					f.GetSelection(from, to);
+					msg.selectable := (f.Length() > 0) & (f.Length() # to - from);
+					IF to > from THEN
+						msg.valid := {Controllers.pasteChar, Controllers.cut, Controllers.copy, Controllers.paste}
+					ELSE msg.valid := {Controllers.pasteChar, Controllers.paste}
+					END
 				| msg: Controllers.TickMsg DO
 					f.Idle
 				| msg: Controllers.EditMsg DO

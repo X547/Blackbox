@@ -8,11 +8,11 @@ A first example of a Component Pascal module is given below, as an embedded text
 
 To compile this module, its source code must first be focused (i.e., set the caret or selection in it). This is done by clicking somewhere in the above source code. Then execute the Compile command in the Dev menu. After the compilation, a message like
 
-compiling "ObxHello0"   104   0
+compiling "ObxHello0"   32   0
 
-appears in the Log window. It means that module ObxHello0 has been compiled successfully, that a code file has been written to disk containing the compiled code, that this module has a code size of 104 bytes and global variables of 0 bytes size, and that information about the module's interface has been written to disk in a symbol file. New symbol files are created whenever a module is compiled for the first time, or when its interface has changed.
+appears in the Log window. It means that module ObxHello0 has been compiled successfully, that a code file has been written to disk containing the compiled code, that this module has a code size of 32 bytes and global variables of 0 bytes size, and that information about the module's interface has been written to disk in a symbol file. New symbol files are created whenever a module is compiled for the first time, or when its interface has changed.
 
-The interface of the above module consists of one exported procedure: ObxHello0.Do. In order to call this procedure, a commander can be used (the little button below):
+The interface of the above module consists of one exported procedure: ObxHello0.Do. In order to call this procedure, a commander can be used (the little round button below):
 
    ObxHello0.Do
 
@@ -34,10 +34,10 @@ The list of loaded modules can be inspected by executing the Loaded Modules com
 
 module name	bytes used	clients	compiled	loaded	Update
 
-ObxHello0	106	0	25.10.1994  20:07:08	25.10.1994  20:08:42
+ObxHello0	47	0	06.09.2016  15:11:34	06.09.2016  15:13:15
 
-Out	532	1	24.10.1994  13:53:49	25.10.1994  20:08:42
-Config	159	0	24.10.1994  13:53:47	25.10.1994  18:31:52
+DevCompiler	7007	0	05.09.2016  11:52:13	06.09.2016  15:11:04
+DevCPV486	35800	1	05.09.2016  11:52:13	06.09.2016  15:11:04
 
 A module can be unloaded if its client count is zero, i.e., if it is not imported by any other module. In order to unload ObxHello0, focus its source text again and then execute Unload in the Dev menu. The following message will appear in the log window:
 
@@ -47,8 +47,8 @@ When you generate the list of loaded modules again, it will look as follows:
 
 module name	bytes used	clients	     compiled	     loaded	Update
 
-Out	   532	  0	24.10.1994  13:53:49	25.10.1994  20:08:42
-Config	   159	  0	24.10.1994  13:53:47	25.10.1994  18:31:52
+DevCompiler	7007	0	05.09.2016  11:52:13	06.09.2016  15:11:04
+DevCPV486	35800	1	05.09.2016  11:52:13	06.09.2016  15:11:04
 
 Note that a module list is just a text which shows a snapshot of the loader state at a given point in time, it won't be updated automatically when you load or unload modules. You can print the text, save it in a file, or edit it without danger that it may be changed by the system. You can force an update by clicking on the blue update link in the text.
 

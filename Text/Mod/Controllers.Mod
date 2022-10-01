@@ -275,7 +275,7 @@ MODULE TextControllers;
 
 	(* support for cursor/selection/focus marking *)
 
-	PROCEDURE BlinkCaret (c: StdCtrl; f: Views.Frame; tick: INTEGER);
+	PROCEDURE BlinkCaret (c: StdCtrl; f: Views.Frame; tick: LONGINT);
 		VAR vis: BOOLEAN;
 	BEGIN
 		IF (c.carPos # none) & f.front & (tick >= c.carTick) THEN
@@ -1382,6 +1382,8 @@ disable intelligent paste for now
 					c.SetSelection(msg.beg, msg.end)
 				ELSE
 				END
+			| msg: TextViews.PositionMsg DO
+				IF ~msg.focusOnly OR (c = Focus()) THEN c.autoBeg := -1 END
 			ELSE
 			END
 		END

@@ -11,7 +11,7 @@ MODULE Strings;
 
 **)
 
-	IMPORT Math;
+	IMPORT Kernel, Math;
 
 	CONST
 		charCode* = -1; decimal* = 10; hexadecimal* = -2; roman*= -3;
@@ -466,6 +466,161 @@ MODULE Strings;
 		IF neg THEN x := -x END
 	END StringToReal;
 
+
+	(* set conversions *)
+
+	PROCEDURE SetToString* (x: SET; OUT str: ARRAY OF CHAR);
+		VAR
+			len, i: INTEGER;
+
+		PROCEDURE AppendChar(ch: CHAR);
+		BEGIN ASSERT(len < LEN(str), 23); str[len] := ch; INC(len)
+		END AppendChar;
+
+		PROCEDURE AppendInt (x: INTEGER);
+			VAR i: INTEGER; ch: CHAR; buf: ARRAY 32 OF CHAR;
+		BEGIN
+			IntToString(x, buf);
+			ch := buf[0]; i := 0;
+			WHILE ch # 0X DO AppendChar(ch); INC(i); ch := buf[i] END
+		END AppendInt;
+
+	BEGIN
+		len := 0; AppendChar('{'); i := MIN(SET);
+		WHILE x # {} DO
+			IF i IN x THEN AppendInt(i); EXCL(x, i);
+				IF (i <= MAX(SET) - 2) & (i+1 IN x) & (i+2 IN x) THEN AppendChar('.'); AppendChar('.');
+					x := x - {i+1, i+2}; INC(i, 3);
+					WHILE (i <= MAX(SET)) & (i IN x) DO EXCL(x, i); INC(i) END;
+					AppendInt(i-1)
+				END;
+				IF x # {} THEN AppendChar(","); AppendChar(" ") END
+			END;
+			INC(i)
+		END;
+		AppendChar("}"); AppendChar(0X)
+	END SetToString;
+
+	PROCEDURE StringToSet* (IN s: ARRAY OF CHAR; OUT x: SET; OUT res: INTEGER);
+		VAR
+			next, x1: INTEGER; ch: CHAR;
+		
+		PROCEDURE NextChar;
+		BEGIN ch := s[next]; 
+			WHILE (ch <= " ") & (ch # 0X) DO INC(next); ch := s[next] END ;
+			IF ch # 0X THEN INC(next) END
+		END NextChar;
+		
+		PROCEDURE ParseInt(): INTEGER;
+			VAR intval: INTEGER;
+		BEGIN
+			intval := ORD(ch) - ORD("0");
+			ch := s[next];
+			WHILE ("0" <= ch) & (ch <= "9") DO
+				intval := intval * 10 + ORD(ch) - ORD('0');
+				IF intval > MAX(SET) THEN res := 1; intval := 0 END ;
+				INC(next); ch := s[next]
+			END ;
+			NextChar;
+			RETURN intval
+		END ParseInt;
+		
+		PROCEDURE ParseRange();
+			VAR x2, i: INTEGER;
+		BEGIN
+			ch := s[next]; INC(next);
+			IF ch = "." THEN NextChar; 
+				IF ("0" <= ch) & (ch <= "9") THEN x2 := ParseInt();
+					IF res = 0 THEN
+						IF x2 >= x1 THEN FOR i := x1 TO x2 DO INCL(x, i) END
+						ELSE res := 2
+						END
+					END
+				ELSE res := 2
+				END
+			ELSE res := 2
+			END
+		END ParseRange;
+		
+	BEGIN
+		x := {}; res := 0; next := 0; NextChar;
+		IF ch = "{" THEN
+			NextChar;
+			WHILE ("0" <= ch) & (ch <= "9") & (res # 2) DO
+				x1 := ParseInt();
+				IF ch = "." THEN ParseRange() ELSIF res = 0 THEN INCL(x, x1) END ;
+				IF ch = "," THEN NextChar END
+			END ;
+			IF ch = "}" THEN NextChar;
+				IF ch # 0X THEN res := 2 END
+			ELSE res := 2
+			END
+		ELSE res := 2
+		END
+	END StringToSet;
+
+	(* ----------------------------- general purpose character classes and conversions --------------------------- *)
+	
+	PROCEDURE IsUpper* (ch: CHAR): BOOLEAN;
+	BEGIN
+		IF ORD(ch) < 256 THEN RETURN toLower[ORD(ch)] # ch ELSE RETURN Kernel.IsUpper(ch) END
+	END IsUpper;
+
+	PROCEDURE Upper* (ch: CHAR): CHAR;
+	BEGIN
+		IF ORD(ch) < 256 THEN RETURN toUpper[ORD(ch)] ELSE RETURN Kernel.Upper(ch) END
+	END Upper;
+	
+	PROCEDURE IsLower* (ch: CHAR): BOOLEAN;
+	BEGIN
+		IF ORD(ch) < 256 THEN RETURN toUpper[ORD(ch)] # ch ELSE RETURN Kernel.IsLower(ch) END
+	END IsLower;
+
+	PROCEDURE Lower* (ch: CHAR): CHAR;
+	BEGIN 
+		IF ORD(ch) < 256 THEN RETURN toLower[ORD(ch)] ELSE RETURN Kernel.Lower(ch) END
+	END Lower;
+
+	PROCEDURE IsAlpha* (ch: CHAR): BOOLEAN;
+	BEGIN
+		CASE ch OF
+		"a".."z", "A".."Z": RETURN TRUE
+		ELSE
+			IF ch > 7FX THEN RETURN Kernel.IsAlpha(ch) ELSE RETURN FALSE END
+		END
+	END IsAlpha;
+
+	PROCEDURE IsNumeric* (ch: CHAR): BOOLEAN;
+	BEGIN
+		RETURN ("0" <= ch) & (ch <= "9")
+	END IsNumeric;
+
+	PROCEDURE IsAlphaNumeric* (ch: CHAR): BOOLEAN;
+	BEGIN
+		RETURN IsAlpha(ch) OR IsNumeric(ch)
+	END IsAlphaNumeric;
+
+	(* ----------------------------- Component Pascal character classes --------------------------- *)
+
+	PROCEDURE IsIdentStart* (ch: CHAR): BOOLEAN;
+	BEGIN
+		CASE ch OF
+		"a".."z", "A".."Z", "_": RETURN TRUE
+		ELSE
+			IF ch > 7FX THEN RETURN Kernel.IsAlpha(ch) ELSE RETURN FALSE END
+		END
+	END IsIdentStart;
+
+	PROCEDURE IsIdent* (ch: CHAR): BOOLEAN;
+	BEGIN
+		(* returns IsIdentStart(ch) OR IsNumeric(ch); optimized because heavily used in the compiler *)
+		CASE ch OF
+		"a".."z", "A".."Z", "_", "0".."9": RETURN TRUE
+		ELSE
+			IF ch > 7FX THEN RETURN Kernel.IsAlpha(ch) ELSE RETURN FALSE END
+		END
+	END IsIdent;
+
 	(* ----------------------------- string manipulation routines --------------------------- *)
 
 	PROCEDURE Valid* (IN s: ARRAY OF CHAR): BOOLEAN;
@@ -475,54 +630,54 @@ MODULE Strings;
 		RETURN i < LEN(s)
 	END Valid;
 
-	PROCEDURE Upper* (ch: CHAR): CHAR;
-	BEGIN
-		IF ORD(ch) < 256 THEN RETURN toUpper[ORD(ch)] ELSE RETURN ch END
-	END Upper;
-
-	PROCEDURE ToUpper* (in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
+	PROCEDURE ToUpper* (IN in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
 		VAR i, max: INTEGER;
 	BEGIN i := 0; max := LEN(out)-1;
 		WHILE (in[i] # 0X) & (i < max) DO
-			IF ORD(in[i]) < 256 THEN out[i] := toUpper[ORD(in[i])] ELSE out[i] := in[i] END;
+			IF ORD(in[i]) < 256 THEN out[i] := toUpper[ORD(in[i])] ELSE out[i] := Kernel.Upper(in[i]) END;
 			INC(i)
 		END;
 		out[i] := 0X
 	END ToUpper;
 
-	PROCEDURE Lower* (ch: CHAR): CHAR;
-	BEGIN 
-		IF ORD(ch) < 256 THEN RETURN toLower[ORD(ch)] ELSE RETURN ch END
-	END Lower;
-
-	PROCEDURE ToLower* (in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
+	PROCEDURE ToLower* (IN in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
 		VAR i, max: INTEGER;
 	BEGIN i := 0; max := LEN(out)-1;
 		WHILE (in[i] # 0X) & (i < max) DO
-			IF ORD(in[i]) < 256 THEN out[i] := toLower[ORD(in[i])] ELSE out[i] := in[i] END;
+			IF ORD(in[i]) < 256 THEN out[i] := toLower[ORD(in[i])] ELSE out[i] := Kernel.Lower(in[i]) END;
 			INC(i)
 		END;
 		out[i] := 0X
 	END ToLower;
 
+	PROCEDURE Utf8ToString* (IN in: ARRAY OF SHORTCHAR; OUT out: ARRAY OF CHAR; OUT res: INTEGER);
+	BEGIN
+		Kernel.Utf8ToString(in, out, res)
+	END Utf8ToString;
+
+	PROCEDURE StringToUtf8* (IN in: ARRAY OF CHAR; OUT out: ARRAY OF SHORTCHAR; OUT res: INTEGER);
+	BEGIN
+		Kernel.StringToUtf8(in, out, res)
+	END StringToUtf8;
+
 	PROCEDURE Replace* (VAR s: ARRAY OF CHAR; pos, len: INTEGER; IN rep: ARRAY OF CHAR);
 		(* replace stretch s[pos]..s[pos+len-1] with rep *)
-		(* insert semantics if len = 0; delete semantics if Len(rep) = 0 *)
+		(* insert semantics if len = 0; delete semantics if LEN(rep$) = 0 *)
 		VAR i, j, k, max, lenS: INTEGER; ch: CHAR;
 	BEGIN
 		ASSERT(len >= 0, 20); ASSERT(pos >= 0, 21);
 		lenS := LEN(s$); max := LEN(s) - 1;
-		IF pos <= lenS THEN i := pos; j := 0;
+		IF pos <= lenS THEN i := pos; j := 0; ch := rep[0];
 			IF pos+len > lenS THEN len := lenS - pos END;
-			WHILE (rep[j] # 0X) & (len > 0) DO
-				s[i] := rep[j]; INC(i); INC(j); DEC(len)
+			WHILE (ch # 0X) & (len > 0) DO
+				s[i] := ch; INC(i); INC(j); DEC(len); ch := rep[j]
 			END;
-			IF len > 0 THEN (* delete the remaining part of the stretch [pos, pos+len) *)
+			IF len > 0 THEN (* delete the remaining part of the stretch [pos, pos+len') *)
 				REPEAT ch := s[i+len]; s[i] := ch; INC(i) UNTIL ch = 0X
-			ELSE (* insert the remaining part of rep *)
+			ELSIF ch # 0X THEN (* insert the remaining part of rep *)
 				len := LEN(rep$) - j; k := lenS + len;
 				IF k > max THEN k := max END;
-				s[k] := 0X;
+				s[k] := 0X; DEC(k);
 				WHILE k - len >= i DO s[k] := s[k-len]; DEC(k) END;
 				WHILE (rep[j] # 0X) & (i < max) DO s[i] := rep[j]; INC(i); INC(j) END
 			END
@@ -562,6 +717,7 @@ MODULE Strings;
 		FOR i := ORD("A") TO ORD("Z") DO toLower[i] := CHR(i + 32); toUpper[i + 32] := CHR(i) END;
 		FOR i := ORD("À") TO ORD ("Ö") DO toLower[i] := CHR(i + 32); toUpper[i + 32] := CHR(i) END;
 		FOR i := ORD("Ø") TO ORD ("Þ") DO toLower[i] := CHR(i + 32); toUpper[i + 32] := CHR(i) END;
+		toUpper[ORD("ÿ")] := "Ÿ";
 		digits := "0123456789ABCDEF"; 
 		maxExp := SHORT(ENTIER(Math.Log(MAX(REAL)))) + 1;
 		maxDig := SHORT(ENTIER(-Math.Log(Math.Eps())));

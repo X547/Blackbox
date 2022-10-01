@@ -179,11 +179,11 @@ MODULE SqlDB;
 		VAR j: INTEGER;
 	BEGIN	(* extract the designator that describes a global variable *)
 		j := 0;
-		IF (CAP(ch) >= "A") & (CAP(ch) < "Z") THEN
+		IF Strings.IsIdentStart(ch) THEN
 			REPEAT
 				t[j] := ch; INC(j);
 				INC(i); ch := s[i]
-			UNTIL (ch < "0") & (ch # ".") OR ("9" < ch) & (CAP(ch) < "A") OR ("Z" < CAP(ch)) & (ch # "_") OR (j = varLen)
+			UNTIL ~Strings.IsIdent(ch) & (ch # ".")
 		END;
 		t[j] := 0X
 	END ReadPath;
@@ -414,7 +414,7 @@ MODULE SqlDB;
 	END LookupItem;
 
 	PROCEDURE ReadItem (item: Meta.Item; t: StdTable; row: INTEGER; VAR col: INTEGER);
-		VAR i, len: INTEGER; base: Meta.Item; s: Meta.Scanner; mod, typ: Meta.Name; ok: BOOLEAN;
+		VAR i, len: INTEGER; long: LONGINT; base: Meta.Item; s: Meta.Scanner; mod, typ: Meta.Name; ok: BOOLEAN;
 			r: REAL; date: DateValue; time: TimeValue; cy: CurrencyValue; str: StringValue;
 			blob: BlobValue; rw: RowValue; tab: SqlDrivers.Table;
 	BEGIN	(* read a value from a result table, and copy it to a global variable represented by a meta item *)
@@ -431,6 +431,9 @@ MODULE SqlDB;
 				i := 0; tab.res := overflow
 			END;
 			item.PutIntVal(i); INC(col)
+		| Meta.longTyp:
+			tab.ReadLong(row, col, long);
+			item.PutLongVal(long); INC(col)
 		| Meta.sRealTyp, Meta.realTyp:
 			tab.ReadReal(row, col, r);
 			IF (item.typ = Meta.sRealTyp) & ((r < MIN(SHORTREAL)) OR (r > MAX(SHORTREAL))) THEN
@@ -512,6 +515,8 @@ MODULE SqlDB;
 			CASE item.typ OF
 			| Meta.byteTyp, Meta.sIntTyp, Meta.intTyp:
 				item.PutIntVal(0)
+			| Meta.longTyp:
+				item.PutLongVal(0)
 			| Meta.sRealTyp, Meta.realTyp:
 				item.PutRealVal(0)
 			| Meta.boolTyp:

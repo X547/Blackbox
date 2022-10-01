@@ -79,6 +79,9 @@ MODULE Files;
 	PROCEDURE (f: File) Register* (name: Name; type: Type; ask: BOOLEAN;
 													OUT res: INTEGER), NEW, ABSTRACT;
 	PROCEDURE (f: File) Close* (), NEW, ABSTRACT;
+	PROCEDURE (f: File) Closed* (): BOOLEAN, NEW, ABSTRACT;
+	PROCEDURE (f: File) Shared* (): BOOLEAN, NEW, ABSTRACT;
+	
 	
 	PROCEDURE (r: Reader) Base* (): File, NEW, ABSTRACT;
 	PROCEDURE (r: Reader) Pos* (): INTEGER, NEW, ABSTRACT;

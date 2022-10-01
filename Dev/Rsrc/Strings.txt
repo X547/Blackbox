@@ -1,4 +1,186 @@
-STRINGS
+STRINGS
+&Info	Info
+&Open Log	&Open Log
+&Clear Log	&Clear Log
+&Loaded Modules	&Loaded Modules
+&Global Variables	&Global Variables
+&View State	&View State
+&About Alien	About &Alien
+&Heap Spy...	&Heap Spy...
+&Message Spy...	Message Spy...
+&Control List	Control List
+&Source	&Source
+&Client Interface	Client Interface
+&Extension Interface	Extension Interface
+&Interface...	&Interface...
+&Documentation	&Documentation
+&Dependencies	De&pendencies
+&Create Tool	Create Tool
+&Repository	&Repository
+&Search In Sources	Search In Sources
+&Search In Docu (Case Sensitive)	Search In Docu (Case Sensitive)
+&Search In Docu (Case Insensitive)	Search In Docu (Case Insensitive)
+&Compare Texts	Compare Texts
+&Check Links...	Check Links...
+&Analyzer Options...	Analyzer Options...
+&Analyze Module	Analyze Module
+&Menus	&Menus
+&Update Menus	&Update Menus
+
+&Dev	Dev
+&Edit Mode	&Edit Mode
+&Layout Mode	&Layout Mode
+&Browser Mode	&Browser Mode
+&Mask Mode	&Mask Mode
+&Open Module List	&Open Module List
+&Open File List	Open &File List
+&Compile	&Compile
+&Compile And Unload	Compile And Unload
+&Compile Selection	Compile &Selection
+&Compile Module List	Com&pile Module List
+&Unmark Errors	Unmar&k Errors
+&Next Error	Next E&rror
+&Toggle Error Mark	To&ggle Error Mark
+&Execute	E&xecute
+&Unload	&Unload
+&Unload Module List	Unloa&d Module List
+&Flush Resources	Flus&h Resources
+&Revalidate View	Re&validate View
+&Set Profile List	Set Profile List
+&Start Profiler	Start Profiler
+&Stop Profiler	Stop Profiler
+&Timed Execute	Timed Execute
+
+&Tools	Tools
+&Document Size...	Document Size...
+&View Size...	View Size...
+&Insert OLE Object...	Insert OLE &Object...
+&Insert Commander	Insert Co&mmander
+&Insert Stamp	Insert &Stamp
+&Insert Clock	Insert Cloc&k
+&Insert Header	Insert &Header
+&Add Scroller	&Add Scroller
+&Remove Scroller	&Remove Scroller
+&Create Link	Create &Link
+&Create Target	Create &Target
+&Create Fold	Create Fold
+&Expand All	Expand All
+&Collapse All	Collapse All
+&Fold...	Fold...
+&Encode Document	Encode Document
+&Encode Selection	Encode Selection
+&Encode File...	Encode File...
+&Encode File List	Encode File List
+&Decode	Decode
+&About Encoded Material	About Encoded Material
+&Create Subsystem...	Create Subsystem...
+
+&Controls	Controls
+&New Form...	&New Form...
+&Open As Tool Dialog	Open As &Tool Dialog
+&Open As Aux Dialog	Open As &Aux Dialog
+&Insert Tab View	Insert Tab &View
+&Insert Command Button	Insert Co&mmand Button
+&Insert Check Box	Insert Chec&k Box
+&Insert Radio Button	Insert &Radio Button
+&Insert Edit Field	Insert &Edit Field
+&Insert List Box	Insert &List Box
+&Insert Selection Box	Insert &Selection Box
+&Insert Combo Box	Insert Com&bo Box
+&Insert Up/Down Field	Insert &Up/Down Field
+&Insert Time Field	Insert &Time Field
+&Insert Date Field	Insert &Date Field
+&Insert Color Field	Insert C&olor Field
+&Insert Tree Control	Insert Tree Control
+&Insert Table Control	Insert Table Control
+&Insert Cancel Button	Insert &Cancel Button
+&Insert Caption	Insert Captio&n
+&Insert Group Box	Insert &Group Box
+
+&Expand	Expand
+&Collapse	Collapse
+&New Analysis	New Analysis
+&Hide	Hide
+&Show All Items	Show All Items
+&Show Basic System	Show Basic System
+&Arrange Items	Arrange Items
+&Create tool...	Create tool...
+&Properties...	P&roperties...
+
+Add MsgSpy	Add MsgSpy
+All subsystems	&All subsystems
+Allocated:	Allocated:
+Analyze	Analyze
+Analyzer	Analyzer
+Apply	Appl&y
+Browse...	Browse...
+Browse Type Library	Browse Type Library
+Browser	Browser
+Cancel	Cancel
+Check Links	Check Links
+Clear List	Clear List
+Clear Log	Clear Log
+Close	&Close
+Clusters:	Clusters:
+Command Package (Form)	Command Package (Form)
+Command Package (Text)	Command Package (Text)
+Control:	Control:
+Create	Create
+Create Subsystem	Create Subsystem
+Document Size	Document Size
+Exported Items	Exported Items
+File Name:	File Name:
+Flat Interface	Flat Interface
+Font...	&Font...
+Formatted	Formatted
+Generate Automation Interface	Generate Automation Interface
+Generate Custom Interface	Generate Custom Interface
+Generate Interface Module	Generate Interface Module
+Global Docu and Mod directories	&Global Docu and Mod directories
+Guard:	&Guard:
+Heap Information	Heap Information
+Heap size:	Heap size:
+Heap Spy	Heap Spy
+Interface Hints	Interface Hints
+Intermediate Items	Intermediate Items
+Label:	&Label:
+Level:	Le&vel:
+Levels	Levels
+Link:	Lin&k:
+List Links	&List Links
+Load Options	Load Options
+Mark New Messages in List	Mark New Messages in List
+Message Spy	Message Spy
+Module Name:	Module Name:
+New Form	New Form
+Next	Ne&xt
+Notifier:	&Notifier:
+OK	OK
+Option 0	Option 0
+Option 1	Option 1
+Option 2	Option 2
+Option 3	Option 3
+Option 4	Option 4
+Reset Options	Reset Options
+Save Options	Save Options
+Semicolons	Semicolons
+Show Client Interface	Show Client Interface
+Show Complete Interface	Show Complete Interface
+Show Extension Interface	Show Extension Interface
+Show Heap	Show Heap
+Show Messages in Log	Show Messages in Log
+Side Effects	Side Effects
+Statements in	Statements in
+Subsystem:	Subsystem:
+&Subsystem:	&Subsystem:
+Type Library:	Type Library:
+VAR Parameter	VAR Parameter
+View + Model in one Module	View + Model in one Module
+View + Model in three Modules	View + Model in three Modules
+View without Model	View without Model
+View Size	View Size
+Zoom	Zoom
+
 CannotOpenFile	cannot open file ^0
 InsertMarkers	Insert Markers
 DeleteMarkers	Delete Markers
@@ -19,9 +201,9 @@ NoSuchExtItemExported	no item ^1 exported for extension from ^0
 NotOnlyFileNames	only file names expected in selection
 StringExpected	string expected
 IllegalKind	illegal value for kind
-PrefixTooShort	subsystem prefix is too short (should be 3..8 characters)
-CannotTranslate	 could not be translated
-IllegalSyntax	illegal subsystem prefix syntax (start with capital letters, follow with small letters or digits)
+PrefixTooShort	Subsystem name should be at least 3 characters long
+NotUppercase	Subsystem name should start with an uppercase letter
+IllegalSyntax	Subsystem name must be a valid Component Pascal identifier with uppercase letters only at the beginning
 Change	Change
 Unloading	unloading ^0
 Unknown	unknown
@@ -50,6 +232,7 @@ Unloaded	^0 unloaded
 UnloadingFailed	unloading ^0 failed
 NotFound	^0 not found
 NoModNameFound	no module name found
+ResourceNotFound	resource file ^0 not found for subsystem ^1
 
 ProcInUnloadedMod	procedure in unloaded module 
 IllegalAddress	illegal address: 
@@ -132,7 +315,7 @@ NoText	no text
 AlreadyExists	Cannot create subsystem, because directory already exists
 InconsistentLinks	Inconsistent Links
 Links	List of all Links
-CannotTranslate	Cannot translate source code templates
+CannotTranslate	Cannot translate source code template ^0
 
 AddView	Add View
 RemoveView	Remove View

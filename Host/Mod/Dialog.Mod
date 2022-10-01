@@ -26,6 +26,7 @@ MODULE HostDialog;
 		save* = 1; cancel* = 2;
 
 		dirtyString = "#Host:SaveChanges";
+		defaultLanguage = "en";
 
 
 	TYPE
@@ -38,7 +39,10 @@ MODULE HostDialog;
 		ShowHook = POINTER TO RECORD (Dialog.ShowHook) END;
 		GetSpecHook = POINTER TO RECORD (Views.GetSpecHook) END;
 		LanguageHook = POINTER TO RECORD (Dialog.LanguageHook) END;
-
+		WineHook = POINTER TO RECORD (Dialog.WineHook) isWine: BOOLEAN END;
+		ExtCallHook = POINTER TO RECORD (Dialog.ExtCallHook) END;
+		CallName = ARRAY [untagged] 8191 OF CHAR;
+		CallNamePtr = POINTER TO CallName;
 
 	VAR
 		window-: Windows.Window;	(** window created/selected by most recent Old or Open **)
@@ -65,7 +69,10 @@ MODULE HostDialog;
 			visualScroll*: BOOLEAN;
 			statusbar*: INTEGER;
 			thickCaret*: BOOLEAN;
-			caretPeriod*: INTEGER
+			caretPeriod*: INTEGER;
+			beep*: BOOLEAN;
+			serverMode*: BOOLEAN;
+			language*: Dialog.Combo;
 		END;
 
 		ShowOleStatus*: PROCEDURE (w: Windows.Window; s: ARRAY OF CHAR);
@@ -89,6 +96,9 @@ MODULE HostDialog;
 		all: Converters.Converter;
 
 		dialogHook: DialogHook;
+
+		callNameTaken: BOOLEAN;
+		hideExtRunWindow*: BOOLEAN;
 
 
 	PROCEDURE Append (VAR s: ARRAY OF CHAR; VAR idx: INTEGER; IN t: ARRAY OF CHAR);
@@ -842,9 +852,35 @@ MODULE HostDialog;
 		HostWindows.ResizeMainWindow(0, rect.right, rect.bottom);
 		Dialog.thickCaret := prefs.thickCaret;
 		Dialog.caretPeriod := prefs.caretPeriod;
+		Dialog.beep := prefs.beep;
+		Dialog.serverMode := prefs.serverMode;
 		HostRegistry.WriteBool("thickCaret", Dialog.thickCaret);
-		HostRegistry.WriteInt("caretPeriod", Dialog.caretPeriod)
+		HostRegistry.WriteInt("caretPeriod", Dialog.caretPeriod);
+		HostRegistry.WriteBool("beep", Dialog.beep);
+		HostRegistry.WriteBool("serverMode", Dialog.serverMode);
+		prefs.language.item[2] := 0X;
+		Dialog.SetLanguage(prefs.language.item$, Dialog.persistent);
 	END PrefOk;
+
+	PROCEDURE InitLanguage;
+		VAR loc: Files.Locator; li: Files.LocInfo; lang: Dialog.Language; n: INTEGER;
+	BEGIN
+		prefs.language.SetItem(0, defaultLanguage);
+		n := 1;
+		loc := Files.dir.This("System/Rsrc/");
+		li := Files.dir.LocList(loc);
+		WHILE li # NIL DO
+			IF LEN(li.name$) = 2 THEN
+				Strings.ToLower(li.name, lang);
+				prefs.language.SetItem(n, lang);
+				INC(n);
+			END;
+			li := li.next;
+		END;
+		prefs.language.SetLen(n);
+		prefs.language.item := Dialog.language$;
+		IF prefs.language.item = '' THEN prefs.language.item := defaultLanguage END;
+	END InitLanguage;
 
 	PROCEDURE InitPrefDialog*;
 	BEGIN
@@ -861,7 +897,10 @@ MODULE HostDialog;
 		ELSE prefs.statusbar := 1
 		END;
 		prefs.thickCaret := Dialog.thickCaret;
-		prefs.caretPeriod := Dialog.caretPeriod
+		prefs.caretPeriod := Dialog.caretPeriod;
+		prefs.beep := Dialog.beep;
+		prefs.serverMode := Dialog.serverMode;
+		InitLanguage;
 	END InitPrefDialog;
 
 
@@ -925,6 +964,23 @@ MODULE HostDialog;
 		END
 	END GetPersistentLanguage;
 
+	PROCEDURE (hook: WineHook) IsWine* (): BOOLEAN;
+		VAR h: WinApi.HMODULE; adr: WinApi.FARPROC; res: INTEGER;
+	BEGIN
+		IF hook.isWine THEN RETURN TRUE
+		ELSE
+			(* http://habrahabr.ru/blogs/development/76131/ *)
+			h := WinApi.LoadLibraryW("ntdll.dll");
+			IF h # WinApi.NULL THEN
+				adr := WinApi.GetProcAddress(h, "wine_get_version");
+				res := WinApi.FreeLibrary(h);
+				IF adr # NIL THEN hook.isWine := TRUE; RETURN TRUE END
+			END ;
+			Dialog.SetWineHook(NIL); (* ~Dialog.IsWine() *)
+			RETURN FALSE
+		END
+	END IsWine;
+
 	PROCEDURE Start* (name: ARRAY OF CHAR);
 		VAR res: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
 	BEGIN
@@ -933,6 +989,71 @@ MODULE HostDialog;
 		info.wShowWindow := WinApi.SW_NORMAL;
 		res := WinApi.CreateProcessW(NIL, name, NIL, NIL, WinApi.FALSE, {}, 0, NIL, info, process)
 	END Start;
+
+	PROCEDURE OpenExternal (lpParameter: INTEGER): INTEGER;	(* runs in a thread *)
+	VAR
+		fileNamePtr: CallNamePtr; fileName: CallName;
+		hinst: WinApi.HINSTANCE;
+	BEGIN
+		fileNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter);
+		fileName := fileNamePtr$;
+		callNameTaken := TRUE;
+		hinst := WinApi.ShellExecuteW(0, "open", fileName, NIL, NIL, WinApi.SW_SHOW);
+		RETURN 0
+	END OpenExternal;
+
+	PROCEDURE (h: ExtCallHook) OpenExternal* (IN fileName: ARRAY OF CHAR);
+		VAR t: WinApi.HANDLE; res: WinApi.BOOL;
+			win_fileName: CallName;
+	BEGIN
+		IF Dialog.IsWine() THEN
+			win_fileName := "winebrowser " + fileName$
+		ELSE
+			win_fileName := fileName$
+		END;
+		callNameTaken := FALSE;
+		t := WinApi.CreateThread(NIL, 4096 * 4, OpenExternal, SYSTEM.ADR(win_fileName), {}, NIL);
+		IF t # 0 THEN
+			WHILE ~callNameTaken DO
+				WinApi.Sleep(1)
+			END;
+			res := WinApi.CloseHandle(t)
+		END
+	END OpenExternal;
+
+	PROCEDURE RunExternal (lpParameter: INTEGER): INTEGER;	(* runs in a thread *)
+	VAR
+		exeNamePtr: CallNamePtr; exeName: CallName; opts: SET;
+		res: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
+	BEGIN
+		exeNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter);
+		exeName := exeNamePtr$;
+		WinApi.GetStartupInfoW(info);
+		IF hideExtRunWindow THEN
+			info.wShowWindow := WinApi.SW_HIDE;
+			opts := WinApi.CREATE_NO_WINDOW
+		ELSE
+			info.wShowWindow := WinApi.SW_NORMAL;
+			opts := {}
+		END;
+		callNameTaken := TRUE;
+		res := WinApi.CreateProcessW(NIL, exeName, NIL, NIL, WinApi.FALSE, opts, 0, NIL, info, process);
+		RETURN 0
+	END RunExternal;
+
+	PROCEDURE (h: ExtCallHook) RunExternal* (IN exeName: ARRAY OF CHAR);
+		VAR t: WinApi.HANDLE; res: WinApi.BOOL;
+	BEGIN
+		callNameTaken := FALSE;
+		t := WinApi.CreateThread(NIL, 4096 * 4, RunExternal, SYSTEM.ADR(exeName), {}, NIL);
+		IF t # 0 THEN
+			WHILE ~callNameTaken DO
+				WinApi.Sleep(1)
+			END;
+			hideExtRunWindow := FALSE;
+			res := WinApi.CloseHandle(t)
+		END
+	END RunExternal;
 
 
 	(* initialization *)
@@ -987,6 +1108,8 @@ MODULE HostDialog;
 			datesHook: DatesHook;
 			showHook: ShowHook;
 			languageHook: LanguageHook;
+			wineHook: WineHook;
+			extCallHook: ExtCallHook;
 	BEGIN
 		NEW(all);
 		v := WinApi.GetVersion();
@@ -996,16 +1119,22 @@ MODULE HostDialog;
 			ELSIF osVersion < 500 THEN Dialog.platform := Dialog.windowsNT4
 			ELSIF osVersion = 500 THEN Dialog.platform := Dialog.windows2000
 			ELSIF osVersion < 600 THEN Dialog.platform := Dialog.windowsXP
-			ELSE Dialog.platform := Dialog.windowsVista
+			ELSIF osVersion = 600 THEN Dialog.platform := Dialog.windowsVista
+			ELSIF osVersion = 601 THEN Dialog.platform := Dialog.windows7
+			ELSE Dialog.platform := Dialog.windows8
 			END
 		ELSE Dialog.platform := Dialog.windows98
 		END;
+		NEW(wineHook);
+		Dialog.SetWineHook(wineHook);
 
 		HostRegistry.ReadBool("noStatus", b, res); Dialog.showsStatus := (res # 0) OR ~b;
 		HostRegistry.ReadBool("memStatus", b, res); HostWindows.memInStatus := (res = 0) & b;
 
 		HostRegistry.ReadBool("thickCaret", b, res); IF res = 0 THEN Dialog.thickCaret := b END;
 		HostRegistry.ReadInt("caretPeriod", n, res); IF res = 0 THEN Dialog.caretPeriod := n END;
+		HostRegistry.ReadBool("beep", b, res); IF res = 0 THEN Dialog.beep := b END;
+		HostRegistry.ReadBool("serverMode", b, res); IF res = 0 THEN Dialog.serverMode := b END;
 
 		NEW(showHook); Dialog.SetShowHook(showHook);
 (*
@@ -1035,7 +1164,9 @@ MODULE HostDialog;
 		Hooks.dateToString := DateToString;
 		Hooks.timeToString := TimeToString
 *)
-		NEW(languageHook); Dialog.SetLanguageHook(languageHook); Dialog.ResetLanguage
+		NEW(languageHook); Dialog.SetLanguageHook(languageHook); Dialog.ResetLanguage;
+		NEW(extCallHook); Dialog.SetExtCallHook(extCallHook);
+		hideExtRunWindow := FALSE
 	END Init;
 
 BEGIN

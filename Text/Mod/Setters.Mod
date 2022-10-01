@@ -16,7 +16,7 @@ MODULE TextSetters;
 	(* paraShutoff needs to be controlled by an approx flag to certain ops (later ...?) *)
 
 	IMPORT
-		Fonts, Ports, Printers, Stores, Models, Views, Properties,
+		Fonts, Ports, Printers, Stores, Strings, Models, Views, Properties,
 		TextModels, TextRulers;
 
 	CONST
@@ -631,6 +631,7 @@ rd.w := 0;
 			& (	 (" " < ch) & (ch <= "~") & (ch # "-")
 				OR  (ch = digitspace)
 				OR  (ch >= nbspace) & (ch < 100X) & (ch # softhyphen)
+				OR Strings.IsAlpha(ch)
 				)
 		DO	(* rd.r.char > " " => ~rd.eot *)
 			rd.string[i] := ch; INC(i);

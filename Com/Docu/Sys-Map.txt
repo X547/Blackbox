@@ -1,4 +1,4 @@
-Map to the COM Examples
+Map to the Direct-To-COM Examples
 
 
 COM Interface Usage

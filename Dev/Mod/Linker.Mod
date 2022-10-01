@@ -6,18 +6,13 @@ MODULE DevLinker;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	changes	= "
-	- 20070123, bh, support for more general resource files
-	- 20120531, BdT, changes for correction of Microsoft AppLocker problem
-	"
+	changes	= ""
 	issues	= ""
 
 **)
 	
 	IMPORT
-		Kernel, Files, Dates, Dialog, Strings,
-		TextModels, TextViews, TextMappers,
-		Log := StdLog, DevCommanders;
+		Kernel, Files, Dates, Dialog, Strings, TextMappers, StdLog, DevCommanders;
 	
 	CONST
 		NewRecFP = 4E27A847H;
@@ -46,7 +41,7 @@ MODULE DevLinker;
 		modOpts = 4; modRefcnt = 8; modTerm = 40; modNames = 84; modImports = 92; modExports = 96;
 		
 	TYPE
-		Name = ARRAY 40 OF SHORTCHAR;
+		Name = Kernel.Utf8Name;
 		Export = POINTER TO RECORD
 			next: Export;
 			name: Name;
@@ -189,6 +184,12 @@ MODULE DevLinker;
 		WHILE i < len DO Ro.WriteByte(0); INC(i) END
 	END WriteName;
 	
+	PROCEDURE WriteUtf8 (name: ARRAY OF SHORTCHAR);
+		VAR res: INTEGER; s: ARRAY 256 OF CHAR;
+	BEGIN
+		Strings.Utf8ToString(name, s, res); ASSERT(res = 0); W.WriteString(s)
+	END WriteUtf8;
+	
 	PROCEDURE Reloc (a: INTEGER);
 		VAR p: POINTER TO ARRAY OF INTEGER; i: INTEGER;
 	BEGIN
@@ -200,7 +201,7 @@ MODULE DevLinker;
 		fixups[noffixup] := a; INC(noffixup)
 (*
 		ELSE
-			IF ~error THEN W.WriteSString("  too many fixups") END;
+			IF ~error THEN W.WriteString("  too many fixups") END;
 			error := TRUE
 		END
 *)
@@ -221,18 +222,6 @@ MODULE DevLinker;
 			(mod.data[a + 1] MOD 256)) * 256 +
 			(mod.data[a] MOD 256)
 	END Get;
-	
-	PROCEDURE GenName (VAR from, to: ARRAY OF SHORTCHAR; ext: ARRAY OF SHORTCHAR);
-		VAR i, j: INTEGER;
-	BEGIN
-		i := 0;
-		WHILE from[i] # 0X DO to[i] := from[i]; INC(i) END;
-		IF ext # "" THEN
-			to[i] := "."; INC(i); j := 0;
-			WHILE ext[j] # 0X DO to[i] := ext[j]; INC(i); INC(j) END
-		END;
-		to[i] := 0X
-	END GenName;
 	
 	PROCEDURE Fixup0 (link, adr: INTEGER);
 		VAR offset, linkadr, t, n, x: INTEGER;
@@ -303,10 +292,10 @@ MODULE DevLinker;
 						IF imp.dll THEN
 							W.WriteString("variable (");
 							W.WriteString(imp.name); W.WriteChar(".");
-							W.WriteSString(name);
+							WriteUtf8(name);
 							W.WriteString(") imported from DLL in ");
 							W.WriteString(mod.name);
-							W.WriteLn; Log.text.Append(Log.buf); error := TRUE;
+							W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE;
 							RETURN
 						END
 					ELSIF x = mTyp THEN RNum(y);
@@ -315,10 +304,10 @@ MODULE DevLinker;
 							IF y # 0 THEN
 								W.WriteString("type descriptor (");
 								W.WriteString(imp.name); W.WriteChar(".");
-								W.WriteSString(name);
+								WriteUtf8(name);
 								W.WriteString(") imported from DLL in ");
 								W.WriteString(mod.name);
-								W.WriteLn; Log.text.Append(Log.buf); error := TRUE;
+								W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE;
 								RETURN
 							END
 						ELSE SkipLink
@@ -398,8 +387,8 @@ MODULE DevLinker;
 									IF (mod # kernel) & (kernel # NIL) THEN
 										mod.imp[x] := kernel
 									ELSE
-										W.WriteSString("no kernel"); W.WriteLn;
-										Log.text.Append(Log.buf); error := TRUE
+										W.WriteString("no kernel"); W.WriteLn;
+										StdLog.text.Append(StdLog.buf); error := TRUE
 									END
 								ELSIF name[0] = "$" THEN
 									i := 1;
@@ -418,10 +407,10 @@ MODULE DevLinker;
 									IF im # mod THEN
 										mod.imp[x] := im;
 									ELSE
-										W.WriteSString(name);
+										WriteUtf8(name);
 										W.WriteString(" not present (imported in ");
 										W.WriteString(mod.name); W.WriteChar(")");
-										W.WriteLn; Log.text.Append(Log.buf); error := TRUE
+										W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE
 									END
 								END;
 								INC(x)
@@ -434,20 +423,20 @@ MODULE DevLinker;
 						IF mod.cs > maxCode THEN maxCode := mod.cs END
 					ELSE
 						W.WriteString(mod.name); W.WriteString(": wrong file type"); 
-						W.WriteLn; Log.text.Append(Log.buf); error := TRUE
+						W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE
 					END;
 					mod.file.Close; mod.file := NIL
 				ELSE
 					W.WriteString(mod.name); W.WriteString(" not found"); 
-					W.WriteLn; Log.text.Append(Log.buf); error := TRUE
+					W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE
 				END;
 				last := mod
 			END;
 			mod := mod.next
 		END;
 		IF ~isStatic & (main = NIL) THEN
-			W.WriteSString("no main module specified"); W.WriteLn;
-			Log.text.Append(Log.buf); error := TRUE
+			W.WriteString("no main module specified"); W.WriteLn;
+			StdLog.text.Append(StdLog.buf); error := TRUE
 		END;
 		(* calculate rva's *)
 		IF DataSize = 0 THEN DataSize := 1 END;
@@ -486,7 +475,7 @@ MODULE DevLinker;
 	END MenuSize;
 	
 	PROCEDURE PrepResources;
-		VAR res, r, s: Resource; n, i, j, t, x: INTEGER; loc: Files.Locator;
+		VAR res, r, s: Resource; n, i, j, t, x: INTEGER;
 	BEGIN
 		r := resList;
 		WHILE r # NIL DO
@@ -534,7 +523,7 @@ MODULE DevLinker;
 											r.typ := j; r.pos := n + 32;
 										ELSE
 											W.WriteString(r.name); W.WriteString(": invalid type"); W.WriteLn;
-											Log.text.Append(Log.buf); error := TRUE
+											StdLog.text.Append(StdLog.buf); error := TRUE
 										END
 									ELSE
 										j := 0;
@@ -544,7 +533,7 @@ MODULE DevLinker;
 									END
 								ELSE
 									W.WriteString(r.name); W.WriteString(": unknown type"); W.WriteLn;
-									Log.text.Append(Log.buf); error := TRUE
+									StdLog.text.Append(StdLog.buf); error := TRUE
 								END
 							END
 						END
@@ -552,7 +541,7 @@ MODULE DevLinker;
 					r.file.Close; r.file := NIL
 				ELSE
 					W.WriteString(r.name); W.WriteString(" not found"); W.WriteLn;
-					Log.text.Append(Log.buf); error := TRUE
+					StdLog.text.Append(StdLog.buf); error := TRUE
 				END
 			END;
 			r := r.next
@@ -757,7 +746,8 @@ MODULE DevLinker;
 						IF m = mTyp THEN
 							IF ODD(opt) THEN Get(mod, p + 4, f) END;
 							IF (opt > 1) & (id DIV 16 MOD 16 # mExported) THEN
-								W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+								W.WriteString(mod.name); W.WriteChar(".");
+								WriteUtf8(name);
 								W.WriteString(" imported from "); W.WriteString(impg.name);
 								W.WriteString(" has wrong visibility"); W.WriteLn; error := TRUE
 							END;
@@ -768,12 +758,13 @@ MODULE DevLinker;
 							Get(mod, p + 4, adr); INC(adr, CodeBase + mod.ca)
 						END;
 						IF f # fp THEN
-							W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+							W.WriteString(mod.name); W.WriteChar(".");
+							WriteUtf8(name);
 							W.WriteString(" imported from "); W.WriteString(impg.name);
 							W.WriteString(" has wrong fprint"); W.WriteLn; error := TRUE
 						END
 					ELSE
-						W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+						W.WriteString(mod.name); W.WriteChar("."); WriteUtf8(name);
 						W.WriteString(" imported from "); W.WriteString(impg.name);
 						W.WriteString(" has wrong class"); W.WriteLn; error := TRUE
 					END;
@@ -781,7 +772,7 @@ MODULE DevLinker;
 				END;
 				IF och < nch THEN l := n + 1 ELSE r := n END
 			END;
-			W.WriteString(mod.name); W.WriteChar("."); W.WriteSString(name);
+			W.WriteString(mod.name); W.WriteChar("."); WriteUtf8(name);
 			W.WriteString(" not found (imported from "); W.WriteString(impg.name);
 			W.WriteChar(")"); W.WriteLn; error := TRUE
 		ELSE (* anonymous type *)
@@ -920,8 +911,8 @@ MODULE DevLinker;
 					IF (mod # kernel) & (kernel # NIL) THEN
 						SearchObj(kernel, newRec, mProc, NewRecFP, -1, a); Fixup0(x, a)
 					ELSE
-						W.WriteSString("no kernel"); W.WriteLn;
-						Log.text.Append(Log.buf); error := TRUE; RETURN
+						W.WriteString("no kernel"); W.WriteLn;
+						StdLog.text.Append(StdLog.buf); error := TRUE; RETURN
 					END
 				END;
 				RNum(x);
@@ -929,8 +920,8 @@ MODULE DevLinker;
 					IF (mod # kernel) & (kernel # NIL) THEN
 						SearchObj(kernel, newArr, mProc, NewArrFP, -1, a); Fixup0(x, a)
 					ELSE
-						W.WriteSString("no kernel"); W.WriteLn;
-						Log.text.Append(Log.buf); error := TRUE; RETURN
+						W.WriteString("no kernel"); W.WriteLn;
+						StdLog.text.Append(StdLog.buf); error := TRUE; RETURN
 					END
 				END;
 				Fixup(ConBase + mod.ma);
@@ -1141,15 +1132,21 @@ MODULE DevLinker;
 	END WriteResource;
 
 	PROCEDURE Insert(VAR name: ARRAY OF SHORTCHAR; VAR idx: INTEGER; hint: INTEGER);
-		VAR i: INTEGER;
+		VAR i: INTEGER; ntabx: POINTER TO ARRAY OF SHORTCHAR;
 	BEGIN
+		IF idx + LEN(name) + (2 + 4) >= LEN(ntab) THEN (* expand ntab *)
+			NEW(ntabx, (idx + LEN(name) + (2 + 4)) * 2);
+			FOR i := 0 TO LEN(ntab) - 1 DO ntabx[i] := ntab[i] END ;
+			ntab := ntabx;
+		END ;
 		IF hint >= 0 THEN
 			ntab[idx] := SHORT(CHR(hint)); INC(idx);
 			ntab[idx] := SHORT(CHR(hint DIV 256)); INC(idx);
 		END;
 		i := 0;
 		WHILE name[i] # 0X DO ntab[idx] := name[i]; INC(idx); INC(i) END;
-		IF (hint = -1) & ((ntab[idx-4] # ".") OR (CAP(ntab[idx-3]) # "D") OR (CAP(ntab[idx-2]) # "L") OR (CAP(ntab[idx-1]) # "L")) THEN
+		IF (hint = -1) 
+		& ((idx < 4) OR ((ntab[idx-4] # ".") OR (CAP(ntab[idx-3]) # "D") OR (CAP(ntab[idx-2]) # "L") OR (CAP(ntab[idx-1]) # "L"))) THEN
 			ntab[idx] := "."; INC(idx);
 			ntab[idx] := "d"; INC(idx);
 			ntab[idx] := "l"; INC(idx);
@@ -1324,7 +1321,7 @@ MODULE DevLinker;
 				S.Scan;
 				IF S.type = TextMappers.int THEN res.lid := S.int; S.Scan END;
 				IF (S.type = TextMappers.char) & (S.char = "]") THEN S.Scan
-				ELSE W.WriteSString("missing ']'"); error := TRUE
+				ELSE W.WriteString("missing ']'"); error := TRUE
 				END
 			END;
 			WHILE S.type = TextMappers.char DO
@@ -1346,13 +1343,13 @@ MODULE DevLinker;
 				IF (S.type = TextMappers.char) & (S.char = "(") THEN S.Scan;
 					ScanRes(S, end, res.local);
 					IF (S.type = TextMappers.char) & (S.char = ")") THEN S.Scan
-					ELSE W.WriteSString("missing ')'"); error := TRUE
+					ELSE W.WriteString("missing ')'"); error := TRUE
 					END
 				END;
 				IF tail = NIL THEN list := res ELSE tail.next := res END;
 				tail := res
 			ELSE
-				W.WriteSString("wrong resource name"); error := TRUE
+				W.WriteString("wrong resource name"); error := TRUE
 			END
 		END;
 	END ScanRes;
@@ -1373,7 +1370,7 @@ MODULE DevLinker;
 		S.SetPos(DevCommanders.par.beg);
 		end := DevCommanders.par.end;
 		DevCommanders.par := NIL;
-		W.ConnectTo(Log.buf); S.Scan;
+		W.ConnectTo(StdLog.buf); S.Scan;
 		IF S.type = TextMappers.string THEN
 			IF S.string = "dos" THEN comLine := TRUE; S.Scan END;
 			name := S.string$; S.Scan;
@@ -1396,8 +1393,8 @@ MODULE DevLinker;
 							ELSIF S.char = "$" THEN main := mod
 							ELSE mod.intf := TRUE;
 								IF ~isDll THEN
-									W.WriteSString("Exports from Exe not possible. Use LinkDll or LinkDynDll.");
-									W.WriteLn; Log.text.Append(Log.buf); error := TRUE
+									W.WriteString("Exports from Exe not possible. Use LinkDll or LinkDynDll.");
+									W.WriteLn; StdLog.text.Append(StdLog.buf); error := TRUE
 								END
 							END;
 							S.Scan
@@ -1416,7 +1413,7 @@ MODULE DevLinker;
 				END
 			ELSE W.WriteString(" := missing")
 			END;
-			W.WriteLn; Log.text.Append(Log.buf)
+			W.WriteLn; StdLog.text.Append(StdLog.buf)
 		END;
 		IF error THEN Dialog.ShowStatus("failed") ELSE Dialog.ShowStatus("ok") END;
 		W.ConnectTo(NIL); S.ConnectTo(NIL);
@@ -1454,7 +1451,7 @@ MODULE DevLinker;
 		VAR S: TextMappers.Scanner; name: Name; mod: Module; t: TextModels.Model;
 	BEGIN
 		t := TextViews.FocusText(); IF t = NIL THEN RETURN END;
-		W.ConnectTo(Log.buf); S.ConnectTo(t); S.Scan;
+		W.ConnectTo(StdLog.buf); S.ConnectTo(t); S.Scan;
 		IF S.type = TextMappers.string THEN
 			mod := modList;
 			WHILE (mod # NIL) & (mod.name # S.string) DO mod := mod.next END;
@@ -1462,7 +1459,7 @@ MODULE DevLinker;
 				W.WriteString(S.string);
 				W.WriteString(" ca = ");
 				W.WriteIntForm(CodeBase + mod.ca, TextMappers.hexadecimal, 8, "0", TRUE);
-				W.WriteLn; Log.text.Append(Log.buf)
+				W.WriteLn; StdLog.text.Append(StdLog.buf)
 			END
 		END;
 		W.ConnectTo(NIL); S.ConnectTo(NIL)

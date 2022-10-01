@@ -97,7 +97,7 @@ END StdCmds.
 
 
 StdCmds is a command package which contains many commands and guards which are typically used in menu items (->StdMenuTool) or in hyperlinks (->StdLinks).
-The module exports more commands which are not described here; these are the commands and guards for menu items of the Windows standard menus. See the Menus text for how these commands are used (only on Windows; under Mac OS, the standard commands do not appear explicitly in the menu specifications).
+The module exports more commands which are not described here; these are the commands and guards for menu items of the Windows standard menus. See the Menus text for how these commands are used.
 
 
 VAR allocator: Dialog.String
@@ -198,32 +198,34 @@ PROCEDURE OpenAsToolDialog
 Opens another window onto the same document as the front window's; this window works as a tool dialog box.
 
 PROCEDURE OpenAux (file, title: ARRAY OF CHAR)
-Takes a file specification of an BlackBox document and a window title as parameters, and opens an auxiliary window with the specified title. Parameter file must be the path name of a file.
+Takes a file specification of a BlackBox document and a window title as parameters, and opens an auxiliary window with the specified title. Parameter file must be the path name of a file.
 Auxiliary windows are used for displaying temporary editable data.
 Example:
 "StdCmds.OpenAux('Form/Rsrc/Menus', 'Form Menus')"
 
 PROCEDURE OpenAuxDialog (file, title: ARRAY OF CHAR)
-Takes a file specification of an BlackBox document and a window title as parameters, and opens a dialog with the specified document. The dialog is opened as an auxiliary window. Parameter file must be the path name of a file.
+Takes a file specification of a BlackBox document and a window title as parameters, and opens a dialog with the specified document. The dialog is opened as an auxiliary window. Parameter file must be the path name of a file.
+If a non-standard language is selected, 'Docu' files are first looked up in the subdirectory of the selected language and if not found, the standard language is used.
 Auxiliary dialogs are used for self-contained dialogs, i.e., data entry masks or parameter entry masks for commands.
 In contrast to OpenAux, OpenAuxDialog turns the opened document into mask mode if it is a container (-> Containers), and opens it into a dialog window if the underlying platform distinguishes between document and dialog windows (e.g. as in Windows).
 Example:
 "StdCmds.OpenAuxDialog('Form/Rsrc/Cmds', 'New Form')"
 
 PROCEDURE OpenBrowser (file, title: ARRAY OF CHAR)
-Takes a file specification of an BlackBox document and a window title as parameters, and opens the specified document in an auxiliary window. The window contents is not editable, but can be selected. Parameter file must be the path name of a file.
+Takes a file specification of a BlackBox document and a window title as parameters, and opens the specified document in an auxiliary window. The window contents is not editable, but can be selected. Parameter file must be the path name of a file.
+If a non-standard language is selected, 'Docu' files are first looked up in the subdirectory of the selected language and if not found, the standard language is used.
 Browser windows are used for displaying documentation. It is possible to select and copy out browser window contents. It is possible to apply find & replace commands, the Info->Interface command, etc.
 Example:
 "StdCmds.OpenBrowser('Form/Docu/Models', 'FormModels Docu')"
 
 PROCEDURE OpenDoc (file: ARRAY OF CHAR)
-Takes a file specification of an BlackBox document as parameter, and opens the document in a document window. Parameter file must be the path name of a file. If the same file is already open in an existing document window, this window is brought to the top, instead of opening a new window.
+Takes a file specification of a BlackBox document as parameter, and opens the document in a document window. Parameter file must be the path name of a file. If the same file is already open in an existing document window, this window is brought to the top, instead of opening a new window.
 Document windows are used for displaying persistent editable data.
 Example:
 "StdCmds.OpenDoc('System/Rsrc/Menus')"
 
 PROCEDURE OpenToolDialog (file, title: ARRAY OF CHAR)
-Takes a file specification of an BlackBox document and a window title as parameters, and opens a dialog with the specified document. The dialog is opened as tool window. Parameter file must be the path name of a file.
+Takes a file specification of a BlackBox document and a window title as parameters, and opens a dialog with the specified document. The dialog is opened as tool window. Parameter file must be the path name of a file.
 Tool dialogs are used for dialogs which operate on document windows beneath them, e.g., a Find & Replace dialog which operates on a text under it. Otherwise it is identical to OpenAuxDialog.
 Example:
 "DevInspector.InitDialog; StdCmds.OpenToolDialog('Dev/Rsrc/Inspect', 'Inspect')"

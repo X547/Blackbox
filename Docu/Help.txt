@@ -2,16 +2,16 @@
 
 Quick Start	Guided Tour	Roadmap	Overview by Example
 
-Component Software: A Case Study Using BlackBox Components				Introduction
+Tutorial: Component-based Software Development with BlackBox       Table of Contents
 Part I	1 User Interaction	2 Compound Documents	3 Design Practices
 Part II	4 Forms	5 Texts
 Part III	6 View Construction
-Appendices	A: Brief History of Pascal	B: Pascal to Comp. Pascal
+Appendices	A: Brief History of Pascal	B: Differences between Pascal and Component Pascal
 
 User Manuals	Developer Manuals	Component Pascal	Miscellaneous
 Framework	Framework	Language Report	License
 Text Subsystem	Text Subsystem	What's New?	Contributors
 Form Subsystem	Form Subsystem	Character Set	Platform-Specific Issues
-Dev Subsystem	Dev Subsystem	Documentation Conventions
-Custom Commands	Sql Subsystem	Programming Conventions
+Dev Subsystem	Dev Subsystem	Documentation Conventions	Ctl Subsystem
+Std Subsystem	Sql Subsystem	Programming Conventions	Direct-To-COM Compiler
           	

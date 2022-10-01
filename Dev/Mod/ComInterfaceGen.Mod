@@ -12,7 +12,7 @@ MODULE DevComInterfaceGen;
 **)
 
 	IMPORT COM, WinApi, WinOle, WinOleAut, 
-		Files, HostFiles, Strings, Dialog, StdDialog, Views, TextModels, TextViews, DevTypeLibs; 
+		Files, HostFiles, Strings, Dialog, StdDialog, Views, TextModels, TextViews, DevTypeLibs, StdCmds; 
 
 	TYPE
 		Entry = POINTER TO RECORD	(* registry typelib entry *)
@@ -48,7 +48,7 @@ MODULE DevComInterfaceGen;
 	BEGIN
 		t := DevTypeLibs.AutomationInterface(dialog.fileName$, dialog.modName$);
 		StdDialog.GetSubLoc(dialog.modName, "Mod", loc, fn); loc.res := 77;
-		Views.Open(TextViews.dir.New(t), loc, fn, NIL)		
+		Views.Open(TextViews.dir.New(t), loc, fn, NIL)
 	END GenAutomationInterface;
 	
 	PROCEDURE GenCustomInterface*;
@@ -56,8 +56,16 @@ MODULE DevComInterfaceGen;
 	BEGIN
 		t := DevTypeLibs.CustomInterface(dialog.fileName$, dialog.modName$);
 		StdDialog.GetSubLoc(dialog.modName, "Mod", loc, fn); loc.res := 77;
-		Views.Open(TextViews.dir.New(t), loc, fn, NIL)		
+		Views.Open(TextViews.dir.New(t), loc, fn, NIL)
 	END GenCustomInterface;	
+	
+	PROCEDURE BrowseTypeLib*;
+		VAR fn: Files.Name; loc: Files.Locator; t: TextModels.Model;
+	BEGIN
+		t := DevTypeLibs.Browse(dialog.fileName$, dialog.modName$);
+		StdDialog.GetSubLoc(dialog.modName, "Mod", loc, fn); loc.res := 77;
+		Views.Open(TextViews.dir.New(t), loc, fn, NIL)
+	END BrowseTypeLib;	
 	
 	PROCEDURE Browse*;
 		VAR loc: Files.Locator; name: Files.Name;
@@ -72,24 +80,26 @@ MODULE DevComInterfaceGen;
 				dialog.modName := n$
 			ELSE
 				dialog.modName := ""
-			END;			
+			END;
 			dialog.library.index := 0;
 			Dialog.Update(dialog)
-		END	
+		END
 	END Browse;
 	
 	PROCEDURE TextFieldNotifier* (op, from, to: INTEGER);
 		VAR res: INTEGER; tlib: WinOleAut.ITypeLib; n: ARRAY 256 OF CHAR;
 	BEGIN
-		res := WinOleAut.LoadTypeLib(dialog.fileName, tlib);
-		IF res >= 0 THEN
-			GetName(tlib, n);
-			dialog.modName := n$
-		ELSE
-			dialog.modName := ""
-		END;
-		dialog.library.index := 0;
-		Dialog.Update(dialog)		
+		IF op = Dialog.changed THEN
+			res := WinOleAut.LoadTypeLib(dialog.fileName, tlib);
+			IF res >= 0 THEN
+				GetName(tlib, n);
+				dialog.modName := n$
+			ELSE
+				dialog.modName := ""
+			END;
+			dialog.library.index := 0;
+			Dialog.Update(dialog)
+		END
 	END TextFieldNotifier;
 
 	PROCEDURE ListBoxNotifier* (op, from, to: INTEGER);
@@ -170,8 +180,20 @@ MODULE DevComInterfaceGen;
 		IF dialog.list.next # NIL THEN dialog.library.index := 1 ELSE dialog.library.index := 0 END;
 		ListBoxNotifier(Dialog.changed, 0, 0)
 	END InitDialog;
-		
+	
+	PROCEDURE Open*;
+	BEGIN
+		IF dialog.list = NIL THEN InitDialog END ;
+		StdCmds.OpenAuxDialog('Dev/Rsrc/ComInterfaceGen', '#Com:Type Libraries')
+	END Open;
+	
+	PROCEDURE Close*;
+	BEGIN
+		dialog.list := NIL; dialog.current := NIL; dialog.library.SetLen(0);
+		StdCmds.CloseDialog;
+	END Close;
+
 END DevComInterfaceGen.
 
 
-"DevComInterfaceGen.InitDialog; StdCmds.OpenToolDialog('Dev/Rsrc/ComInterfaceGen', 'Generate Automation Interface')"
+DevComInterfaceGen.Open

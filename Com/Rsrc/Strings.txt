@@ -1,0 +1,14 @@
+STRINGS
+&COM	COM
+&Show Error	Show Error
+&Show Interfaces	Show Interfaces
+&Interface Info	Interface Info	
+&Type Libraries	Type Libraries
+&New GUID	New GUID	
+&Collect	Collect	
+&DTC Help	DTC Help
+&DTC Examples	DTC Examples
+
+DTC Help	DTC Help
+DTC Examples	DTC Examples
+Type Libraries	Type Libraries

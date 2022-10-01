@@ -13,7 +13,7 @@ MODULE Printing;
 
 	IMPORT Kernel, Fonts, Ports, Dates, Printers, Views, Dialog, Strings;
 	
-	CONST maxNrOfSegments = 16;
+	CONST maxNrOfSegments = 16; bufLen = 256;
 
 	TYPE
 		PageInfo* = RECORD
@@ -48,12 +48,16 @@ MODULE Printing;
 		END;
 
 		Line = RECORD
-			buf: ARRAY 256 OF CHAR;
+			buf: ARRAY bufLen OF CHAR;
 			beg: ARRAY maxNrOfSegments OF BYTE;
 			len: INTEGER
 		END;
 
 		Hook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
+
+		ExpandHook* = PROCEDURE (IN s: ARRAY OF CHAR; printView: Views.View; IN date: Dates.Date;
+													IN time: Dates.Time; IN title: Views.Title; pno: INTEGER; printing: BOOLEAN;
+													OUT sx: ARRAY OF CHAR);
 
 	VAR
 		par*: Par;
@@ -61,6 +65,9 @@ MODULE Printing;
 		month: ARRAY 12 * 3 + 1 OF CHAR;
 		printingHook: Hook;
 
+		printView: Views.View;  (* param for expandHook; set per printed document in PrintView *)
+		expandHook-: ExpandHook; (* for expanding custom tags *)
+		
 	PROCEDURE (h: Hook) Print* (v: Views.View; par: Par), NEW, ABSTRACT;
 	PROCEDURE (h: Hook) Current* (): INTEGER, NEW, ABSTRACT;
 
@@ -68,6 +75,11 @@ MODULE Printing;
 	BEGIN
 		printingHook := p
 	END SetHook;
+
+	PROCEDURE SetExpandHook* (p: ExpandHook);
+	BEGIN
+		expandHook := p
+	END SetExpandHook;
 
 	PROCEDURE NewPar* (IN page: PageInfo; IN header, footer: Banner; copies: INTEGER): Par;
 		VAR par: Par;
@@ -92,7 +104,7 @@ MODULE Printing;
 		par.page.alternate := FALSE;
 		par.copies := 1;
 		par.header.gap := 0; par.header.left := ""; par.header.right := ""; par.header.font := Fonts.dir.Default();
-		par.footer.gap := 0; par.footer.left := ""; par.footer.right := ""; par.header.font := Fonts.dir.Default();
+		par.footer.gap := 0; par.footer.left := ""; par.footer.right := ""; par.footer.font := Fonts.dir.Default();
 		par.page.title := title;
 		RETURN par
 	END NewDefaultPar;
@@ -106,7 +118,9 @@ MODULE Printing;
 			ASSERT(p.page.from >= 0, 24);
 			ASSERT(p.page.to >= p.page.from, 25);
 			ASSERT(printingHook # NIL, 100);
-			printingHook.Print(view, p)
+			printView := view;
+			printingHook.Print(view, p);
+			printView := NIL
 		ELSE Dialog.ShowMsg("#System:NoPrinterFound")
 		END
 	END PrintView;
@@ -133,7 +147,13 @@ MODULE Printing;
 										IN title: Views.Title; pno: INTEGER; printing: BOOLEAN; VAR line: Line);
 		VAR i, l: INTEGER; ch: CHAR; j: BYTE;
 			p, d, t, r, rl: ARRAY 32 OF CHAR;
+			sx: ARRAY bufLen * 2 OF CHAR;
 	BEGIN
+		IF expandHook # NIL THEN
+			expandHook(s, printView, date, time, title, pno, printing, sx)
+		ELSE
+			sx := s$
+		END ;
 		IF printing THEN 
 			Strings.IntToStringForm (pno, Strings.decimal, 0, "0", FALSE, p);
 			IF (0 < pno) & (pno < 4000) THEN 
@@ -146,10 +166,10 @@ MODULE Printing;
 		
 		GetDateAndTime(date, time, d, t);
 		
-		i := 0; ch := s[i]; line.len := 0; j := 0;
+		i := 0; ch := sx[i]; line.len := 0; j := 0;
 		WHILE ch # 0X DO
 			IF ch = "&" THEN
-				INC(i); ch := s[i];
+				INC(i); ch := sx[i];
 				IF ch = "p" THEN
 					l := 0; WHILE p[l] # 0X DO line.buf[j] := p[l]; INC(j); INC(l) END
 				ELSIF ch = "r" THEN
@@ -174,8 +194,8 @@ MODULE Printing;
 				ELSIF ch = "&" THEN
 					line.buf[j] := "&"; INC(j)
 				END;
-				IF ch # 0X THEN INC(i); ch := s[i] END
-			ELSE line.buf[j] := ch; INC(j); INC(i); ch := s[i]
+				IF ch # 0X THEN INC(i); ch := sx[i] END
+			ELSE line.buf[j] := ch; INC(j); INC(i); ch := sx[i]
 			END
 		END;
 		line.buf[j] := 0X; line.beg[line.len] := j; INC(line.len)
@@ -230,5 +250,5 @@ MODULE Printing;
 	END Current;
 
 BEGIN
-	month := "JanFebMarAprMayJunJulAugSepOctNovDec"
+	Dialog.MapString("#System:JanFebMarAprMayJunJulAugSepOctNovDec", month)
 END Printing.

@@ -11,7 +11,7 @@ DEFINITION Converters;
 		Exporter = PROCEDURE (s: Stores.Store; f: Files.File);
 
 		Converter = POINTER TO RECORD
-			next-: Converter;
+			next*: Converter;
 			imp-, exp-: Dialog.String;
 			storeType-: Stores.TypeName;
 			fileType-: Files.Type;
@@ -64,7 +64,7 @@ f.Length() >= 0
 TYPE Converter
 A converter object represents a file converter. It consists of an import and an export command, one of which may be empty. A converter converts between a file and a store.
 
-next-: Converter
+next*: Converter
 Next converter in the list. Converters are sorted by their registration time: later registration means further back in the list.
 
 imp-, exp-: Dialog.String	imp # "" OR exp # ""
@@ -93,8 +93,7 @@ imp is the name of an importer command, which must have the signature of Importe
 exp is the name of an exporter command, which must have the signature of Exporter.
 opts allows to express a set of options; currently only the element importAll is defined. Normally, opts is empty.
 Register does not yet load the modules which contain the import/export commands. They are loaded only when needed.
-The standard document converter is already installed by the BlackBox core. Other converters may be installed in the Config module, e.g., converters for ASCII files, Unicode files, or picture files. Config is executed upon startup of BlackBox to allow the establishment of custom configurations, such as the set of available converters.
-As a result of Register, a new converter is appended to list, with fields corresponding to the parameters passed.
+The standard document converter is already installed by the BlackBox core. Converters that should be available at startup of BlackBox should be registered in the Config module, e.g., converters for ASCII files, Unicode files, or picture files. Config.Setup is executed upon startup of BlackBox to allow the establishment of custom configurations, such as the set of available converters. As a result of Register, a new converter is appended to list, with fields corresponding to the parameters passed.
 For each registered importer or exporter, there optionally may be a corresponding string mapping; to make the display of a list of importers/exporters more user-friendly. For example, the importer "HostTextConv.ImportText" could be mapped to the more telling name "Ascii" (in the standard file open dialog). The mapping is done in the Strings file in the Rsrc directory of the importer's subsystem, e.g., there may be the following lines in the Host/Rsrc/Strings text:
 
 	HostTextConv.ImportText	Ascii

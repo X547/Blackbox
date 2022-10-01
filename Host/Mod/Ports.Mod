@@ -343,7 +343,7 @@ MODULE HostPorts;
 			oldp := WinApi.SelectObject(dc, nullPen);
 			IF path = Ports.closedPoly THEN
 				ASSERT(n >= 2, 20);
-				res := WinApi.Polygon(dc, pap[0], n)
+				res := WinApi.Polygon(dc, pap, n)
 			ELSE
 				ASSERT(n >= 3, 20);
 				ASSERT(path = Ports.closedBezier, 22);
@@ -357,7 +357,7 @@ MODULE HostPorts;
 							pts[j].x, pts[j].y, (pts[j].x - pts[i+2].x) * 3, (pts[j].y - pts[i+2].y) * 3);
 					INC(i, 3)
 				END;
-				res := WinApi.Polygon(dc, pap[0], k)
+				res := WinApi.Polygon(dc, pap, k)
 			END;
 			res := WinApi.DeleteObject(WinApi.SelectObject(dc, oldb));
 			res := WinApi.SelectObject(dc, oldp)
@@ -367,10 +367,10 @@ MODULE HostPorts;
 			oldp := WinApi.SelectObject(dc, WinApi.CreatePen(WinApi.PS_SOLID, s, col));
 			IF path = Ports.closedPoly THEN
 				ASSERT(n >= 2, 20);
-				res := WinApi.Polygon(dc, pap[0], n)
+				res := WinApi.Polygon(dc, pap, n)
 			ELSIF path = Ports.openPoly THEN
 				ASSERT(n >= 2, 20);
-				res := WinApi.Polyline(dc, pap[0], n)
+				res := WinApi.Polyline(dc, pap, n)
 			ELSE
 				IF path = Ports.closedBezier THEN
 					ASSERT(n >= 3, 20);
@@ -388,7 +388,7 @@ MODULE HostPorts;
 					Bezier(pts[i].x, pts[i].y, (pts[i+1].x - pts[i].x) * 3, (pts[i+1].y - pts[i].y) * 3,
 							pts[j].x, pts[j].y, (pts[j].x - pts[i+2].x) * 3, (pts[j].y - pts[i+2].y) * 3);
 					pap[k].x := pts[j].x; pap[k].y := pts[j].y; INC(k);
-					res := WinApi.Polyline(dc, pap[0], k);
+					res := WinApi.Polyline(dc, pap, k);
 					INC(i, 3)
 				END
 			END;
@@ -484,7 +484,6 @@ MODULE HostPorts;
 	PROCEDURE (rd: Rider) Input* (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: BOOLEAN);
 		VAR msg: WinApi.MSG; wnd, mw: WinApi.HANDLE; pt: WinApi.POINT; res: INTEGER; set: SET;
 	BEGIN
-		WinApi.Sleep(1);
 		wnd := rd.port.wnd; mw := WinApi.GetCapture();
 		res := WinApi.UpdateWindow(wnd);
 		IF WinApi.PeekMessageW(msg, mw, WinApi.WM_MOUSEMOVE,
@@ -518,7 +517,9 @@ MODULE HostPorts;
 			mb := mb + {ctrl, modify} ELSE  mb := mb - {ctrl, modify}
 		END;
 		IF WinApi.GetAsyncKeyState(WinApi.VK_MENU) < 0 THEN INCL(mb, alt) ELSE EXCL(mb, alt) END;
-		x := mx; y := my; modifiers := mb; isDown := mb * {left, middle, right} # {}
+		x := mx; y := my; modifiers := mb; isDown := mb * {left, middle, right} # {};
+		IF Dialog.serverMode THEN Services.actionHook.Step END;
+		WinApi.Sleep(1);
 	END Input;
 	
 	PROCEDURE (rd: Rider) DrawSString* (
@@ -564,7 +565,7 @@ MODULE HostPorts;
 				WHILE i < n DO
 					INC(w, c); b := w DIV n; INC(dx[i], b - a); a := b; INC(i)
 				END;
-				res := WinApi.ExtTextOutA(dc, x, y, 0, NIL, s1, n, dx[0])
+				res := WinApi.ExtTextOutA(dc, x, y, 0, NIL, s1, n, dx)
 			END
 		END;
 		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
@@ -672,11 +673,34 @@ MODULE HostPorts;
 				END;
 				res := WinApi.SetTextColor(dc, col);
 				IF df.noGap THEN INC(x) END;	(* caret pos optimization *)
-				res := WinApi.ExtTextOutW(dc, x, y, 0, NIL, s1, n, dx[0])
+				res := WinApi.ExtTextOutW(dc, x, y, 0, NIL, s1, n, dx)
 			END
 		END;
 		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
 	END DrawString;
+
+	PROCEDURE (rd: Rider) DrawSpace* (x, y, w: INTEGER; col: Ports.Color; font: Fonts.Font);
+		VAR right, res, u: INTEGER; dx: ARRAY 1 OF INTEGER; 
+			p: Port; dc, old: WinApi.HANDLE; df: HostFonts.DevFont; 
+	BEGIN
+		p := rd.port; dc := p.dc; u := p.unit;
+		IF p.wnd = 0 THEN res := WinApi.SaveDC(dc)
+		ELSE res := WinApi.SelectClipRgn(dc, 0);
+		END;
+		res := WinApi.IntersectClipRect(dc, rd.l, rd.t, rd.r, rd.b);
+		WITH font: HostFonts.Font DO
+			df := font.dev;
+			WHILE (df # NIL) & (df.unit # u) DO df := df.next END;
+			IF df = NIL THEN HostFonts.InsertDevFont(dc, font, df, u) 
+			ELSE old := WinApi.SelectObject(dc, df.id)
+			END;
+			IF col = Ports.defaultColor THEN col := textCol END;
+			res := WinApi.SetTextColor(dc, col);
+			dx[0] := w;
+			res := WinApi.ExtTextOutA(dc, x, y, 0, NIL, " ", 1, dx)
+		END ;
+		IF p.wnd = 0 THEN res := WinApi.RestoreDC(dc, -1) END
+	END DrawSpace;
 
 	PROCEDURE (rd: Rider) CharIndex* (x, pos: INTEGER; IN s: ARRAY OF CHAR; font: Fonts.Font): INTEGER;
 		VAR res, d, u, i, a, b, c, w, n: INTEGER;
@@ -814,6 +838,8 @@ MODULE HostPorts;
 		IF (bw * u = w) & (bh * u = h) THEN
 			res := WinApi.BitBlt(dc, x DIV u, y DIV u, bw, bh, bmdc, 0, 0, copy)
 		ELSE
+			res := WinApi.SetStretchBltMode(dc, WinApi.HALFTONE);
+			res := WinApi.SetBrushOrgEx(dc, 0, 0, NIL);
 			res := WinApi.StretchBlt(dc, x DIV u, y DIV u, w DIV u, h DIV u, bmdc, 0, 0, bw, bh, copy)
 		END;
 		res := WinApi.RestoreDC(dc, -1)

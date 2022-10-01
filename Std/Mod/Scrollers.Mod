@@ -583,7 +583,9 @@ MODULE StdScrollers;
 			END
 		ELSE focus := v.inner
 		END;
-		IF ~(msg IS Controllers.TickMsg) THEN
+		(* avoid redundant updates in order to save memory and CPU resources *)
+		IF ~((msg IS Controllers.TickMsg) OR (msg IS Controllers.PollCursorMsg) 
+		OR (msg IS Controllers.PollOpsMsg) OR (msg IS Controllers.PollFocusMsg)) THEN
 			Services.DoLater(v.update, Services.now)
 		END
 	END HandleCtrlMsg;
@@ -659,6 +661,15 @@ MODULE StdScrollers;
 			Views.HandlePropMsg(v.view, msg);
 		END;
 	END HandlePropMsg;
+		
+	PROCEDURE WrappedView* (v: Views.View): Views.View;
+	BEGIN
+		WITH v: View DO
+			RETURN v.view
+		ELSE
+			RETURN v
+		END
+	END WrappedView;
 	
 	
 	(* InnerView *)

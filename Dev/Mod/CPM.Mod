@@ -1,4 +1,4 @@
-MODULE DevCPM;
+MODULE DevCPM; 
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
@@ -12,7 +12,7 @@ MODULE DevCPM;
 
 **)
 
-	IMPORT SYSTEM, Kernel, Files, Stores, Models, Views, TextModels, TextMappers, StdLog, DevMarkers;
+	IMPORT SYSTEM, Kernel, Files, Stores, Models, TextModels, StdLog, DevMarkers;
 
 	CONST
 		ProcSize* = 4;	(* PROCEDURE type *)
@@ -101,9 +101,6 @@ MODULE DevCPM;
 		OFtag = 6F4F4346H;	(* object file tag *)
 		maxErrors = 64;
 		
-TYPE
-	File = POINTER TO RECORD next: File; f: Files.File END;
-
 	VAR
 		LEHost*: BOOLEAN;	(* little or big endian host *)
 		MinReal32*, MaxReal32*, InfReal*,
@@ -120,9 +117,6 @@ TYPE
 		checksum*: INTEGER;	(* symbol file checksum *)
 		
 		lastpos: INTEGER;
-		realpat: INTEGER;
-		lrealpat: RECORD H, L: INTEGER END;
-		fpi, fpj: SHORTINT; fp: ARRAY 4 OF SHORTCHAR;
 		ObjFName: Files.Name;
 
 		in: TextModels.Reader;
@@ -157,17 +151,10 @@ TYPE
 		in := NIL; lineReader := NIL
 	END Close;
 
-	PROCEDURE Get* (VAR ch: SHORTCHAR);
-		VAR ch1: CHAR;
-	BEGIN
-		REPEAT in.ReadChar(ch1); INC(curpos) UNTIL (ch1 < 100X) & (ch1 # TextModels.viewcode);
-		ch := SHORT(ch1)
-	END Get;
-	
-	PROCEDURE GetL* (VAR ch: CHAR);
+	PROCEDURE Get* (VAR ch: CHAR);
 	BEGIN
 		REPEAT in.ReadChar(ch); INC(curpos) UNTIL ch # TextModels.viewcode;
-	END GetL;
+	END Get;
 	
 	PROCEDURE LineOf* (pos: INTEGER): INTEGER;
 		VAR ch: CHAR;
@@ -213,8 +200,8 @@ TYPE
 
 	(* sysflag control *)
 	
-	PROCEDURE ValidGuid* (VAR str: ARRAY OF SHORTCHAR): BOOLEAN;
-		VAR i: SHORTINT; ch: SHORTCHAR;
+	PROCEDURE ValidGuid* (IN str: ARRAY OF SHORTCHAR): BOOLEAN;
+		VAR i: INTEGER; ch: SHORTCHAR;
 	BEGIN
 		IF (LEN(str$) # 38) OR (str[0] # "{") & (str[37] # "}") THEN RETURN FALSE END;
 		i := 1;
@@ -230,7 +217,7 @@ TYPE
 		RETURN TRUE
 	END ValidGuid;
 	
-	PROCEDURE GetProcSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetProcSysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 	BEGIN
 		IF id # "" THEN
 			IF id = "code" THEN num := 1
@@ -253,7 +240,7 @@ TYPE
 		END
 	END GetProcSysFlag;
 	
-	PROCEDURE GetVarParSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetVarParSysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 		VAR old: SHORTINT;
 	BEGIN
 		old := flag; flag := 0;
@@ -273,7 +260,7 @@ TYPE
 		IF flag = 0 THEN err(225) END
 	END GetVarParSysFlag;
 	
-	PROCEDURE GetRecordSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetRecordSysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 		VAR old: SHORTINT;
 	BEGIN
 		old := flag; flag := 0;
@@ -301,7 +288,7 @@ TYPE
 		IF flag = 0 THEN err(225) END
 	END GetRecordSysFlag;
 	
-	PROCEDURE GetArraySysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetArraySysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 		VAR old: SHORTINT;
 	BEGIN
 		old := flag; flag := 0;
@@ -315,7 +302,7 @@ TYPE
 		IF flag = 0 THEN err(225) END
 	END GetArraySysFlag;
 	
-	PROCEDURE GetPointerSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetPointerSysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 		VAR old: SHORTINT;
 	BEGIN
 		old := flag; flag := 0;
@@ -331,7 +318,7 @@ TYPE
 		IF flag = 0 THEN err(225) END
 	END GetPointerSysFlag;
 	
-	PROCEDURE GetProcTypSysFlag* (id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
+	PROCEDURE GetProcTypSysFlag* (IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT);
 	BEGIN
 		IF ((num = -10) OR (id = "ccall")) & (options * {sys386, interface} # {}) THEN flag := -10
 		ELSE err(225); flag := 0
@@ -401,7 +388,7 @@ TYPE
 		END
 	END PutUtf8;
 	
-	PROCEDURE GetUtf8* (VAR str: ARRAY OF SHORTCHAR; VAR val, idx: INTEGER);
+	PROCEDURE GetUtf8* (IN str: ARRAY OF SHORTCHAR; VAR val, idx: INTEGER);
 		VAR ch: SHORTCHAR;
 	BEGIN
 		ch := str[idx]; INC(idx);
@@ -420,15 +407,14 @@ TYPE
 	
 	(* log output *)
 
-	PROCEDURE LogW* (ch: SHORTCHAR);
+	PROCEDURE LogW* (ch: CHAR);
 	BEGIN
 		StdLog.Char(ch)
 	END LogW;
 	
-	PROCEDURE LogWStr* (s: ARRAY OF SHORTCHAR);
-		VAR str: ARRAY 256 OF CHAR;
+	PROCEDURE LogWStr* (IN s: ARRAY OF CHAR);
 	BEGIN
-		str := s$; StdLog.String(str)
+		StdLog.String(s)
 	END LogWStr;
 	
 	PROCEDURE LogWNum* (i, len: INTEGER);
@@ -551,7 +537,6 @@ TYPE
 	END FPrintReal;
 
 	PROCEDURE FPrintLReal* (VAR fp: INTEGER; lr: REAL);
-		VAR l, h: INTEGER;
 	BEGIN
 		FPrint(fp, LoWord(lr)); FPrint(fp, HiWord(lr))
 	END FPrintLReal;
@@ -676,14 +661,14 @@ TYPE
 		RETURN inSym.eof
 	END eofSF;
 	
-	PROCEDURE OldSym* (VAR modName: ARRAY OF SHORTCHAR; VAR done: BOOLEAN);
-		VAR tag: INTEGER; loc: Files.Locator; dir, name: Files.Name;
+	PROCEDURE OldSym* (IN modName: ARRAY OF SHORTCHAR; VAR done: BOOLEAN);
+		VAR tag, res: INTEGER; loc: Files.Locator; dir, name: Files.Name;
 	BEGIN
 		done := FALSE;
 		IF modName = "@file" THEN
 			oldSymFile := file
 		ELSE
-			name := modName$; Kernel.SplitName(name, dir, name);
+			Kernel.Utf8ToString(modName, name, res); Kernel.SplitName(name, dir, name);
 			Kernel.MakeFileName(name, Kernel.symType); 
 			loc := Files.dir.This(dir); loc := loc.This(symDir);
 			oldSymFile := Files.dir.Old(loc, name, Files.shared);
@@ -725,12 +710,12 @@ TYPE
 		WriteNumSet(outSym, s)
 	END SymWSet;
 
-	PROCEDURE SymWReal* (VAR r: SHORTREAL);
+	PROCEDURE SymWReal* (r: SHORTREAL);
 	BEGIN
 		WriteReal(outSym, r)
 	END SymWReal;
 
-	PROCEDURE SymWLReal* (VAR r: REAL);
+	PROCEDURE SymWLReal* (r: REAL);
 	BEGIN
 		WriteLReal(outSym, r)
 	END SymWLReal;
@@ -740,10 +725,10 @@ TYPE
 		outSym.SetPos(4)
 	END SymReset;
 
-	PROCEDURE NewSym* (VAR modName: ARRAY OF SHORTCHAR);
-		VAR loc: Files.Locator; dir: Files.Name;
+	PROCEDURE NewSym* (IN modName: ARRAY OF SHORTCHAR);
+		VAR res: INTEGER; loc: Files.Locator; dir: Files.Name;
 	BEGIN
-		ObjFName := modName$; Kernel.SplitName(ObjFName, dir, ObjFName);
+		Kernel.Utf8ToString(modName, ObjFName, res); Kernel.SplitName(ObjFName, dir, ObjFName);
 		loc := Files.dir.This(dir); loc := loc.This(symDir);
 		symFile := Files.dir.New(loc, Files.ask);
 		IF symFile # NIL THEN
@@ -795,7 +780,7 @@ TYPE
 		ObjWInt(SHORT(i DIV 65536))
 	END ObjWLInt;
 
-	PROCEDURE ObjWBytes* (VAR bytes: ARRAY OF SHORTCHAR; n: INTEGER);
+	PROCEDURE ObjWBytes* (IN bytes: ARRAY OF SHORTCHAR; n: INTEGER);
 		TYPE P = POINTER TO ARRAY [untagged] 100000H OF BYTE;
 		VAR p: P;
 	BEGIN
@@ -813,11 +798,11 @@ TYPE
 		outObj.SetPos(pos)
 	END ObjSet;
 
-	PROCEDURE NewObj* (VAR modName: ARRAY OF SHORTCHAR);
-		VAR loc: Files.Locator; dir: Files.Name;
+	PROCEDURE NewObj* (IN modName: ARRAY OF SHORTCHAR);
+		VAR res: INTEGER; loc: Files.Locator; dir: Files.Name;
 	BEGIN
 		errpos := 0;
-		ObjFName := modName$; Kernel.SplitName(ObjFName, dir, ObjFName);
+		Kernel.Utf8ToString(modName, ObjFName, res); Kernel.SplitName(ObjFName, dir, ObjFName);
 		loc := Files.dir.This(dir); loc := loc.This(codeDir);
 		objFile := Files.dir.New(loc, Files.ask);
 		IF objFile # NIL THEN

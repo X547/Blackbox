@@ -22,6 +22,7 @@ MODULE HostMenus;
 		debug = FALSE;
 		
 		idlePeriod = 50; (* ms *)
+		idlePeriodServer = 10; (* ms *)
 		gcCycle = 100;
 
 		(* hints *)
@@ -35,6 +36,11 @@ MODULE HostMenus;
 		iObject = 120; iPopup = 160; iProperties = 163;
 		iObjEdit = 161; iObjOpen = 162; iVerb0 = 200;
 		iOpen = 102; iUpdateMenus = 111; iExit = 110;
+
+		(* unicode non-characters, known in HostMenus, HostCFrames, Controls *)
+		apps = 0FDD0X;	(* 'menu key',  WinApi.VK_APPS, bypasses BB's popup mechanism for edit controls *)
+		ctrlZ = 0FDD1X;	(* bypasses BB's undo mechanism for edit controls *)
+		ctrlA = 0FDD2X;	(* send ctrl-A (select all) to edit controls *)
 
 		(* custom menus *)
 		firstId = 300;
@@ -717,15 +723,13 @@ MODULE HostMenus;
 									res := WinApi.InsertMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, "+");
 									i.del := FALSE
 								END;
-								IF par.label # i.item$ THEN
-									Dialog.MapString(par.label, str);
-									ChangeItem(m, i, str);
-									IF i.id = iObject THEN
-										res := WinApi.ModifyMenuW(
-											m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, str)
-									ELSE
-										res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, str)
-									END
+								Dialog.MapString(par.label, str);
+								ChangeItem(m, i, str);
+								IF i.id = iObject THEN
+									res := WinApi.ModifyMenuW(
+										m.menuH, n, WinApi.MF_BYPOSITION + WinApi.MF_POPUP, objMenu, str)
+								ELSE
+									res := WinApi.ModifyMenuW(m.menuH, n, WinApi.MF_BYPOSITION, i.id, str)
 								END;
 								IF par.disabled THEN
 									res := WinApi.EnableMenuItem(
@@ -802,19 +806,27 @@ MODULE HostMenus;
 	
 	PROCEDURE TranslateAccelerators (VAR msg: WinApi.MSG; filter: SET; VAR done: BOOLEAN);
 		VAR m: Menu; i: StdDialog.Item; id, code: INTEGER; ctrl, shift, alt: BOOLEAN; ch: CHAR;
-			failed, ok: BOOLEAN; par: Dialog.Par;
+			failed, ok, control: BOOLEAN; par: Dialog.Par; focus: Views.View;
 	BEGIN
 		IF (msg.message = WinApi.WM_SYSKEYDOWN) OR (msg.message = WinApi.WM_KEYDOWN) THEN
 			code := msg.wParam; id := 0; ch := 0X;
 			shift := WinApi.GetKeyState(10H) < 0;
 			ctrl := WinApi.GetKeyState(11H) < 0;
 			alt := ODD(msg.lParam DIV 20000000H);
+			focus := Controllers.FocusView();
+			control := (focus # NIL) & (focus IS Controls.Control);
 			IF 1 IN filter THEN
-				IF shift & (code = 79H) THEN id := iPopup	(* shift F10 *)
+				IF shift & (code = 79H) THEN	(* shift F10 *)
+					IF control THEN ch := apps
+					ELSE id := iPopup
+					END
 				ELSIF alt THEN
-					IF code = 08H THEN id := iUndo	(* alt bs *)
-					ELSIF code = 0DH THEN id := iProperties	(* alt enter *)
-					ELSIF code = 5DH THEN id := iProperties	(* alt application *)
+					IF code = 08H THEN	(* alt bs *)
+						IF control THEN ch := ctrlZ
+						ELSE id := iUndo
+						END
+					ELSIF (code = 0DH) & ~control THEN id := iProperties	(* alt enter *)
+					ELSIF (code = 5DH) & ~control THEN id := iProperties	(* alt application *)
 					ELSIF (code = minusCode) & shift THEN ch := NBHYPHEN
 					ELSIF (code = ORD(" ")) & shift THEN ch := NBSPACE
 					END
@@ -830,7 +842,10 @@ MODULE HostMenus;
 					IF code = 2EH THEN id := iCut	(* shift delete *)
 					ELSIF code = 2DH THEN id := iPaste	(* shift insert *)
 					END
-				ELSIF code = 5DH THEN id := iPopup	(* application *)
+				ELSIF code = 5DH THEN	(* application *)
+					IF control THEN ch := apps
+					ELSE id := iPopup
+					END
 				ELSIF code = 1BH THEN done := TRUE	(* esc *)
 				END
 			END;
@@ -847,6 +862,11 @@ MODULE HostMenus;
 						END
 					END;
 					m := m.next
+				END;
+				IF control THEN
+					IF (code = ORD('Z')) THEN id := 0; ch := ctrlZ
+					ELSIF (code = ORD('A')) THEN id := 0; ch := ctrlA
+					END
 				END
 			END;
 			IF id # 0 THEN
@@ -912,8 +932,8 @@ MODULE HostMenus;
 				RETURN l2
 			END
 		END;
-		NEW(l2, len); 
-		FOR i := 0 TO len - 1 DO l2[i] := line[i] END;
+		NEW(l2, len + 1); 
+		l2^ := line$;
 		RETURN l2
 	END IncludingFileCommandLine;
 	
@@ -928,7 +948,7 @@ MODULE HostMenus;
 			IF (ch = "'") OR (ch = '"') THEN tch := ch; INC(i); ch := line[i] END;
 			WHILE (ch >= " ") & (ch # tch) DO
 				name[j] := ch;
-				IF (ch >= "a") & (ch <= "z") OR (ch >= "à") & (ch <= "ö") OR (ch >= "ø") & (ch <= "þ") THEN ch := CAP(ch)
+				IF Strings.IsLower(ch) THEN ch := Strings.Upper(ch)
 				ELSIF ch = "-" THEN ch := "/"
 				END;
 				opt[j] := ch; INC(j); INC(i); ch := line[i]
@@ -982,6 +1002,9 @@ MODULE HostMenus;
 			ELSIF opt = "/PAR" THEN
 				CopyName;
 				Dialog.commandLinePars := name$
+			ELSIF opt = "/INIFILE" THEN	(* use an INI-file instead of the Windows registry *)
+				CopyName; (* path of INI-file: handled in HostRegistry because needed earlier *)
+			ELSIF opt = "/PORTABLE" THEN	(* use a default INI-file instead of the Windows registry *)
 			ELSE	(* open file *)
 				IF open THEN OpenFile(name, l, t, r, b, ok) END;
 				l := 0; t := 0; r := 0; b := 0
@@ -1271,7 +1294,7 @@ MODULE HostMenus;
 	END Loop;
 	
 	PROCEDURE OpenApp*;
-		VAR res: INTEGER; Proc: PROCEDURE(i: WinApi.HANDLE); atom: SHORTINT;
+		VAR res, ip: INTEGER; Proc: PROCEDURE(i: WinApi.HANDLE); atom: SHORTINT;
 	BEGIN
 		IF HostWindows.ctl3d # 0 THEN
 			SYSTEM.PUT(
@@ -1292,7 +1315,8 @@ MODULE HostMenus;
 		END;
 		HostWindows.CreateMainWindows(menuBar, winMenu, ApplWinHandler);
 		IF state = running THEN HostWindows.ShowMain END;
-		res := WinApi.SetTimer(HostWindows.main, 1, idlePeriod, NIL);
+		IF Dialog.serverMode THEN ip := idlePeriodServer ELSE ip := idlePeriod END;
+		res := WinApi.SetTimer(HostWindows.main, 1, ip, NIL);
 		WinApi.DragAcceptFiles(HostWindows.main, 1);
 		HostWindows.dir.invisible := TRUE
 	END OpenApp;

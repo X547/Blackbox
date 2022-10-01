@@ -171,14 +171,14 @@ MODULE Stores;
 	PROCEDURE^ (VAR rd: Reader) ReadVersion* (min, max: INTEGER; OUT version: INTEGER), NEW;
 	PROCEDURE^ (VAR rd: Reader) ReadSChar* (OUT x: SHORTCHAR), NEW;
 	PROCEDURE^ (VAR rd: Reader) ReadInt* (OUT x: INTEGER), NEW;
-	PROCEDURE^ (VAR rd: Reader) ReadXString* (OUT x: ARRAY OF CHAR), NEW;
+	PROCEDURE^ (VAR rd: Reader) ReadSString* (OUT x: ARRAY OF SHORTCHAR), NEW;
 	PROCEDURE^ (VAR rd: Reader) ReadStore* (OUT x: Store), NEW;
 	
 	PROCEDURE^ (VAR wr: Writer) SetPos* (pos: INTEGER), NEW;
 	PROCEDURE^ (VAR wr: Writer) WriteVersion* (version: INTEGER), NEW;
 	PROCEDURE^ (VAR wr: Writer) WriteSChar* (x: SHORTCHAR), NEW;
 	PROCEDURE^ (VAR wr: Writer) WriteInt* (x: INTEGER), NEW;
-	PROCEDURE^ (VAR wr: Writer) WriteXString* (IN x: ARRAY OF CHAR), NEW;
+	PROCEDURE^ (VAR wr: Writer) WriteSString* (IN x: ARRAY OF SHORTCHAR), NEW;
 	PROCEDURE^ (VAR wr: Writer) WriteStore* (x: Store), NEW;
 	
 	PROCEDURE^ Join* (s0, s1: Store);
@@ -284,12 +284,17 @@ MODULE Stores;
 	(* types *)
 
 	PROCEDURE GetThisTypeName (t: Kernel.Type; VAR type: TypeName);
-		VAR i, j: INTEGER; ch: CHAR; name: Kernel.Name;
+		VAR i, j: INTEGER; ch: CHAR; modName, name: Kernel.Name;
 	BEGIN
-		Kernel.GetTypeName(t, name); type := t.mod.name$;
+		Kernel.GetModName(t.mod, modName);
+		Kernel.GetTypeName(t, name);
+		type := modName$;
 		i := 0; ch := type[0]; WHILE ch # 0X DO INC(i); ch := type[i] END;
 		type[i] := "."; INC(i);
 		j := 0; REPEAT ch := name[j]; type[i] := ch; INC(i); INC(j) UNTIL ch = 0X;
+		(*
+		type := modName + "." + name;
+		*)
 		IF compatible THEN
 			IF type[i-2] = "^" THEN	(* for backward compatibility *)
 				type[i-2] := "D"; type[i-1] := "e"; type[i] := "s"; type[i+1] := "c"; type[i+2] := 0X 
@@ -299,16 +304,16 @@ MODULE Stores;
 
 	PROCEDURE ThisType (type: TypeName): Kernel.Type;
 		VAR m: Kernel.Module; t: Kernel.Type; i, j: INTEGER; ch: CHAR;
-			typ: Kernel.Name; mod: ARRAY 256 OF CHAR; res: INTEGER; str: ARRAY 256 OF CHAR;
+			typ, mod: Kernel.Name; res: INTEGER; str: ARRAY 256 OF CHAR;
 	BEGIN
 		ASSERT(type # "", 20);
 		i := 0; ch := type[0];
-		WHILE (ch # ".") & (ch # 0X) DO mod[i] := SHORT(ch); INC(i); ch := type[i] END;
+		WHILE (ch # ".") & (ch # 0X) DO mod[i] := ch; INC(i); ch := type[i] END;
 		ASSERT(ch = ".", 21);
 		mod[i] := 0X; INC(i);
 		m := Kernel.ThisMod(mod);
 		IF m # NIL THEN
-			j := 0; REPEAT ch := type[i]; typ[j] := SHORT(ch); INC(i); INC(j) UNTIL ch = 0X;
+			j := 0; REPEAT ch := type[i]; typ[j] := ch; INC(i); INC(j) UNTIL ch = 0X;
 			t := Kernel.ThisType(m, typ);
 			IF (t = NIL) & (j >= 5) THEN	(* try pointer type *)
 				IF (typ[j-5] = "D") & (typ[j-4] = "e") & (typ[j-3] = "s") & (typ[j-2] = "c") THEN
@@ -464,6 +469,12 @@ MODULE Stores;
 	PROCEDURE ReadPath (VAR rd: Reader; VAR path: TypePath);
 		VAR h: TypeDict; id, extId: INTEGER; i: INTEGER; kind: SHORTCHAR;
 
+		PROCEDURE ReadUtf8(OUT x: ARRAY OF CHAR);
+			VAR utf8: Kernel.Utf8Name; res: INTEGER;
+		BEGIN
+			rd.ReadSString(utf8); Kernel.Utf8ToString(utf8, x, res); ASSERT(res = 0)
+		END ReadUtf8;
+		
 		PROCEDURE AddPathComp (VAR rd: Reader);
 		BEGIN
 			IF h # NIL THEN AddBaseId(h, extId, rd.nextTypeId) END;
@@ -474,13 +485,13 @@ MODULE Stores;
 	BEGIN
 		h := NIL; i := 0; rd.ReadSChar(kind);
 		WHILE kind = newExt DO
-			rd.ReadXString(path[i]);
+			ReadUtf8(path[i]);
 			AddPathComp(rd); INC(rd.nextTypeId);
 			IF path[i] # elemTName THEN INC(i) END;
 			rd.ReadSChar(kind)
 		END;
 		IF kind = newBase THEN
-			rd.ReadXString(path[i]);
+			ReadUtf8(path[i]);
 			AddPathComp(rd); INC(rd.nextTypeId); INC(i)
 		ELSE
 			ASSERT(kind = oldType, 100);
@@ -496,6 +507,13 @@ MODULE Stores;
 
 	PROCEDURE WritePath (VAR wr: Writer; VAR path: TypePath);
 		VAR h: TypeDict; id, extId: INTEGER; i, n: INTEGER;
+		
+		PROCEDURE WriteUtf8(IN x: ARRAY OF CHAR);
+			VAR utf8: Kernel.Utf8Name; res: INTEGER;
+		BEGIN
+			Kernel.StringToUtf8(x, utf8, res); ASSERT(res = 0); wr.WriteSString(utf8)
+		END WriteUtf8;
+		
 	BEGIN
 		h := NIL;
 		n := 0; WHILE path[n] # "" DO INC(n) END;
@@ -507,14 +525,14 @@ MODULE Stores;
 				wr.WriteSChar(oldType); wr.WriteInt(id); n := i
 			ELSE
 				IF i + 1 < n THEN wr.WriteSChar(newExt) ELSE wr.WriteSChar(newBase) END;
-				wr.WriteXString(path[i]);
+				WriteUtf8(path[i]);
 				IF h # NIL THEN AddBaseId(h, extId, wr.nextTypeId) END;
 				AddType(wr.tDict, wr.tHead, wr.nextTypeId, path[i]);
 				h := wr.tHead; extId := wr.nextTypeId;
 				INC(wr.nextTypeId);
 				IF path[i] = modelTName THEN	
 					id := ThisId(wr.tDict, elemTName); ASSERT(id < 0, 100); ASSERT(i + 2 = n, 101);
-					wr.WriteSChar(newExt); wr.WriteXString(elemTName);
+					wr.WriteSChar(newExt); WriteUtf8(elemTName);
 					IF h # NIL THEN AddBaseId(h, extId, wr.nextTypeId) END;
 					AddType(wr.tDict, wr.tHead, wr.nextTypeId, elemTName);
 					h := wr.tHead; extId := wr.nextTypeId;

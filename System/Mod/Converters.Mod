@@ -22,7 +22,7 @@ MODULE Converters;
 		Importer* = PROCEDURE (f: Files.File; OUT s: Stores.Store);
 		Exporter* = PROCEDURE (s: Stores.Store; f: Files.File);
 		Converter* = POINTER TO RECORD
-			next-: Converter;
+			next*: Converter;
 			imp-, exp-: Dialog.String;
 			storeType-: Stores.TypeName;
 			fileType-: Files.Type;

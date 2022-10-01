@@ -2,7 +2,7 @@ StdScrollers
 
 DEFINITION StdScrollers;
 
-	IMPORT Dialog, Properties;
+	IMPORT Dialog, Properties, Views;
 
 	CONST
 		horBar = 0; verBar = 1; horHide = 2; verHide = 3; width = 4; height = 5; savePos = 7; showBorder = 6;
@@ -33,6 +33,7 @@ DEFINITION StdScrollers;
 	PROCEDURE WidthGuard (VAR par: Dialog.Par);
 	PROCEDURE HorAdaptGuard (VAR par: Dialog.Par);
 	PROCEDURE VerAdaptGuard (VAR par: Dialog.Par);
+	PROCEDURE WrappedView (v: Views.View): Views.View;
 
 END StdScrollers.
 
@@ -117,3 +118,9 @@ PROCEDURE WidthGuard (VAR par: Dialog.Par)
 PROCEDURE HorAdaptGuard (VAR par: Dialog.Par)
 PROCEDURE VerAdaptGuard (VAR par: Dialog.Par)
 Various guards for the Std/Rsrc/Scrollers dialog box.
+
+PROCEDURE WrappedView (v: Views.View): Views.View
+Returns the wrapped view of v if v is a scroller view implemented in StdScrollers. Otherwise, returns v.
+
+Pre
+v # NIL

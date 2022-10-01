@@ -7,7 +7,7 @@ DEFINITION Meta;
 		typObj = 2; varObj = 3; procObj = 4; fieldObj = 5; modObj = 6; parObj = 7;
 		boolTyp = 1; sCharTyp = 2; charTyp = 3;
 		byteTyp = 4; sIntTyp = 5; intTyp = 6; longTyp = 10; sRealTyp = 7; realTyp = 8;
-		setTyp = 9; anyRecTyp = 11; anyPtrTyp = 12;
+		setTyp = 9; anyRecTyp = 11; anyPtrTyp = 12; sysPtrTyp = 13;
 		procTyp = 16; recTyp = 17; arrTyp = 18; ptrTyp = 19;
 		final = 0; extensible = 1; limited = 2; abstract = 3;
 		hidden = 1; readOnly = 2; exported = 4;
@@ -20,50 +20,50 @@ DEFINITION Meta;
 
 		Item = RECORD (Value)
 			obj-, typ-, vis-, adr-: INTEGER;
-			(VAR i: Item) Valid (): BOOLEAN, NEW;
-			(VAR i: Item) GetTypeName (OUT mod, type: Name), NEW;
-			(VAR i: Item) BaseTyp (): INTEGER, NEW;
-			(VAR i: Item) Level (): INTEGER, NEW;
-			(VAR i: Item) Size (): INTEGER, NEW;
-			(VAR arr: Item) Len (): INTEGER, NEW;
-			(VAR in: Item) Lookup (IN name: ARRAY OF CHAR; VAR i: Item), NEW;
-			(VAR i: Item) GetBaseType (VAR base: Item), NEW;
-			(VAR rec: Item) GetThisBaseType (level: INTEGER; VAR base: Item), NEW;
-			(VAR proc: Item) NumParam (): INTEGER, NEW;
-			(VAR proc: Item) GetParam (n: INTEGER; VAR par: Item), NEW;
-			(VAR proc: Item) GetParamName (n: INTEGER; OUT name: Name), NEW;
-			(VAR proc: Item) GetReturnType (VAR type: Item), NEW;
-			(VAR rec: Item) Is (IN type: Value): BOOLEAN, NEW;
-			(VAR ptr: Item) Deref (VAR ref: Item), NEW;
-			(VAR arr: Item) Index (index: INTEGER; VAR elem: Item), NEW;
-			(VAR proc: Item) Call (OUT ok: BOOLEAN), NEW;
-			(VAR proc: Item) ParamCall (IN par: ARRAY OF Item; VAR dest: Item;
+			(IN i: Item) Valid (): BOOLEAN, NEW;
+			(IN i: Item) GetTypeName (OUT mod, type: Name), NEW;
+			(IN i: Item) BaseTyp (): INTEGER, NEW;
+			(IN i: Item) Level (): INTEGER, NEW;
+			(IN i: Item) Size (): INTEGER, NEW;
+			(IN arr: Item) Len (): INTEGER, NEW;
+			(IN in: Item) Lookup (IN name: ARRAY OF CHAR; VAR i: Item), NEW;
+			(IN i: Item) GetBaseType (VAR base: Item), NEW;
+			(IN rec: Item) GetThisBaseType (level: INTEGER; VAR base: Item), NEW;
+			(IN proc: Item) NumParam (): INTEGER, NEW;
+			(IN proc: Item) GetParam (n: INTEGER; VAR par: Item), NEW;
+			(IN proc: Item) GetParamName (n: INTEGER; OUT name: Name), NEW;
+			(IN proc: Item) GetReturnType (VAR type: Item), NEW;
+			(IN rec: Item) Is (IN type: Value): BOOLEAN, NEW;
+			(IN ptr: Item) Deref (VAR ref: Item), NEW;
+			(IN arr: Item) Index (index: INTEGER; VAR elem: Item), NEW;
+			(IN proc: Item) Call (OUT ok: BOOLEAN), NEW;
+			(IN proc: Item) ParamCall (IN par: ARRAY OF Item; VAR dest: Item;
 														OUT ok: BOOLEAN), NEW;
-			(VAR proc: Item) ParamCallVal (IN par: ARRAY OF POINTER TO Value; VAR dest: Item;
+			(IN proc: Item) ParamCallVal (IN par: ARRAY OF POINTER TO Value; VAR dest: Item;
 														OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) GetVal (VAR x: Value; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) PutVal (IN x: Value; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) GetStringVal (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) GetSStringVal (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) PutStringVal (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) PutSStringVal (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
-			(VAR var: Item) PtrVal (): ANYPTR, NEW;
-			(VAR var: Item) PutPtrVal (x: ANYPTR), NEW;
-			(VAR var: Item) IntVal (): INTEGER, NEW;
-			(VAR var: Item) PutIntVal (x: INTEGER), NEW;
-			(VAR var: Item) RealVal (): REAL, NEW;
-			(VAR var: Item) PutRealVal (x: REAL), NEW;
-			(VAR var: Item) LongVal (): LONGINT, NEW;
-			(VAR var: Item) PutLongVal (x: LONGINT), NEW;
-			(VAR var: Item) CharVal (): CHAR, NEW;
-			(VAR var: Item) PutCharVal (x: CHAR), NEW;
-			(VAR var: Item) BoolVal (): BOOLEAN, NEW;
-			(VAR var: Item) PutBoolVal (x: BOOLEAN), NEW;
-			(VAR var: Item) SetVal (): SET, NEW;
-			(VAR var: Item) PutSetVal (x: SET), NEW;
-			(VAR type: Item) New (): ANYPTR, NEW;
-			(VAR val: Item) Copy (): ANYPTR, NEW;
-			(VAR rec: Item) CallWith (proc: PROCEDURE (VAR rec, par: ANYREC); VAR par: ANYREC), NEW
+			(IN var: Item) GetVal (VAR x: Value; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) PutVal (IN x: Value; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) GetStringVal (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) GetSStringVal (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) PutStringVal (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) PutSStringVal (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
+			(IN var: Item) PtrVal (): ANYPTR, NEW;
+			(IN var: Item) PutPtrVal (x: ANYPTR), NEW;
+			(IN var: Item) IntVal (): INTEGER, NEW;
+			(IN var: Item) PutIntVal (x: INTEGER), NEW;
+			(IN var: Item) RealVal (): REAL, NEW;
+			(IN var: Item) PutRealVal (x: REAL), NEW;
+			(IN var: Item) LongVal (): LONGINT, NEW;
+			(IN var: Item) PutLongVal (x: LONGINT), NEW;
+			(IN var: Item) CharVal (): CHAR, NEW;
+			(IN var: Item) PutCharVal (x: CHAR), NEW;
+			(IN var: Item) BoolVal (): BOOLEAN, NEW;
+			(IN var: Item) PutBoolVal (x: BOOLEAN), NEW;
+			(IN var: Item) SetVal (): SET, NEW;
+			(IN var: Item) PutSetVal (x: SET), NEW;
+			(IN type: Item) New (): ANYPTR, NEW;
+			(IN val: Item) Copy (): ANYPTR, NEW;
+			(IN rec: Item) CallWith (proc: PROCEDURE (VAR rec, par: ANYREC); VAR par: ANYREC), NEW
 		END;
 
 		Scanner = RECORD 
@@ -122,7 +122,8 @@ CONST typObj, varObj, procObj, fieldObj, modObj, parObj
 Object classes.
 
 CONST boolTyp, sCharTyp, charTyp, byteTyp, sintTyp, intTyp, longTyp,
-			sRealTyp, realTyp, setTyp, anyRecTyp, anyPtrTyp, procTyp, recTyp, arrTyp, ptrTyp
+			sRealTyp, realTyp, setTyp, anyRecTyp, anyPtrTyp, procTyp, recTyp, arrTyp, ptrTyp, 
+			sysPtrTyp
 Type classes.
 
 CONST final, extensible, limited, abstract
@@ -159,11 +160,11 @@ vis:	undef	visibility	visibility	visibility	undef	kind
 adr:	0	address	address	offset	0	number
 
 
-PROCEDURE (VAR i: Item) Valid (): BOOLEAN
+PROCEDURE (IN i: Item) Valid (): BOOLEAN
 NEW
 Determines whether the item is valid, i.e., initialized, set to a defined type, and its module is still loaded.
 
-PROCEDURE (VAR i: Item) GetTypeName (OUT mod, type: Name)
+PROCEDURE (IN i: Item) GetTypeName (OUT mod, type: Name)
 NEW
 Get the item's type name and the name of this type's module.
 
@@ -172,7 +173,7 @@ i.Valid()	20
 i.typ >= recTyp	21
 module of type is still loaded	24
 
-PROCEDURE (VAR i: Item) BaseTyp (): INTEGER
+PROCEDURE (IN i: Item) BaseTyp (): INTEGER
 NEW
 Returns the item's base type.
 
@@ -180,7 +181,7 @@ Pre
 i.Valid()	20
 i.typ IN {arrTyp, recTyp, ptrTyp}	21
 
-PROCEDURE (VAR i: Item) Level (): INTEGER
+PROCEDURE (IN i: Item) Level (): INTEGER
 NEW
 Returns the item's level.
 
@@ -188,7 +189,7 @@ Pre
 i.Valid()	20
 i.typ IN {recTyp, arrTyp}	21
 
-PROCEDURE (VAR i: Item) Size (): INTEGER
+PROCEDURE (IN i: Item) Size (): INTEGER
 NEW
 Returns the item's size in bytes.
 
@@ -196,7 +197,7 @@ Pre
 i.Valid()	20
 i.typ # undef	21
 
-PROCEDURE (VAR arr: Item) Len (): INTEGER
+PROCEDURE (IN arr: Item) Len (): INTEGER
 NEW
 Returns the array's length.
 
@@ -204,7 +205,7 @@ Pre
 i.Valid()	20
 i.typ = arrTyp	21
 
-PROCEDURE (VAR in: Item) Lookup (IN name: ARRAY OF CHAR; VAR i: Item)
+PROCEDURE (IN in: Item) Lookup (IN name: ARRAY OF CHAR; VAR i: Item)
 NEW
 Lookup an item in a module or a field in a record.
 
@@ -218,15 +219,15 @@ i.obj # undef
 i.obj = undef
 	lookup was not successful
 
-PROCEDURE (VAR i: Item) GetBaseType (VAR base: Item)
+PROCEDURE (IN i: Item) GetBaseType (VAR base: Item)
 NEW
 Assign i's base type to base.
 
 Pre
 i.Valid()	20
-i.typ IN {recTyp, arrTyp}	21
+i.typ IN {recTyp, arrTyp, ptrTyp}	21
 
-PROCEDURE (VAR rec: Item) GetThisBaseType (level: INTEGER; VAR base: Item)
+PROCEDURE (IN rec: Item) GetThisBaseType (level: INTEGER; VAR base: Item)
 NEW
 Assign i's level-th base type to base. If the level does not exist, i.obj is set to undef.
 
@@ -235,7 +236,7 @@ rec.Valid()	20
 rec.typ IN {recTyp, arrTyp}	21
 level >= 0  &  level < 16	28
 
-PROCEDURE (VAR proc: Item) NumParam (): INTEGER
+PROCEDURE (IN proc: Item) NumParam (): INTEGER
 NEW
 Returns the number of parameters of a procedure or procedure type.
 
@@ -243,7 +244,7 @@ Pre
 proc.Valid()	20
 proc.obj = procObj OR proc.typ = procTyp	21
 
-PROCEDURE (VAR proc: Item) GetParam (n: INTEGER; VAR par: Item)
+PROCEDURE (IN proc: Item) GetParam (n: INTEGER; VAR par: Item)
 NEW
 Assigns the n-th parameter of proc to par. n must be in the range 0..proc.NumParam()-1. par.obj is set to parObj, par.vis reflects the kind of the parameter (value, in, out, or var), and par.typ its type.
 
@@ -251,7 +252,7 @@ Pre
 proc.Valid()	20
 proc.obj = procObj OR proc.typ = procTyp	21
 
-PROCEDURE (VAR proc: Item) GetParamName (n: INTEGER; OUT name: Name)
+PROCEDURE (IN proc: Item) GetParamName (n: INTEGER; OUT name: Name)
 NEW
 Assigns the name of the n-th parameter of proc to name. If the parameter does not exist, name is set to "".
 
@@ -259,7 +260,7 @@ Pre
 proc.Valid()	20
 proc.obj = procObj OR proc.typ = procTyp	21
 
-PROCEDURE (VAR proc: Item) GetReturnType (VAR type: Item)
+PROCEDURE (IN proc: Item) GetReturnType (VAR type: Item)
 NEW
 Assigns the return type of a procedure or procedure type to type. For proper procedures type.typ is set to undef.
 
@@ -267,7 +268,7 @@ Pre
 proc.Valid()	20
 proc.obj = procObj OR proc.typ = procTyp	21
 
-PROCEDURE (VAR rec: Item) Is (IN type: Value): BOOLEAN
+PROCEDURE (IN rec: Item) Is (IN type: Value): BOOLEAN
 NEW
 Perform a type test rec IS type.
 
@@ -281,16 +282,16 @@ type IS Item
 	type.Level() = 1	25
 	number of fields of type = 1	26
 
-PROCEDURE (VAR ptr: Item) Deref (VAR ref: Item)
+PROCEDURE (IN ptr: Item) Deref (VAR ref: Item)
 NEW
 Dereference pointer ptr and assign the result to ref.
 
 Pre
-ptr.typ = ptrTyp	21
+ptr.typ IN {ptrTyp, anyPtrTyp, sysPtrTyp}	21
 ref must be a level 1 record	25
 ref must have exactly one field	26
 
-PROCEDURE (VAR arr: Item) Index (index: INTEGER; VAR elem: Item)
+PROCEDURE (IN arr: Item) Index (index: INTEGER; VAR elem: Item)
 NEW
 Assign the index-th element of array arr to elem.
 
@@ -299,7 +300,7 @@ arr.Valid()	20
 arr.typ = arrTyp	21
 arr.obj = varObj	22
 
-PROCEDURE (VAR proc: Item) Call (OUT ok: BOOLEAN)
+PROCEDURE (IN proc: Item) Call (OUT ok: BOOLEAN)
 NEW
 Call a parameterless procedure.
 
@@ -307,7 +308,7 @@ Pre
 proc.Valid()	20
 proc.obj = procObj  OR  proc.obj = varObj & proc.typ = procTyp	22
 
-PROCEDURE (VAR proc: Item) ParamCall (IN par: ARRAY OF Item; VAR dest: Item;
+PROCEDURE (IN proc: Item) ParamCall (IN par: ARRAY OF Item; VAR dest: Item;
 																OUT ok: BOOLEAN)
 NEW
 Call a procedure with a given set of parameters. par must contain a valid variable of appropriate type for each parameter of the procedure. Depending on the parameter kind, either the variable itself or its actual value is passed to the call. If the procedure returns a value, it is assigned to variable dest.
@@ -325,7 +326,7 @@ proc.GetReturnType() valid
 	dest.obj = varObj	22
 	dest.vis = exported	27
 	
-PROCEDURE (VAR proc: Item) ParamCallVal (IN par: ARRAY OF POINTER TO Value; VAR dest: Value;
+PROCEDURE (IN proc: Item) ParamCallVal (IN par: ARRAY OF POINTER TO Value; VAR dest: Value;
 																	OUT ok: BOOLEAN)
 NEW
 Call a procedure with a given set of parameters. par must contain a valid variable item or a value record of appropriate type for each parameter of the procedure. Depending on the parameter kind, either the variable itself or its actual value is passed to the call. If the procedure returns a value, it is assigned to the variable item or value record dest.
@@ -350,7 +351,7 @@ proc.GetReturnType() valid & ~(dest IS Item)
 	dest is extension of Value	25
 	dest contains a single field	26
 	
-PROCEDURE (VAR var: Item) GetVal (VAR x: Value; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) GetVal (VAR x: Value; OUT ok: BOOLEAN)
 NEW
 Assigns the value of var to x. The actual type of x must either be Item or a custom extension of Value containing a single field of any type. In the former case the item denotes the assigned variable, in the latter the value is assigned directly to the field.
 
@@ -365,7 +366,7 @@ x IS Item
 	x is extension of Value	25
 	x contains a single field	26
 
-PROCEDURE (VAR var: Item) PutVal (IN x: Value; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) PutVal (IN x: Value; OUT ok: BOOLEAN)
 NEW
 Assigns the value of x to var. The actual type of x must either be Item or a custom extension of Value containing a single field of any type. In the former case the item denotes the value, in the latter the value is read directly from to the field.
 
@@ -380,7 +381,7 @@ x IS Item
 	x is extension of Value	25
 	x contains a single field	26
 
-PROCEDURE (VAR var: Item) GetStringVal (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) GetStringVal (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN)
 NEW
 Reads a string value from an item.
 
@@ -389,7 +390,7 @@ var.Valid()	20
 var.typ = arrTyp & var.BaseTyp() = charTyp	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) GetSStringVal (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) GetSStringVal (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN)
 NEW
 Reads a short string value from an item.
 
@@ -398,7 +399,7 @@ var.Valid()	20
 var.typ = arrTyp & var.BaseTyp() = sCharTyp	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) PtrVal (): ANYPTR
+PROCEDURE (IN var: Item) PtrVal (): ANYPTR
 NEW
 Reads a pointer value from an item.
 
@@ -407,16 +408,16 @@ var.Valid()	20
 var.typ IN {anyPtrTyp, ptrTyp}	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) IntVal (): INTEGER
+PROCEDURE (IN var: Item) IntVal (): INTEGER
 NEW
 Reads a integer value from an item.
 
 Pre
 var.Valid()	20
-var.typ IN (sCharTyp, charTyp, byteTyp, sIntTyp, intTyp}	21
+var.typ IN {sCharTyp, charTyp, byteTyp, sIntTyp, intTyp}	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) RealVal (): REAL
+PROCEDURE (IN var: Item) RealVal (): REAL
 NEW
 Reads a real value from an item.
 
@@ -425,7 +426,7 @@ var.Valid()	20
 var.typ IN {sRealTyp, realTyp}	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) LongVal (): LONGINT
+PROCEDURE (IN var: Item) LongVal (): LONGINT
 NEW
 Reads a long value from an item.
 
@@ -434,7 +435,7 @@ var.Valid()	20
 var.typ = longTyp	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) CharVal (): CHAR
+PROCEDURE (IN var: Item) CharVal (): CHAR
 NEW
 Reads a character value from an item.
 
@@ -443,7 +444,7 @@ var.Valid()	20
 var.typ IN {sCharTyp, charTyp}	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) BoolVal (): BOOLEAN
+PROCEDURE (IN var: Item) BoolVal (): BOOLEAN
 NEW
 Reads a boolean value from an item.
 
@@ -452,7 +453,7 @@ var.Valid()	20
 var.typ = boolTyp	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) SetVal (): SET
+PROCEDURE (IN var: Item) SetVal (): SET
 NEW
 Reads a set value from an item.
 
@@ -461,7 +462,7 @@ var.Valid()	20
 var.typ = setTyp	21
 var.obj = varObj	22
 
-PROCEDURE (VAR var: Item) PutStringVal (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) PutStringVal (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN)
 NEW
 Writes a string value to an item.
 
@@ -471,7 +472,7 @@ var.typ = arrTyp & var.BaseTyp() = charTyp	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutSStringVal (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN)
+PROCEDURE (IN var: Item) PutSStringVal (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN)
 NEW
 Writes a short string value to an item.
 
@@ -481,7 +482,7 @@ var.typ = arrTyp & var.BaseTyp() = sCharTyp	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutPtrVal (x: ANYPTR)
+PROCEDURE (IN var: Item) PutPtrVal (x: ANYPTR)
 NEW
 Writes a pointer value to an item.
 
@@ -491,7 +492,7 @@ var.typ IN {anyPtrTyp, ptrTyp}	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutIntVal (x: INTEGER)
+PROCEDURE (IN var: Item) PutIntVal (x: INTEGER)
 NEW
 Writes an integer value to an item.
 
@@ -501,7 +502,7 @@ var.typ IN {sCharTyp, charTyp, byteTyp, sIntTyp, intTyp}	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutRealVal (x: REAL)
+PROCEDURE (IN var: Item) PutRealVal (x: REAL)
 NEW
 Writes a real value to an item.
 
@@ -511,7 +512,7 @@ var.typ IN {sRealTyp, realTyp}	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutLongVal (x: LONGINT)
+PROCEDURE (IN var: Item) PutLongVal (x: LONGINT)
 NEW
 Writes a long value to an item.
 
@@ -521,7 +522,7 @@ var.typ = longTyp	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutCharVal (x: CHAR)
+PROCEDURE (IN var: Item) PutCharVal (x: CHAR)
 NEW
 Writes a character value to an item.
 
@@ -531,7 +532,7 @@ var.typ IN {sCharTyp, charTyp}	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutBoolVal (x: BOOLEAN)
+PROCEDURE (IN var: Item) PutBoolVal (x: BOOLEAN)
 NEW
 Writes a boolean value to an item.
 
@@ -541,7 +542,7 @@ var.typ = boolTyp	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR var: Item) PutSetVal (x: SET)
+PROCEDURE (IN var: Item) PutSetVal (x: SET)
 NEW
 Writes a set value to an item.
 
@@ -551,7 +552,7 @@ var.typ = setTyp	21
 var.obj = varObj	22
 var.vis = exported	27
 
-PROCEDURE (VAR type: Item) New (): ANYPTR
+PROCEDURE (IN type: Item) New (): ANYPTR
 NEW
 Generates a new empty heap object. The item must be a record or a pointer type. The type of the new object is the same as the pointer, or a pointer to the record described by the item.
 
@@ -559,7 +560,7 @@ Pre
 type.Valid()	20
 type.typ IN (recTyp, ptrTyp)	21
 
-PROCEDURE (VAR val: Item) Copy (): ANYPTR
+PROCEDURE (IN val: Item) Copy (): ANYPTR
 NEW
 The same as New, but also copies the contents byte by byte. The item must be a record variable.
 
@@ -568,7 +569,7 @@ val.Valid()	20
 val.typ = recTyp	21
 val.obj = varObj	22
 
-PROCEDURE (VAR rec: Item) CallWith (proc: PROCEDURE (VAR rec, par: ANYREC); VAR par: ANYREC)
+PROCEDURE (IN rec: Item) CallWith (proc: PROCEDURE (VAR rec, par: ANYREC); VAR par: ANYREC)
 NEW
 Call procedure proc with the parameters rec (i.e., the item itself, the "self" parameter) and parameter par.
 

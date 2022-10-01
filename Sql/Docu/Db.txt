@@ -238,10 +238,10 @@ PROCEDURE (t: Table) Read (row: INTEGER; VAR data: ANYREC)
 NEW, ABSTRACT
 Reads the row'th row of the result table into the interactor data.
 The generic data type Row which consists of an open array of strings can be used to read a row of data from an arbitrary table. All table values are converted to a string representation in this case. Otherwise the fields of the data record must be of one of the following types:
-BYTE, SHORTINT, INTEGER, SHORTREAL, REAL, BOOLEAN, ARRAY n OF CHAR; POINTER TO ARRAY OF CHAR, Dialog.Currency, Dialog.List, Dialog.Combo, Dates.Date, Dates.Time, or SqlDB.Blob. Other array and record types are handled recursively. Pointers are dereferenced, and the bound structures are handled recursively. Pointers must not be NIL with the exception of POINTER TO ARRAY OF CHAR. If such a pointer is NIL or the bound array is too small to receive the corresponding string, a new array of suitable length is allocated automatically.
+BYTE, SHORTINT, INTEGER, LONGINT, SHORTREAL, REAL, BOOLEAN, ARRAY n OF CHAR; POINTER TO ARRAY OF CHAR, Dialog.Currency, Dialog.List, Dialog.Combo, Dates.Date, Dates.Time, or SqlDB.Blob. Other array and record types are handled recursively. Pointers are dereferenced, and the bound structures are handled recursively. Pointers must not be NIL with the exception of POINTER TO ARRAY OF CHAR. If such a pointer is NIL or the bound array is too small to receive the corresponding string, a new array of suitable length is allocated automatically.
 Four levels of complications can arise during the read:
 • A value has to be converted from one data type to another. Conversions from any type to strings (ARRAY n OF CHAR or POINTER TO ARRAY OF CHAR) are always supported. Other conversions are driver-dependent.
-• A string need to be truncated because the destination array is too small.
+• A string needs to be truncated because the destination array is too small.
 • A numeric value is too large to be stored in the destination (overflow).
 • A value cannot be assigned because its type is incompatible with the corresponding field. The field is cleared in such a situation.
 After the call, t.res contains the most serious event (in the order converted, truncated, overflow, incompatible) that happened during the reading of all columns.

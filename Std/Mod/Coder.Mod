@@ -466,7 +466,7 @@ MODULE StdCoder;
 		WHILE p # NIL DO par.list.SetItem(i, p.name); INC(i); p := p.next END;
 		par.storeAs := "";
 		Dialog.Update(par); Dialog.UpdateList(par.list);
-		StdCmds.OpenAuxDialog("Std/Rsrc/Coder", "Decode")
+		StdCmds.OpenAuxDialog("Std/Rsrc/Coder", "#Std:DecodeDialog")
 	END OpenDialog;
 
 	PROCEDURE CloseDialog*;

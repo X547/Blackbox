@@ -201,7 +201,7 @@ MODULE CtlT;
 	
 	(* object dispatch methods *)
 	
-	PROCEDURE (obj: OutObject) Invoke* (id, n: INTEGER; VAR par: ParList; VAR ret: Variant), NEW, ABSTRACT;
+	PROCEDURE (obj: OutObject) Invoke* (id, n: INTEGER; VAR [nil] par: ParList; VAR [nil] ret: Variant), NEW, ABSTRACT;
 	PROCEDURE (obj: OutObject) GetIID* (OUT iid: GUID), NEW, ABSTRACT;
 	
 	

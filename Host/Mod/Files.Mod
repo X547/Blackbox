@@ -30,7 +30,7 @@ MODULE HostFiles;
 		create = -1;
 
 		ok = 0;
-		invalidName = 1;	invalidNameErr = 123;
+		invalidName = 1;	invalidNameErr = 123; paramErr = 87;
 		notFound = 2;	fileNotFoundErr = 2; pathNotFoundErr = 3;
 		existsAlready = 3;	fileExistsErr = 80; alreadyExistsErr = 183;
 		writeProtected = 4;	writeProtectedErr = 19;
@@ -104,6 +104,7 @@ MODULE HostFiles;
 	VAR
 		MapParamString*: PROCEDURE(in, p0, p1, p2: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
 		appName-: FullName;
+		ignoreAsk-: BOOLEAN; (* file/directory operations ignore the 'ask' parameter and don't ask; used for scripting *)
 		dir: Directory;
 		wildcard: Files.Type;
 		startupDir: FullName;
@@ -135,12 +136,8 @@ MODULE HostFiles;
 			cha := a[i]; chb := b[i]; INC(i);
 			IF cha # chb THEN
 				IF ~caseSens THEN
-					IF (cha >= "a") & ((cha <= "z") OR (cha >= 0E0X) & (cha <= 0FEX) & (cha # 0F7X)) THEN
-						cha := CAP(cha)
-					END;
-					IF (chb >= "a") & ((chb <= "z") OR (chb >= 0E0X) & (chb <= 0FEX) & (chb # 0F7X)) THEN
-						chb := CAP(chb)
-					END
+					cha := Kernel.Upper(cha);
+					chb := Kernel.Upper(chb);
 				END;
 				IF cha = "\" THEN cha := "/" END;
 				IF chb = "\" THEN chb := "/" END;
@@ -187,7 +184,7 @@ MODULE HostFiles;
 		IF i > 0 THEN
 			INC(i); ch := name[i];
 			WHILE (j < LEN(type) - 1) & (ch # 0X) DO
-				IF (ch >= "A") & (ch <= "Z") THEN ch := CHR(ORD(ch) + (ORD("a") - ORD("A"))) END;
+				ch := Kernel.Lower(ch);
 				type[j] := ch; INC(j);
 				INC(i); ch := name[i]
 			END
@@ -351,7 +348,7 @@ MODULE HostFiles;
 			REPEAT
 				GetTempFileName(f.loc.path, f.name, num); INC(num); DEC(n);
 				OpenFile(create, f.name, f.ref, res)
-			UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87) OR (n = 0)
+			UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) OR (n = 0)
 		ELSE
 			OpenFile(f.state, f.name, f.ref, res)
 		END
@@ -377,7 +374,7 @@ MODULE HostFiles;
 					IF WinApi.MoveFileW(fname, new) # 0 THEN res := ok
 					ELSE res := WinApi.GetLastError()
 					END
-				UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87) OR (n = 0);
+				UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr) & (res # sharingErr) OR (n = 0);
 				IF res = ok THEN
 					f.state := hidden; f.name := new$
 				END
@@ -459,10 +456,12 @@ MODULE HostFiles;
 		IF res = 0 THEN res := WinApi.GetLastError() ELSE res := ok END;
 		IF (res = fileNotFoundErr) OR (res = pathNotFoundErr) THEN
 			GetPath(path, p);
-			CreateDir(p, res);	(* recursive call *)
-			IF res = ok THEN
-				res := WinApi.CreateDirectoryW(path, sec);
-				IF res = 0 THEN res := WinApi.GetLastError() ELSE res := ok END
+			IF path # p THEN
+				CreateDir(p, res);	(* recursive call *)
+				IF res = ok THEN
+					res := WinApi.CreateDirectoryW(path, sec);
+					IF res = 0 THEN res := WinApi.GetLastError() ELSE res := ok END
+				END
 			END
 		END
 	END CreateDir;
@@ -470,7 +469,7 @@ MODULE HostFiles;
 	PROCEDURE CheckPath (VAR path: FullName; ask: BOOLEAN; VAR res: INTEGER);
 		VAR s: ARRAY 300 OF CHAR; t: ARRAY 32 OF CHAR;
 	BEGIN
-		IF ask THEN
+		IF ask & ~ignoreAsk THEN
 			IF MapParamString # NIL THEN
 				MapParamString("#Host:CreateDir", path, "", "", s);
 				MapParamString("#Host:MissingDirectory", "", "", "", t)
@@ -494,7 +493,7 @@ MODULE HostFiles;
 			IF (res = writeProtectedErr) OR (res = sharingErr) OR (res = accessDeniedErr)
 				OR (res = netAccessDeniedErr)
 			THEN
-				IF ask THEN
+				IF ask & ~ignoreAsk THEN
 					IF MapParamString # NIL THEN
 						IF res = writeProtectedErr THEN
 							MapParamString("#Host:ReplaceWriteProtected", fname, 0DX, "", s)
@@ -526,7 +525,7 @@ MODULE HostFiles;
 		ASSERT(f.state = new, 20); ASSERT(name # "", 21);
 		Append(f.loc.path, name, type, f.loc.maxLen, fname);
 		CheckDelete(fname, f.loc.path, ask, res);
-		ASSERT(res # 87, 100);
+		ASSERT(res # paramErr, 100);
 		IF res = ok THEN
 			IF f.name = "" THEN
 				f.name := fname$;
@@ -542,7 +541,7 @@ MODULE HostFiles;
 					b := WinApi.SetFileAttributesW(f.name, WinApi.FILE_ATTRIBUTE_ARCHIVE)
 				ELSE
 					res := WinApi.GetLastError();
-					ASSERT(res # 87, 101);
+					ASSERT(res # paramErr, 101);
 					b := WinApi.DeleteFileW(f.name)
 				END
 			END
@@ -565,6 +564,15 @@ MODULE HostFiles;
 		END
 	END Close;
 
+	PROCEDURE (f: File) Closed(): BOOLEAN;
+	BEGIN
+		RETURN f.state = closed
+	END Closed;
+
+	PROCEDURE (f: File) Shared(): BOOLEAN;
+	BEGIN
+		RETURN f.state = shared
+	END Shared;
 
 	(* Locator *)
 
@@ -904,7 +912,7 @@ MODULE HostFiles;
 						IF WinApi.MoveFileW(oldname, tn) # 0 THEN res := ok
 						ELSE res := WinApi.GetLastError()
 						END
-					UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # 87);
+					UNTIL (res # fileExistsErr) & (res # alreadyExistsErr) & (res # paramErr);
 					IF res = ok THEN
 						IF WinApi.MoveFileW(tn, newname) = 0 THEN res := WinApi.GetLastError() END
 					END
@@ -927,7 +935,7 @@ MODULE HostFiles;
 	END SameFile;
 
 	PROCEDURE (d: Directory) FileList* (loc: Files.Locator): Files.FileInfo;
-		VAR i, res, diff: INTEGER; info, first, last: Files.FileInfo; s: FullName;
+		VAR i, res, firstRes, diff: INTEGER; info, first, last: Files.FileInfo; s: FullName;
 			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW; st: WinApi.SYSTEMTIME;
 	BEGIN
 		ASSERT(loc # NIL, 20);
@@ -973,6 +981,7 @@ MODULE HostFiles;
 			ELSE res := WinApi.GetLastError()
 			END;
 			IF res = noMoreFilesErr THEN res := ok END;
+			firstRes := res;
 			(* check startup directory *)
 			IF (loc.rootLen > 0) & ((res = ok) OR (res = fileNotFoundErr) OR (res = pathNotFoundErr)) THEN
 				GetShadowDir(loc, s);
@@ -1023,6 +1032,7 @@ MODULE HostFiles;
 				END;
 				IF res = noMoreFilesErr THEN res := ok END
 			END;
+			IF (res = fileNotFoundErr) OR (res = pathNotFoundErr) THEN res := firstRes END;
 			loc.res := Error(res)
 		ELSE loc.res := invalidName
 		END;
@@ -1030,7 +1040,7 @@ MODULE HostFiles;
 	END FileList;
 
 	PROCEDURE (d: Directory) LocList* (loc: Files.Locator): Files.LocInfo;
-		VAR i, res, diff: INTEGER; first, last, info: Files.LocInfo; s: FullName;
+		VAR i, res, firstRes, diff: INTEGER; first, last, info: Files.LocInfo; s: FullName;
 			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW;
 	BEGIN
 		ASSERT(loc # NIL, 20);
@@ -1041,7 +1051,7 @@ MODULE HostFiles;
 			IF find # invalid THEN
 				REPEAT
 					IF (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
-							& (fd.cFileName[0] # ".") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
+					& (fd.cFileName # ".") & (fd.cFileName # "..") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
 						info := first; last := NIL; s := fd.cFileName$;
 						WHILE (info # NIL) & (Diff(info.name, s, loc.caseSens) < 0) DO last := info; info := info.next END;
 						NEW(info);
@@ -1067,6 +1077,7 @@ MODULE HostFiles;
 			ELSE res := WinApi.GetLastError()
 			END;
 			IF res = noMoreFilesErr THEN res := ok END;
+			firstRes := res;
 			(* check startup directory *)
 			IF (loc.rootLen > 0) & ((res = ok) OR (res = fileNotFoundErr) OR (res = pathNotFoundErr)) THEN
 				GetShadowDir(loc, s);
@@ -1074,8 +1085,8 @@ MODULE HostFiles;
 				find := WinApi.FindFirstFileW(s, fd);
 				IF find # invalid THEN
 					REPEAT
-					IF (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
-							& (fd.cFileName[0] # ".") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
+						IF (WinApi.FILE_ATTRIBUTE_DIRECTORY * fd.dwFileAttributes # {})
+						& (fd.cFileName # ".") & (fd.cFileName # "..") & (LEN(fd.cFileName$) < LEN(info.name)) THEN
 							info := first; last := NIL; s := fd.cFileName$;
 							IF info # NIL THEN diff := Diff(info.name, s, loc.caseSens) END;
 							WHILE (info # NIL) & (diff < 0) DO
@@ -1108,6 +1119,7 @@ MODULE HostFiles;
 				END;
 				IF res = noMoreFilesErr THEN res := ok END
 			END;
+			IF (res = fileNotFoundErr) OR (res = pathNotFoundErr) THEN res := firstRes END;
 			loc.res := Error(res)
 		ELSE loc.res := invalidName
 		END;
@@ -1156,7 +1168,7 @@ MODULE HostFiles;
 		startupLen := i
 	END SetRootDir;
 
-	PROCEDURE GetName (VAR p: WinApi.PtrWSTR; VAR i: INTEGER; OUT name, opt: FullName);
+	PROCEDURE GetName* (VAR p: WinApi.PtrWSTR; VAR i: INTEGER; OUT name, opt: FullName);
 		VAR ch, tch: CHAR; j: INTEGER;
 	BEGIN
 		j := 0; ch := p[i]; tch := " ";
@@ -1164,7 +1176,7 @@ MODULE HostFiles;
 		IF (ch = "'") OR (ch = '"') THEN tch := ch; INC(i); ch := p[i] END;
 		WHILE (ch >= " ") & (ch # tch) DO
 			name[j] := ch;
-			IF (ch >= "a") & (ch <= "z") OR (ch >= "à") & (ch <= "ö") OR (ch >= "ø") & (ch <= "þ") THEN ch := CAP(ch)
+			IF Kernel.IsLower(ch) THEN ch := Kernel.Upper(ch)
 			ELSIF ch = "-" THEN ch := "/"
 			END;
 			opt[j] := ch; INC(j); INC(i); ch := p[i]
@@ -1178,6 +1190,7 @@ MODULE HostFiles;
 		VAR res, res1, i, j: INTEGER; path, opt, s: FullName; attr: SET; p: WinApi.PtrWSTR;
 			find: WinApi.HANDLE; fd: WinApi.WIN32_FIND_DATAW;
 	BEGIN
+		ignoreAsk := FALSE;
 		wildcard := "*"; NEW(dir);
 		res := WinApi.GetModuleFileNameW(0, path, LEN(path));
 		GetPath(path, startupDir);
@@ -1204,7 +1217,8 @@ MODULE HostFiles;
 				GetName(p, i, path, opt);
 				res1 := WinApi.ExpandEnvironmentStringsW(path, s, LEN(s) - 2);
 				IF (res1 = 0) OR (res1 > LEN(s) - 2) THEN s := path ELSE path := s$ END;
-				attr := BITS(WinApi.GetFileAttributesW(s));
+				res1 := WinApi.GetFullPathNameW(s, LEN(path), path, NIL);
+				attr := BITS(WinApi.GetFileAttributesW(path));
 				IF (attr # {0..MAX(SET)}) & (WinApi.FILE_ATTRIBUTE_DIRECTORY * attr # {}) THEN res := 0
 				ELSIF (path[1] = ":") & ((path[2] = 0X) OR (path[2] = "\") & (path[3] = 0X))
 					& (WinApi.GetDriveTypeW(s) >= 2) THEN res := 0
@@ -1222,6 +1236,18 @@ MODULE HostFiles;
 		Files.SetDir(dir)
 	END Init;
 
+	(* use this mode e.g. for scripting, i.e. when modal dialog boxes are not appropriate; 
+		implicitly uses OK in OK/Cancel dialogs and Cancel in Retry/Cancel dialogs *)
+	PROCEDURE IgnoreAsk*;
+	BEGIN ignoreAsk := TRUE
+	END IgnoreAsk;
+
+	(* use this mode for interactive usage of BlackBox, i.e. when modal dialog boxes are appropriate; 
+		this is the default behavior. *)
+	PROCEDURE UseAsk*;
+	BEGIN ignoreAsk := FALSE
+	END UseAsk;
+	
 BEGIN
 	Init
 END HostFiles.

@@ -11,7 +11,7 @@ MODULE Meta;
 
 **)
 
-	IMPORT SYSTEM, Kernel;
+	IMPORT SYSTEM, Kernel, Strings;
 
 	CONST
 		(** result codes for object classes, type classes, visibility classes **)
@@ -25,7 +25,7 @@ MODULE Meta;
 		byteTyp* = 4; sIntTyp* = 5; intTyp* = 6;
 		sRealTyp* = 7; realTyp* = 8; setTyp* = 9;
 		longTyp* = 10; anyRecTyp* = 11; anyPtrTyp* = 12;
-		sysPtrTyp = 13; 
+		sysPtrTyp* = 13; 
 		procTyp* = 16; recTyp* = 17; arrTyp* = 18; ptrTyp* = 19;
 		
 		(** record attributes **)
@@ -81,8 +81,8 @@ MODULE Meta;
 			len: ARRAY 16 OF INTEGER	(* dynamic array length table *)
 		END;
 		
-		SStringPtr = POINTER TO ARRAY [1] OF SHORTCHAR;
-		StringPtr = POINTER TO ARRAY [1] OF CHAR;
+		SStringPtr = POINTER TO ARRAY [untagged] OF SHORTCHAR;
+		StringPtr = POINTER TO ARRAY [untagged] OF CHAR;
 	
 	VAR
 		dummy: ArrayPtr;	(* dummy object for item.ptr *)
@@ -157,8 +157,7 @@ MODULE Meta;
 		VAR j: INTEGER; ch: CHAR;
 	BEGIN
 		j := 0; ch := path[i];
-		WHILE (j < LEN(name) - 1) & ((ch >= "0") & (ch <= "9") OR (CAP(ch) >= "A") & (CAP(ch) <= "Z")
-											OR (ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_")) DO
+		WHILE (j < LEN(name) - 1) & Strings.IsIdent(ch) DO
 			name[j] := ch; INC(i); INC(j); ch := path[i]
 		END;
 		IF (ch = 0X) OR (ch = ".") OR (ch = "[") OR (ch = "^") THEN name[j] := 0X
@@ -170,8 +169,7 @@ MODULE Meta;
 		VAR i: INTEGER; ch: CHAR;
 	BEGIN
 		i := 0; ch := name[0];
-		WHILE (i < LEN(name) - 1) & ((ch >= "0") & (ch <= "9") OR (CAP(ch) >= "A") & (CAP(ch) <= "Z")
-											OR (ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_")) DO
+		WHILE (i < LEN(name) - 1) & Strings.IsIdent(ch) DO
 			INC(i); ch := name[i]
 		END;
 		RETURN (i > 0) & (ch = 0X)
@@ -180,25 +178,26 @@ MODULE Meta;
 
 	(* ---------- Item properties ---------- *)
 	
-	PROCEDURE (VAR i: Item) Valid* (): BOOLEAN, NEW;
+	PROCEDURE (IN i: Item) Valid* (): BOOLEAN, NEW;
 	BEGIN
 		IF i.ext # NIL THEN RETURN i.ext.Valid() END;
 		RETURN (i.ptr # NIL) & ((i.mod = NIL) OR (i.mod.refcnt >= 0)) & ((i.typ < recTyp) OR (i.desc.mod.refcnt >= 0))
 	END Valid;
 
-	PROCEDURE (VAR i: Item) GetTypeName* (OUT mod, type: Name), NEW;
-		VAR n: Kernel.Name;
+	PROCEDURE (IN i: Item) GetTypeName* (OUT mod, type: Name), NEW;
+		VAR modName: Kernel.Name; n: Kernel.Name;
 	BEGIN
 		ASSERT(i.ext = NIL, 31);
 		ASSERT(i.ptr # NIL, 20);
 		ASSERT(i.typ >= recTyp, 21);
 		ASSERT(i.desc.mod.refcnt >= 0, 24);
-		mod := i.desc.mod.name$;
+		Kernel.GetModName(i.desc.mod, modName);
+		mod := modName$;
 		Kernel.GetTypeName(i.desc, n);
 		type := n$
 	END GetTypeName;
 
-	PROCEDURE (VAR i: Item) BaseTyp* (): INTEGER, NEW;
+	PROCEDURE (IN i: Item) BaseTyp* (): INTEGER, NEW;
 	BEGIN
 		IF i.ext # NIL THEN RETURN i.ext.BaseTyp() END;
 		ASSERT(i.ptr # NIL, 20);
@@ -206,7 +205,7 @@ MODULE Meta;
 		RETURN TypOf(i.desc.base[0])
 	END BaseTyp;
 
-	PROCEDURE (VAR i: Item) Level* (): INTEGER, NEW;
+	PROCEDURE (IN i: Item) Level* (): INTEGER, NEW;
 	BEGIN
 		ASSERT(i.ext = NIL, 31);
 		ASSERT(i.ptr # NIL, 20);
@@ -214,7 +213,7 @@ MODULE Meta;
 		RETURN i.desc.id DIV 16 MOD 16
 	END Level;
 
-	PROCEDURE (VAR i: Item) Attribute* (): INTEGER, NEW;
+	PROCEDURE (IN i: Item) Attribute* (): INTEGER, NEW;
 	BEGIN
 		ASSERT(i.ext = NIL, 31);
 		ASSERT(i.ptr # NIL, 20);
@@ -222,7 +221,7 @@ MODULE Meta;
 		RETURN i.desc.id DIV 4 MOD 4
 	END Attribute;
 
-	PROCEDURE (VAR i: Item) Size* (): INTEGER, NEW;
+	PROCEDURE (IN i: Item) Size* (): INTEGER, NEW;
 	BEGIN
 		IF i.ext # NIL THEN RETURN i.ext.Size() END;
 		ASSERT(i.ptr # NIL, 20);
@@ -230,7 +229,7 @@ MODULE Meta;
 		RETURN SizeOf(i)
 	END Size;
 	
-	PROCEDURE (VAR arr: Item) Len* (): INTEGER, NEW;
+	PROCEDURE (IN arr: Item) Len* (): INTEGER, NEW;
 	BEGIN
 		IF arr.ext # NIL THEN RETURN arr.ext.Len() END;
 		ASSERT(arr.ptr # NIL, 20);
@@ -293,15 +292,14 @@ MODULE Meta;
 		END
 	END Lookup;
 
-	PROCEDURE (VAR in: Item) Lookup* (IN name: ARRAY OF CHAR; VAR i: Item), NEW;
-		VAR obj: Kernel.Object; o, v, lev, j, a: INTEGER; m: Kernel.Module; n: Kernel.Name;
+	PROCEDURE (IN in: Item) Lookup* (IN name: ARRAY OF CHAR; VAR i: Item), NEW;
+		VAR obj: Kernel.Object; o, v, lev, j, a: INTEGER; m: Kernel.Module;
 	BEGIN
 		IF in.ext # NIL THEN in.ext.Lookup(name, i); RETURN END;
 		ASSERT(in.ptr # NIL, 20);
 		IF LegalName(name) THEN
 			IF in.obj = modObj THEN
-				n := SHORT(name$);
-				obj := Kernel.ThisObject(in.mod, n);
+				obj := Kernel.ThisObject(in.mod, name);
 				IF obj # NIL THEN
 					SetItem(i, obj, in.mod); i.ptr := dummy;
 					IF (i.vis = hidden) OR (i.obj < typObj) THEN SetUndef(i) END
@@ -310,9 +308,8 @@ MODULE Meta;
 			ELSIF in.typ = recTyp THEN
 				ASSERT(in.desc.mod.refcnt >= 0, 24);
 				lev := in.desc.id DIV 16 MOD 16; j := 0;
-				n := SHORT(name$);
 				REPEAT
-					obj := Kernel.ThisField(in.desc.base[j], n); INC(j)
+					obj := Kernel.ThisField(in.desc.base[j], name); INC(j)
 				UNTIL (obj # NIL) OR (j > lev);
 				IF obj # NIL THEN
 					o := in.obj; a := in.adr; v := in.vis; m := in.mod;
@@ -332,7 +329,7 @@ MODULE Meta;
 		END
 	END Lookup;
 	
-	PROCEDURE (VAR i: Item) GetBaseType* (VAR base: Item), NEW;
+	PROCEDURE (IN i: Item) GetBaseType* (VAR base: Item), NEW;
 		VAR n: INTEGER;
 	BEGIN
 		ASSERT(i.ext = NIL, 31);
@@ -349,7 +346,7 @@ MODULE Meta;
 		END
 	END GetBaseType;
 
-	PROCEDURE (VAR rec: Item) GetThisBaseType* (level: INTEGER; VAR base: Item), NEW;
+	PROCEDURE (IN rec: Item) GetThisBaseType* (level: INTEGER; VAR base: Item), NEW;
 	BEGIN
 		ASSERT(rec.ext = NIL, 31);
 		ASSERT(rec.ptr # NIL, 20);
@@ -365,7 +362,7 @@ MODULE Meta;
 		END
 	END GetThisBaseType;
 	
-	PROCEDURE (VAR proc: Item) NumParam* (): INTEGER, NEW;
+	PROCEDURE (IN proc: Item) NumParam* (): INTEGER, NEW;
 		VAR sig: Kernel.Signature;
 	BEGIN
 		ASSERT(proc.ext = NIL, 31);
@@ -375,7 +372,7 @@ MODULE Meta;
 		IF sig # NIL THEN RETURN sig.num ELSE RETURN -1 END
 	END NumParam;
 
-	PROCEDURE (VAR proc: Item) GetParam* (n: INTEGER; VAR par: Item), NEW;
+	PROCEDURE (IN proc: Item) GetParam* (n: INTEGER; VAR par: Item), NEW;
 		VAR sig: Kernel.Signature;
 	BEGIN
 		ASSERT(proc.ext = NIL, 31);
@@ -392,7 +389,7 @@ MODULE Meta;
 		END
 	END GetParam;
 
-	PROCEDURE (VAR proc: Item) GetParamName* (n: INTEGER; OUT name: Name), NEW;
+	PROCEDURE (IN proc: Item) GetParamName* (n: INTEGER; OUT name: Name), NEW;
 		VAR sig: Kernel.Signature; mod: Kernel.Module; nm: Kernel.Name;
 	BEGIN
 		ASSERT(proc.ext = NIL, 31);
@@ -410,7 +407,7 @@ MODULE Meta;
 		END
 	END GetParamName;
 
-	PROCEDURE (VAR proc: Item) GetReturnType* (VAR type: Item), NEW;
+	PROCEDURE (IN proc: Item) GetReturnType* (VAR type: Item), NEW;
 		VAR sig: Kernel.Signature;
 	BEGIN
 		ASSERT(proc.ext = NIL, 31);
@@ -426,7 +423,7 @@ MODULE Meta;
 		END
 	END GetReturnType;
 
-	PROCEDURE (VAR rec: Item) Is* (IN type: Value): BOOLEAN, NEW;
+	PROCEDURE (IN rec: Item) Is* (IN type: Value): BOOLEAN, NEW;
 		VAR d: Kernel.Type;
 	BEGIN
 		ASSERT(rec.ext = NIL, 31);
@@ -447,7 +444,7 @@ MODULE Meta;
 		RETURN rec.desc.base[d.id DIV 16 MOD 16] = d	(* rec IS d *)
 	END Is;
 
-	PROCEDURE (VAR ptr: Item) Deref* (VAR ref: Item), NEW;
+	PROCEDURE (IN ptr: Item) Deref* (VAR ref: Item), NEW;
 	BEGIN
 		IF ptr.ext # NIL THEN ptr.ext.Deref(ref); RETURN END;
 		ASSERT(ptr.ptr # NIL, 20);
@@ -471,7 +468,7 @@ MODULE Meta;
 		END
 	END Deref;
 	
-	PROCEDURE (VAR arr: Item) Index* (index: INTEGER; VAR elem: Item), NEW;
+	PROCEDURE (IN arr: Item) Index* (index: INTEGER; VAR elem: Item), NEW;
 	BEGIN
 		IF arr.ext # NIL THEN arr.ext.Index(index, elem); RETURN END;
 		ASSERT(arr.ptr # NIL, 20);
@@ -500,7 +497,7 @@ MODULE Meta;
 				INC(j); GetName(path, name, j);
 				i.Lookup(name, i); ch := path[j]; INC(j);
 				WHILE (i.obj = varObj) & (ch # 0X) DO
-					IF i.typ = ptrTyp THEN i.Deref(i) END;
+					IF i.typ IN {ptrTyp, anyPtrTyp, sysPtrTyp} THEN i.Deref(i) END;
 					IF ch = "." THEN
 						GetName(path, name, j);
 						IF i.typ = recTyp THEN i.Lookup(name, i) ELSE SetUndef(i) END
@@ -583,7 +580,7 @@ MODULE Meta;
 	BEGIN
 		ASSERT(s.this.ptr # NIL, 20);
 		IF s.mode = modScan THEN
-			name := s.this.mod.name$	(* mf 24.08.2004 *)
+			Kernel.GetModName(s.this.mod, n); name := n$;	(* mf 24.08.2004 *)
 		ELSE
 			IF s.mode = globScan THEN mod := s.mod
 			ELSE mod := s.desc.base[s.base].mod
@@ -682,7 +679,7 @@ MODULE Meta;
 		ok := TRUE
 	END Copy;
 	
-	PROCEDURE (VAR proc: Item) Call* (OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN proc: Item) Call* (OUT ok: BOOLEAN), NEW;
 		VAR p: Kernel.Command; sig: Kernel.Signature;
 	BEGIN
 		IF proc.ext # NIL THEN proc.ext.Call(ok); RETURN END;
@@ -796,7 +793,7 @@ MODULE Meta;
 		Copy(x, dest, ok)
 	END GetResult;
 	
-	PROCEDURE (VAR proc: Item) ParamCall* (IN par: ARRAY OF Item; VAR dest: Item;
+	PROCEDURE (IN proc: Item) ParamCall* (IN par: ARRAY OF Item; VAR dest: Item;
 																			OUT ok: BOOLEAN), NEW;
 		VAR n, p, adr, padr: INTEGER; ret: LONGINT;
 			data: ARRAY 256 OF INTEGER; sig: Kernel.Signature;
@@ -823,7 +820,7 @@ MODULE Meta;
 		END
 	END ParamCall;
 
-	PROCEDURE (VAR proc: Item) ParamCallVal* (IN par: ARRAY OF POINTER TO Value; VAR dest: Value;
+	PROCEDURE (IN proc: Item) ParamCallVal* (IN par: ARRAY OF POINTER TO Value; VAR dest: Value;
 																			OUT ok: BOOLEAN), NEW;
 		TYPE IP = POINTER TO Item;
 		VAR n, p, adr, padr: INTEGER; ret: LONGINT; x: Item;
@@ -863,7 +860,7 @@ MODULE Meta;
 		END
 	END ParamCallVal;
 
-	PROCEDURE (VAR var: Item) GetVal* (VAR x: Value; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) GetVal* (VAR x: Value; OUT ok: BOOLEAN), NEW;
 		VAR xi: Item;
 	BEGIN
 		ASSERT(var.ext = NIL, 31);
@@ -881,7 +878,7 @@ MODULE Meta;
 		END
 	END GetVal;
 
-	PROCEDURE (VAR var: Item) PutVal* (IN x: Value; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) PutVal* (IN x: Value; OUT ok: BOOLEAN), NEW;
 		VAR xi: Item;
 	BEGIN
 		ASSERT(var.ext = NIL, 31);
@@ -899,7 +896,7 @@ MODULE Meta;
 		END
 	END PutVal;
 
-	PROCEDURE (VAR var: Item) GetStringVal* (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) GetStringVal* (OUT x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
 		VAR i, n: INTEGER; p: StringPtr;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.GetStringVal(x, ok); RETURN END;
@@ -914,7 +911,7 @@ MODULE Meta;
 		END
 	END GetStringVal;
 
-	PROCEDURE (VAR var: Item) GetSStringVal* (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) GetSStringVal* (OUT x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
 		VAR i, n: INTEGER; p: SStringPtr;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.GetSStringVal(x, ok); RETURN END;
@@ -929,7 +926,7 @@ MODULE Meta;
 		END
 	END GetSStringVal;
 
-	PROCEDURE (VAR var: Item) PutStringVal* (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) PutStringVal* (IN x: ARRAY OF CHAR; OUT ok: BOOLEAN), NEW;
 		VAR i: INTEGER; p: StringPtr;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutStringVal(x, ok); RETURN END;
@@ -945,7 +942,7 @@ MODULE Meta;
 		END
 	END PutStringVal;
 
-	PROCEDURE (VAR var: Item) PutSStringVal* (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) PutSStringVal* (IN x: ARRAY OF SHORTCHAR; OUT ok: BOOLEAN), NEW;
 		VAR i: INTEGER; p: SStringPtr;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutSStringVal(x, ok); RETURN END;
@@ -961,7 +958,7 @@ MODULE Meta;
 		END
 	END PutSStringVal;
 
-	PROCEDURE  (VAR var: Item) PtrVal* (): ANYPTR, NEW;
+	PROCEDURE  (IN var: Item) PtrVal* (): ANYPTR, NEW;
 		VAR p: ANYPTR;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.PtrVal() END;
@@ -973,7 +970,7 @@ MODULE Meta;
 		RETURN p
 	END PtrVal;
 
-	PROCEDURE (VAR var: Item) PutPtrVal* (x: ANYPTR), NEW;
+	PROCEDURE (IN var: Item) PutPtrVal* (x: ANYPTR), NEW;
 		VAR vt, xt: Kernel.Type;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutPtrVal(x); RETURN END;
@@ -989,7 +986,7 @@ MODULE Meta;
 		SYSTEM.PUT(var.adr, x)
 	END PutPtrVal;
 
-	PROCEDURE (VAR var: Item) IntVal* (): INTEGER, NEW;
+	PROCEDURE (IN var: Item) IntVal* (): INTEGER, NEW;
 		VAR sc: SHORTCHAR; ch: CHAR; s: BYTE; i: SHORTINT; x: INTEGER;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.IntVal() END;
@@ -1006,7 +1003,7 @@ MODULE Meta;
 		RETURN x
 	END IntVal;
 
-	PROCEDURE (VAR var: Item) PutIntVal* (x: INTEGER), NEW;
+	PROCEDURE (IN var: Item) PutIntVal* (x: INTEGER), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutIntVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1022,7 +1019,7 @@ MODULE Meta;
 		END
 	END PutIntVal;
 
-	PROCEDURE (VAR var: Item) RealVal* (): REAL, NEW;
+	PROCEDURE (IN var: Item) RealVal* (): REAL, NEW;
 		VAR r: SHORTREAL; x: REAL;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.RealVal() END;
@@ -1036,7 +1033,7 @@ MODULE Meta;
 		RETURN x
 	END RealVal;
 
-	PROCEDURE (VAR var: Item) PutRealVal* (x: REAL), NEW;
+	PROCEDURE (IN var: Item) PutRealVal* (x: REAL), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutRealVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1049,7 +1046,7 @@ MODULE Meta;
 		END
 	END PutRealVal;
 
-	PROCEDURE (VAR var: Item) LongVal* (): LONGINT, NEW;
+	PROCEDURE (IN var: Item) LongVal* (): LONGINT, NEW;
 		VAR x: LONGINT;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.LongVal() END;
@@ -1061,7 +1058,7 @@ MODULE Meta;
 		RETURN x
 	END LongVal;
 
-	PROCEDURE (VAR var: Item) PutLongVal* (x: LONGINT), NEW;
+	PROCEDURE (IN var: Item) PutLongVal* (x: LONGINT), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutLongVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1072,7 +1069,7 @@ MODULE Meta;
 		SYSTEM.PUT(var.adr, x)
 	END PutLongVal;
 
-	PROCEDURE (VAR var: Item) CharVal* (): CHAR, NEW;
+	PROCEDURE (IN var: Item) CharVal* (): CHAR, NEW;
 		VAR x: CHAR; s: SHORTCHAR;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.CharVal() END;
@@ -1086,7 +1083,7 @@ MODULE Meta;
 		RETURN x
 	END CharVal;
 
-	PROCEDURE (VAR var: Item) PutCharVal* (x: CHAR), NEW;
+	PROCEDURE (IN var: Item) PutCharVal* (x: CHAR), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutCharVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1099,7 +1096,7 @@ MODULE Meta;
 		END
 	END PutCharVal;
 
-	PROCEDURE (VAR var: Item) BoolVal* (): BOOLEAN, NEW;
+	PROCEDURE (IN var: Item) BoolVal* (): BOOLEAN, NEW;
 		VAR x: BOOLEAN;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.BoolVal() END;
@@ -1111,7 +1108,7 @@ MODULE Meta;
 		RETURN x
 	END BoolVal;
 
-	PROCEDURE (VAR var: Item) PutBoolVal* (x: BOOLEAN), NEW;
+	PROCEDURE (IN var: Item) PutBoolVal* (x: BOOLEAN), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutBoolVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1122,7 +1119,7 @@ MODULE Meta;
 		SYSTEM.PUT(var.adr, x)
 	END PutBoolVal;
 
-	PROCEDURE (VAR var: Item) SetVal* (): SET, NEW;
+	PROCEDURE (IN var: Item) SetVal* (): SET, NEW;
 		VAR x: SET;
 	BEGIN
 		IF var.ext # NIL THEN RETURN var.ext.SetVal() END;
@@ -1134,7 +1131,7 @@ MODULE Meta;
 		RETURN x
 	END SetVal;
 
-	PROCEDURE (VAR var: Item) PutSetVal* (x: SET), NEW;
+	PROCEDURE (IN var: Item) PutSetVal* (x: SET), NEW;
 	BEGIN
 		IF var.ext # NIL THEN var.ext.PutSetVal(x); RETURN END;
 		ASSERT(var.ptr # NIL, 20);
@@ -1145,7 +1142,7 @@ MODULE Meta;
 		SYSTEM.PUT(var.adr, x)
 	END PutSetVal;
 
-	PROCEDURE (VAR  type: Item) New* (): ANYPTR, NEW;
+	PROCEDURE (IN  type: Item) New* (): ANYPTR, NEW;
 		VAR p: ANYPTR; i, n, id: INTEGER; d: Kernel.Directory; desc: Kernel.Type;
 	BEGIN
 		ASSERT(type.ext = NIL, 31);
@@ -1162,7 +1159,7 @@ MODULE Meta;
 		RETURN p
 	END New;
 
-	PROCEDURE (VAR  val: Item) Copy* (): ANYPTR, NEW;
+	PROCEDURE (IN  val: Item) Copy* (): ANYPTR, NEW;
 		VAR p: ANYPTR; i, n, id: INTEGER; d: Kernel.Directory;
 	BEGIN
 		ASSERT(val.ext = NIL, 31);
@@ -1179,7 +1176,7 @@ MODULE Meta;
 		RETURN p
 	END Copy;
 
-	PROCEDURE (VAR rec: Item) CallWith* (proc: PROCEDURE(VAR rec, par: ANYREC); VAR par: ANYREC), NEW;
+	PROCEDURE (IN rec: Item) CallWith* (proc: PROCEDURE(VAR rec, par: ANYREC); VAR par: ANYREC), NEW;
 	BEGIN
 		ASSERT(rec.ext = NIL, 31);
 		ASSERT(rec.ptr # NIL, 20);

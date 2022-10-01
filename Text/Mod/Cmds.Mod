@@ -120,29 +120,11 @@ MODULE TextCmds;
 	(* search & replace *)
 
 	PROCEDURE LeftTerminator (ch: CHAR): BOOLEAN;
-	BEGIN
-		IF ch < 100X THEN
-			CASE ch OF
-				viewcode, tab, line, para, " ",
-				"(", "[", "{", "=",
-				hyphen, softhyphen: RETURN TRUE
-			ELSE RETURN FALSE
-			END
-		ELSE RETURN TRUE
-		END
+	BEGIN RETURN ~Strings.IsIdent(ch)
 	END LeftTerminator;
 
 	PROCEDURE RightTerminator (ch: CHAR): BOOLEAN;
-	BEGIN
-		IF ch < 100X THEN
-			CASE ch OF
-				0X, viewcode, tab, line, para, " ",
-				"!", "(", ")", ",", ".", ":", ";", "?", "[", "]", "{", "}",
-				hyphen, softhyphen: RETURN TRUE
-			ELSE RETURN FALSE
-			END
-		ELSE RETURN TRUE
-		END
+	BEGIN RETURN ~Strings.IsIdent(ch)
 	END RightTerminator;
 
 	PROCEDURE PreparePat (spec: FindSpec;

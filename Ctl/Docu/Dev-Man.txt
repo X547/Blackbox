@@ -1,7 +1,6 @@
- BlackBox
-Developer Manual
 Ctl Subsystem
-
+Developer Manual
+
 
 Introduction
 
@@ -118,28 +117,18 @@ The following table contains all automation interfaces currently available in Bl
 
 Module Name	Controlled Application	Help File
 
-CtlExcel5	MS Excel 5.0	VBA_XL.HLP
-CtlExcel8*	MS Excel 8.0	VBAXL8.HLP
 CtlExcel9	MS Excel 9.0	VBAXL9.CHM
-CtlWord8*	MS Word 8.0	VBAWRD8.HLP
 CtlWord9	MS Word 9.0	VBAWRD9.CHM
-CtlOutlook8*	MS Outlook 8.0	VBAOUTL.HLP
 CtlOutlook9	MS Outlook 9.0	VBAOUTL9.CHM
-CtlPowerPoint8*	MS PowerPoint 8.0	VBAPPT8.HLP
 CtlPowerPoint9	MS PowerPoint 9.0	VBAPPT9.CHM
-CtlAccess8*	MS Access 8.0	ACVBA80.HLP
 CtlAccess9	MS Access 9.0	ACMAIN9.CHM
-CtlGraph8*	MS Graph 8.0	VBAGRP8.HLP
 CtlGraph9	MS Graph 9.0	VBAGRP9.CHM
 CtlOffice	MS Office 9.0	VBAOFF9.CHM / VBAOFF8.HLP
 CtlOfficeBinder	MS Binder 9.0	VBABDR8.HLP
 CtlMSForms	MS Forms 2.0	FM20.HLP
-CtlDAO35*	MS Data Access Objects 3.5	DAO35.HLP
 CtlDAO36	MS Data Access Objects 3.6	DAO36.HLP
 CtlADODB	MS ActiveX Data Objects 2.0	-
 CtlVBIDE	MS Visual Basic	VEENOB3.HLP
 CtlStdType	Standard OLE Types	-
-
-The modules marked with * used to be without a number in the previous release of BlackBox. Because Microsoft changed the interfaces of these products for Office 9.0, the names of the modules have been changed accordingly so that users can choose which interface to use.
 
 CtlVBIDE and CtlStdType contain types imported by other modules and are usually not used directly.

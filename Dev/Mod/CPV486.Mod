@@ -194,7 +194,7 @@ MODULE DevCPV486;
 
 	PROCEDURE GTypeSize (typ: DevCPT.Struct; guarded: BOOLEAN);
 		VAR f, c: BYTE; offset, align, falign, alignLimit: INTEGER;
-			fld: DevCPT.Object; btyp: DevCPT.Struct; name: DevCPT.Name;
+			fld: DevCPT.Object; btyp: DevCPT.Struct;
 	BEGIN
 		IF typ.untagged THEN guarded := TRUE END;
 		IF typ = DevCPT.undftyp THEN DevCPM.err(58)
@@ -274,24 +274,23 @@ MODULE DevCPV486;
 	END TypeSize;
 	
 	PROCEDURE GetComKernel;
-		VAR name: DevCPT.Name; mod: DevCPT.Object;
 	BEGIN
 		IF addRef = NIL THEN
 			DevCPT.OpenScope(SHORT(SHORT(-DevCPT.nofGmod)), NIL);
 			DevCPT.topScope.name := DevCPT.NewName("$$");
-			name := "AddRef"; DevCPT.Insert(name, addRef);
+			DevCPT.Insert("AddRef", addRef);
 			addRef.mode := XProc;
 			addRef.fprint := addRefFP;
 			addRef.fpdone := TRUE;
-			name := "Release"; DevCPT.Insert(name, release);
+			DevCPT.Insert("Release", release);
 			release.mode := XProc;
 			release.fprint := addRefFP;
 			release.fpdone := TRUE;
-			name := "Release2"; DevCPT.Insert(name, release2);
+			DevCPT.Insert("Release2", release2);
 			release2.mode := XProc;
 			release2.fprint := addRefFP;
 			release2.fpdone := TRUE;
-			name := "InterfaceTrapHandler"; DevCPT.Insert(name, DevCPC486.intHandler);
+			DevCPT.Insert("InterfaceTrapHandler", DevCPC486.intHandler);
 			DevCPC486.intHandler.mode := XProc;
 			DevCPC486.intHandler.fprint := intHandlerFP;
 			DevCPC486.intHandler.fpdone := TRUE;
@@ -512,7 +511,6 @@ MODULE DevCPV486;
 
 	PROCEDURE TProcedures(obj: DevCPT.Object);
 	(* obj.mnolev = 0 *)
-		VAR par: DevCPT.Object; psize: INTEGER;
 	BEGIN
 		IF obj # NIL THEN
 			TProcedures(obj.left);
@@ -540,7 +538,7 @@ MODULE DevCPV486;
 	END Objects;
 
 	PROCEDURE Allocate*;
-		VAR gvarSize: INTEGER; name: DevCPT.Name;
+		VAR gvarSize: INTEGER;
 	BEGIN
 		DevCPM.errpos := DevCPT.topScope.adr;	(* text position of scope used if error *)
 		gvarSize := 0;
@@ -666,7 +664,7 @@ MODULE DevCPV486;
 	END DualExp;
 
 	PROCEDURE IntDOp (n: DevCPT.Node; VAR x: DevCPL486.Item; hint: SET);
-		VAR y: DevCPL486.Item; rev: BOOLEAN;
+		VAR y: DevCPL486.Item;
 	BEGIN
 		DualExp(n.left, n.right, x, y, hint, hint, {stk}, {stk});
 		IF (x.mode = Reg) & DevCPC486.Fits(x, hint) THEN
@@ -1047,7 +1045,7 @@ MODULE DevCPV486;
 	PROCEDURE^ CompRelease (n: DevCPT.Node; VAR res: DevCPL486.Item);
 
 	PROCEDURE condition (n: DevCPT.Node; VAR x: DevCPL486.Item; VAR false, true: DevCPL486.Label);
-		VAR local: DevCPL486.Label; y, z: DevCPL486.Item; ux: SET; sx, num: INTEGER; f: BYTE; typ: DevCPT.Struct;
+		VAR local: DevCPL486.Label; y: DevCPL486.Item; ux: SET; sx, num: INTEGER; f: BYTE;
 	BEGIN
 		IF n.class = Nmop THEN
 			CASE n.subcl OF
@@ -1114,7 +1112,7 @@ MODULE DevCPV486;
 	
 	PROCEDURE expr(n: DevCPT.Node; VAR x: DevCPL486.Item; hint, stop: SET);
 		VAR y, z: DevCPL486.Item; f, g: BYTE; cval: DevCPT.Const; false, true: DevCPL486.Label;
-			uy: SET; sy: INTEGER; r: REAL;
+			uy: SET; sy: INTEGER;
 	BEGIN
 		f := n.typ.form;
 		IF (f = Bool) & (n.class IN {Ndop, Nmop}) THEN
@@ -1304,7 +1302,7 @@ MODULE DevCPV486;
 	END CondStat;
 
 	PROCEDURE IfStat (n: DevCPT.Node; withtrap: BOOLEAN; VAR end: DevCPL486.Label);
-		VAR else, local: DevCPL486.Label; if, last: DevCPT.Node; hint: INTEGER;
+		VAR else: DevCPL486.Label; if, last: DevCPT.Node; hint: INTEGER;
 	BEGIN	(* n.class = Nifelse *)
 		if := n.left; last := NIL;
 		WHILE (if # NIL) & ((if.link # NIL) OR (n.right # NIL) OR withtrap) DO
@@ -1412,7 +1410,7 @@ MODULE DevCPV486;
 	END Dim;
 
 	PROCEDURE CompStat (n: DevCPT.Node);
-		VAR x, y, sp, old, len, nofel: DevCPL486.Item; fact: INTEGER; typ: DevCPT.Struct;
+		VAR x, y, sp, old, len: DevCPL486.Item; typ: DevCPT.Struct;
 	BEGIN
 		Checkpc;
 		WHILE (n # NIL) & DevCPM.noerr DO
@@ -1477,7 +1475,7 @@ MODULE DevCPV486;
 	END CompRelease;
 	
 	PROCEDURE Assign(n: DevCPT.Node; ux: SET);
-		VAR r: DevCPT.Node; f: BYTE; false, true: DevCPL486.Label; x, y, z: DevCPL486.Item; uf, uy: SET; s: INTEGER;
+		VAR r: DevCPT.Node; f: BYTE; false, true: DevCPL486.Label; x, y, z: DevCPL486.Item; uf, uy: SET;
 	BEGIN
 		r := n.right; f := r.typ.form; uf := {};
 		IF (r.class IN {Nmop, Ndop}) THEN
@@ -1649,7 +1647,7 @@ MODULE DevCPV486;
 					IF (nesting > 1) OR (n.link # NIL) THEN DevCPC486.Jump(Return) END;
 					sequential := FALSE
 			| Nwith:
-					IfStat(n, n.subcl = 0, next)
+					IF (n.left # NIL) OR (n.right # NIL) OR (n.subcl = 0) THEN IfStat(n, n.subcl = 0, next) END
 			| Ntrap:
 					Checkpc;
 					DevCPC486.Trap(n.right.conval.intval); sequential := TRUE

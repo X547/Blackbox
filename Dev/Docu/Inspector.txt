@@ -1,4 +1,4 @@
-DevInspector
+DevInspector
 
 DEFINITION DevInspector;
 
@@ -30,7 +30,7 @@ END DevInspector.
 
 The inspector makes it possible to inspect and modify properties of a control. Currently, various types of controls are supported: command buttons, check boxes, radio buttons, edit fields, date fields, time fields, color fields, up/down-fields list boxes, selection boxes, combo boxes, and groups.
 
-The inspector is opened with the Edit->Object Properties... command (Windows) / Edit->Part Info command (Mac OS). It takes a singleton control as input (-> Controls). Starting the inspector is done indirectly by the framework, using the StdCmds.ShowProp command.
+The inspector is opened with the Edit->Object Properties... command. It takes a singleton control as input (-> Controls). Starting the inspector is done indirectly by the framework, using the StdCmds.ShowProp command.
 
 
 VAR inspect: RECORD

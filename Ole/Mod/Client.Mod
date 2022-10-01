@@ -12,7 +12,7 @@ MODULE OleClient;
 **)
 
 	IMPORT
-		SYSTEM, COM, WinApi, WinOle, WinOleCtl, WinOleAut, WinOleDlg,
+		SYSTEM, COM, WinApi, WinOle, WinOleCtl, WinOleAut, WinOleDlg, Kernel,
 		OleStorage, OleData, OleServer,
 		Meta, Dialog, Services, Ports, Stores, Sequencers, Models, Views, Controllers,
 		Properties, Containers, Controls,
@@ -1384,12 +1384,12 @@ MODULE OleClient;
 
 	PROCEDURE (model: Model) Internalize (VAR rd: Stores.Reader);
 		VAR thisVersion: INTEGER; stg: WinOle.IStorage; ilb: WinOle.ILockBytes;
-			res: COM.RESULT; object: COM.IUnknown;
+			res: COM.RESULT; object: COM.IUnknown; utf8: Kernel.Utf8Name;
 	BEGIN
 		model.Internalize^(rd); IF rd.cancelled THEN RETURN END;
 		rd.ReadVersion(minModelVersion, maxModelVersion, thisVersion); IF rd.cancelled THEN RETURN END;
 		Init(model);
-		IF thisVersion = 1 THEN rd.ReadXString(model.link) END;
+		IF thisVersion = 1 THEN rd.ReadSString(utf8); Kernel.Utf8ToString(utf8, model.link, res); ASSERT(res = 0) END;
 		ilb := OleStorage.NewReadILockBytes(rd.rider);
 		ASSERT(ilb # NIL);
 		res := WinOle.StgOpenStorageOnILockBytes(ilb, NIL,
@@ -1404,11 +1404,13 @@ MODULE OleClient;
 
 	PROCEDURE (model: Model) Externalize (VAR wr: Stores.Writer);
 		VAR stg: WinOle.IStorage; res: COM.RESULT; ips: WinOle.IPersistStorage; ilb: WinOle.ILockBytes; g: BOOLEAN;
+			utf8: Kernel.Utf8Name;
 	BEGIN
 		g := model.guard; model.guard := TRUE;
 		IF debug THEN Log.String("externalize (m)"); Log.Ln END;
 		model.Externalize^(wr);
-		IF model.link # "" THEN wr.WriteVersion(1); wr.WriteXString(model.link)
+		IF model.link # "" THEN wr.WriteVersion(1);
+			Kernel.StringToUtf8(model.link, utf8, res); ASSERT(res = 0); wr.WriteSString(utf8)
 		ELSE wr.WriteVersion(0)
 		END;
 		ilb := OleStorage.NewWriteILockBytes(wr.rider);

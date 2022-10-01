@@ -12,7 +12,7 @@ MODULE DevAnalyzer;
 **)
 
 	IMPORT
-		TextMappers, TextModels, TextViews, DevMarkers, Stores, Models, Kernel, Dialog, StdLog, Files,
+		Strings, TextMappers, TextModels, TextViews, DevMarkers, Stores, Models, Dialog, StdLog,
 		CPT := DevCPT, CPS := DevCPS, CPM := DevCPM, CPB := DevCPB, HostRegistry;
 		
 	CONST
@@ -105,9 +105,6 @@ MODULE DevAnalyzer;
 		SelVarPar = TRUE; SelNoVarPar = FALSE;
 		SelUseBSet = TRUE; SelNoUseBSet = FALSE;
 
-		Version = "DevAnalyzer for Component Pascal  (c) SHML  24 Mar 1998";
-		OptionsFile = "AnaOpt"; OptionsType = "opt"; OptionsPath = "Dev/Rsrc";	(*<<O/F*)
-		
 		regKey = "Dev\Analyzer\";
 		
 	TYPE
@@ -268,7 +265,7 @@ MODULE DevAnalyzer;
 	BEGIN
 		u := userList; userList := NIL;
 		WHILE u # NIL DO
-			next := u.next; CPS.name := u.name^$; CPT.Find(CPS.name, u.base);
+			next := u.next; CPS.name := u.name$; CPT.Find(CPS.name, u.base);
 			IF u.base = NIL THEN CPM.Mark(0, u.pos)
 			ELSIF u.base.mode # Typ THEN CPM.Mark(72, u.pos)
 			ELSE u.next := userList; userList := u;	(* reinsert *)
@@ -299,15 +296,15 @@ MODULE DevAnalyzer;
 	END CheckForwardTypes;
 	
 	PROCEDURE CheckUnimpl (m: CPT.Object; typ: CPT.Struct; pos: INTEGER);
-		VAR obj: CPT.Object;
+		VAR obj: CPT.Object; res: INTEGER; n: ARRAY 256 OF CHAR;
 	BEGIN
 		IF m # NIL THEN
 			IF (m.mode = TProc) & (absAttr IN m.conval.setval) THEN
 				CPT.FindField(m.name^, typ, obj);
 				IF (obj = NIL) OR (obj.mode # TProc) OR (absAttr IN obj.conval.setval) THEN
 					CPM.Mark(192, pos);
-					CPM.LogWLn; CPM.LogWStr("  "); CPM.LogWStr(m.name^);
-					CPM.LogWStr(" not implemented in "); CPM.LogWStr(typ.strobj.name^)
+					CPM.LogWLn; CPM.LogWStr("  "); Strings.Utf8ToString(m.name, n, res); CPM.LogWStr(n);
+					CPM.LogWStr(" not implemented in "); Strings.Utf8ToString(typ.strobj.name^, n, res); CPM.LogWStr(n)
 				END
 			END;
 			CheckUnimpl(m.left, typ, pos);
@@ -381,7 +378,6 @@ MODULE DevAnalyzer;
 					| Var, VarPar, Fld:
 						CASE obj.num OF
 						| clean: DumpObj(obj); err2(neverUsed, obj.adr) 
-						(* | used: DumpObj(obj); err2(neverSet, obj.adr) *)
 						| used: IF obj.name[0] # "@" THEN DumpObj(obj); err2(neverSet, obj.adr) END
 						| usedSet: IF obj.mode # Fld THEN DumpObj(obj); err2(usedBSet, obj.adr) END
 						| set: DumpObj(obj); err2(setBNUsed, obj.adr);
@@ -456,7 +452,7 @@ MODULE DevAnalyzer;
 					END
 				END
 			| set: obj.num := setUsed
-			| used, usedSet, setUsed, setUsedP, setUsed+noChange, setUsedP+noChange:
+			ELSE (* already marked as being used *)
 			END
 		END
 	END UseObj;
@@ -473,7 +469,7 @@ MODULE DevAnalyzer;
 				END
 			| usedSet, setUsed, setUsedP:
 			| set: IF varPar THEN obj.num := setUsed END
-			| setUsed+noChange, setUsedP+noChange: DumpObj(obj); err2(loopVarSet, pos) (* for loop variable gets set!*)
+			ELSE DumpObj(obj); err2(loopVarSet, pos) (* for loop variable gets set!*)
 			END
 		END
 	END SetObj;
@@ -568,7 +564,8 @@ MODULE DevAnalyzer;
 	END CheckMark;
 
 	PROCEDURE CheckSysFlag (VAR sysflag: SHORTINT;
-										GetSF: PROCEDURE(id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT));
+										GetSF: PROCEDURE(IN id: ARRAY OF SHORTCHAR; num: SHORTINT; 
+										VAR flag: SHORTINT));
 		VAR x: CPT.Object; i: SHORTINT;
 	BEGIN
 		sysflag := 0;
@@ -588,7 +585,7 @@ MODULE DevAnalyzer;
 						GetSF(CPS.name, 0, sysflag)
 					END
 				ELSE
-					GetSF(CPS.str^, 0, sysflag)
+					GetSF(CPS.str, 0, sysflag)
 				END;
 				CPS.Get(sym);
 				IF (sym = comma) OR (sym = plus) THEN CPS.Get(sym) END
@@ -598,7 +595,7 @@ MODULE DevAnalyzer;
 	END CheckSysFlag;
 	
 	PROCEDURE Receiver(VAR mode, vis: BYTE; VAR name: CPT.Name; VAR typ, rec: CPT.Struct);
-		VAR obj: CPT.Object;tname: CPT.String;
+		VAR tname: CPT.String;
 	BEGIN 
 		typ := CPT.undftyp; rec := NIL; vis := 0;
 		IF sym = var THEN CPS.Get(sym); mode := VarPar
@@ -968,7 +965,7 @@ MODULE DevAnalyzer;
 	PROCEDURE ^ StandProcCall(VAR x: CPT.Node);
 	
 	PROCEDURE ActualParameters(VAR aparlist: CPT.Node; fpar: CPT.Object; VAR pre, lastp: CPT.Node);
-		VAR apar, last, newPar, iidPar, n: CPT.Node; id: CPT.Object; moreThan1: BOOLEAN;	(*<< id, moreThan1 *)
+		VAR apar, last, newPar, iidPar: CPT.Node; id: CPT.Object; moreThan1: BOOLEAN;	(*<< id, moreThan1 *)
 	BEGIN
 		aparlist := NIL; last := NIL;
 		IF sym # rparen THEN
@@ -1329,23 +1326,29 @@ MODULE DevAnalyzer;
 			pos: INTEGER;	(*<< *)
 
 		PROCEDURE GetCode;
-			VAR ext: CPT.ConstExt; i, n, c: INTEGER; s: ARRAY 256 OF SHORTCHAR;
+			VAR ext: CPT.ConstExt; i, n, c: INTEGER; s, s2: POINTER TO ARRAY OF SHORTCHAR;
 		BEGIN
-			n := 0;
+			n := 0; NEW(s, 256);
 			LOOP
-				IF sym = number THEN c := CPS.intval; INC(n);
-					IF (c < 0) OR (c > 255) OR (n = 255) THEN
-						err(64); c := 1; n := 1
+				IF sym = number THEN c := CPS.intval; INC(n); i := LEN(s^);
+					IF n > i THEN	(* if overflow then increase size of array s *)
+						NEW(s2, i * 2); WHILE i > 0 DO DEC(i); s2[i] := s[i] END; s := s2; s2 := NIL;
+					END;
+					IF (c < 0) OR (c > 255) OR (n = MAX(INTEGER)) THEN
+						err(63); c := 1; n := 1
 					END ;
-					CPS.Get(sym); s[n] := SHORT(CHR(c))
+					CPS.Get(sym); s[n - 1] := SHORT(CHR(c))
 				END ;
 				IF sym = comma THEN CPS.Get(sym)
 				ELSIF sym = number THEN err(comma)
-				ELSE s[0] := SHORT(CHR(n)); EXIT
+				ELSE EXIT
 				END
 			END;
-			NEW(ext, n + 1); proc.conval.ext := ext; i := 0;
-			WHILE i <= n DO ext[i] := s[i]; INC(i) END;
+			IF n # 0 THEN NEW(ext, n); i := 0;
+				WHILE i < n DO ext[i] := s[i]; INC(i) END
+			ELSE ext := NIL
+			END;
+			proc.conval.ext := ext;
 			INCL(proc.conval.setval, hasBody)
 		END GetCode;
 
@@ -1931,7 +1934,7 @@ MODULE DevAnalyzer;
 						typ := obj.typ.BaseTyp;
 						IF (typ # NIL) & (typ.comp = Record) & (typ.strobj = NIL) THEN
 							(* pointer to unnamed record: name record as "pointerName^" *)
-							rname := obj.name^$; i := 0;
+							rname := obj.name$; i := 0;
 							WHILE rname[i] # 0X DO INC(i) END;
 							rname[i] := "^"; rname[i+1] := 0X;
 							CPT.Insert(rname, o); o.mode := Typ; o.typ := typ; typ.strobj := o;
@@ -2012,7 +2015,7 @@ MODULE DevAnalyzer;
 			CPT.libName := "";
 			IF sym = lbrak THEN
 				INCL(CPM.options, CPM.interface); CPS.Get(sym);
-				IF sym = string THEN CPT.libName := CPS.str^$; CPS.Get(sym)
+				IF sym = string THEN CPT.libName := CPS.str$; CPS.Get(sym)
 				ELSE err(string)
 				END;
 				CheckSym(rbrak)
@@ -2080,35 +2083,19 @@ MODULE DevAnalyzer;
 
 	PROCEDURE ProcessModule (source: TextModels.Reader; log: TextModels.Model; VAR error, warning: BOOLEAN);
 		VAR p: CPT.Node; script: Stores.Operation; text: TextModels.Model;
-	BEGIN
+	BEGIN (* similar to DevCompiler.Module *)
 		text := source.Base();
 		Models.BeginModification(Models.clean, text);
 		Models.BeginScript(text, "#Dev:InsertMarkers", script);
 		CPM.Init(source, log);
 		CPT.Init({});
-		CPB.typSize := (*<<OPV.*)TypeSize;
-		(*<<CPT.processor := OPL.processor;*)
+		CPB.typSize := TypeSize;
+		(*CPT.processor := CPV.processor;*)
 		Module(p);
-	(*<<
-		IF CPM.noerr THEN
-			OPV.Init(opt, DevDebug.breakPos); OPV.Allocate; CPT.Export(ext, new);
-			IF CPM.noerr THEN
-				OPV.Module(p);
-				IF CPM.noerr THEN
-					IF new OR ext THEN CPM.RegisterNewSym END ;
-					CPM.LogWStr("	"); CPM.LogWNum(OPL.pc, 8);
-					CPM.LogWStr("	"); CPM.LogWNum(OPL.dsize, 8)
-				ELSE CPM.DeleteNewSym
-				END
-			END ;
-			OPL.Close
-		END ;
-	*)
 		CPT.Close;
 		error := ~CPM.noerr;
 		CPM.Close;
 		p := NIL;
-		Kernel.FastCollect;
 		IF error THEN
 			CPM.InsertMarks(source.Base());
 			CPM.LogWLn; CPM.LogWStr(" ");
@@ -2117,8 +2104,8 @@ MODULE DevAnalyzer;
 			ELSE
 				CPM.LogWNum(CPM.errors, 0); Dialog.MapString("#Dev:ErrorsDetected", str)
 			END;
-			StdLog.String(str)
-		ELSE	(*<<*)
+			CPM.LogWStr(str)
+		ELSE
 			options.statements := nofStats;
 			WriteWarnings(text, warning);
 			CPM.LogWLn; CPM.LogWNum(nofStats, 0); CPM.LogWStr(" statements")
@@ -2159,7 +2146,6 @@ MODULE DevAnalyzer;
 		IF noerr & CPM.noerr THEN Dialog.ShowStatus("#Dev:Ok")
 		END;
 		sourceR := NIL;
-		Kernel.Cleanup
 	END Close;
 
 	PROCEDURE Analyze*;

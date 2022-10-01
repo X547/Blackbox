@@ -12,7 +12,7 @@ MODULE DevCPT;
 
 **)
 
-	IMPORT DevCPM;
+	IMPORT Strings, DevCPM;
 
 	CONST
 		MaxIdLen = 256;
@@ -216,16 +216,11 @@ MODULE DevCPT;
 	BEGIN
 		NEW(node); node.class := class; RETURN node
 	END NewNode;
-(*	
-	PROCEDURE NewExt*(): ConstExt;
-		VAR ext: ConstExt;
-	BEGIN NEW(ext); RETURN ext
-	END NewExt;
-*)	
-	PROCEDURE NewName* ((*IN*) name: ARRAY OF SHORTCHAR): String;
+	
+	PROCEDURE NewName* (IN name: ARRAY OF SHORTCHAR): String;
 		VAR i: INTEGER; p: String;
 	BEGIN
-		i := 0; WHILE name[i] # 0X DO INC(i) END;
+		i := LEN(name$);
 		IF i > 0 THEN NEW(p, i + 1); p^ := name$; RETURN p
 		ELSE RETURN null
 		END
@@ -253,13 +248,13 @@ MODULE DevCPT;
 		depth := 0
 	END Init;
 	
-	PROCEDURE Open* (name: Name);
+	PROCEDURE Open* (IN name: Name);
 	BEGIN
 		SelfName := name$; topScope.name := NewName(name);
 	END Open;
 
 	PROCEDURE Close*;
-		VAR i: SHORTINT;
+		VAR i: INTEGER;
 	BEGIN	(* garbage collection *)
 		CloseScope;
 		i := 0; WHILE i < maxImps DO GlbMod[i] := NIL; INC(i) END ;
@@ -319,7 +314,7 @@ MODULE DevCPT;
 		END
 	END Includes;
 	
-	PROCEDURE FindImport*(VAR name: Name; mod: Object; VAR res: Object);
+	PROCEDURE FindImport*(IN name: Name; mod: Object; VAR res: Object);
 		VAR obj: Object; (* i: INTEGER; n: Name; *)
 	BEGIN obj := mod.scope.right;
 		LOOP
@@ -356,7 +351,7 @@ MODULE DevCPT;
 *)
 	END FindImport;
 
-	PROCEDURE Find*(VAR name: Name; VAR res: Object);
+	PROCEDURE Find*(IN name: Name; VAR res: Object);
 		VAR obj, head: Object;
 	BEGIN head := topScope;
 		LOOP obj := head.right;
@@ -374,7 +369,7 @@ MODULE DevCPT;
 		res := obj
 	END Find;
 
-	PROCEDURE FindFld (VAR name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
+	PROCEDURE FindFld (IN name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
 		VAR obj: Object;
 	BEGIN 
 		WHILE (typ # NIL) & (typ # undftyp) DO obj := typ.link;
@@ -389,13 +384,13 @@ MODULE DevCPT;
 		res := NIL
 	END FindFld;
 	
-	PROCEDURE FindField* (VAR name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
+	PROCEDURE FindField* (IN name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
 	BEGIN
 		FindFld(name, typ, res);
 		IF (res = NIL) & ~typ.untagged THEN FindFld(name, anytyp, res) END
 	END FindField;
 	
-	PROCEDURE FindBaseField* (VAR name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
+	PROCEDURE FindBaseField* (IN name: ARRAY OF SHORTCHAR; typ: Struct; VAR res: Object);
 	BEGIN
 		FindFld(name, typ.BaseTyp, res);
 		IF (res = NIL) & ~typ.untagged THEN FindFld(name, anytyp, res) END
@@ -468,7 +463,7 @@ MODULE DevCPT;
 		obj.left := NIL; obj.right := NIL; old := NIL
 	END InsertIn;
 
-	PROCEDURE Insert* (VAR name: Name; VAR obj: Object);
+	PROCEDURE Insert* (IN name: Name; VAR obj: Object);
 		VAR old: Object;
 	BEGIN
 		obj := NewObj(); obj.leaf := TRUE;
@@ -494,7 +489,7 @@ MODULE DevCPT;
 		END
 	END InsertThisField;
 
-	PROCEDURE InsertField* (VAR name: Name; typ: Struct; VAR obj: Object);
+	PROCEDURE InsertField* (IN name: Name; typ: Struct; VAR obj: Object);
 		VAR old: Object;
 	BEGIN
 		obj := NewObj(); obj.leaf := TRUE;
@@ -506,8 +501,8 @@ MODULE DevCPT;
 
 (*-------------------------- Fingerprinting --------------------------*)
 
-	PROCEDURE FPrintName(VAR fp: INTEGER; VAR name: ARRAY OF SHORTCHAR);
-		VAR i: SHORTINT; ch: SHORTCHAR;
+	PROCEDURE FPrintName(VAR fp: INTEGER; IN name: ARRAY OF SHORTCHAR);
+		VAR i: INTEGER; ch: SHORTCHAR;
 	BEGIN i := 0;
 		REPEAT ch := name[i]; DevCPM.FPrint(fp, ORD(ch)); INC(i) UNTIL ch = 0X
 	END FPrintName;
@@ -542,6 +537,7 @@ MODULE DevCPT;
 			ELSIF c = Array THEN IdFPrint(btyp); DevCPM.FPrint(idfp, btyp.idfp); DevCPM.FPrint(idfp, typ.n)
 			ELSIF f = ProcTyp THEN FPrintSign(idfp, btyp, typ.link)
 			END ;
+			IF typ.sysflag # 0 THEN DevCPM.FPrint(idfp, typ.sysflag) END;
 			typ.idfp := idfp
 		END
 	END IdFPrint;
@@ -554,7 +550,9 @@ MODULE DevCPT;
 		PROCEDURE FPrintHdFld(typ: Struct; fld: Object; adr: INTEGER);	(* modifies pvfp only *)
 			VAR i, j, n: INTEGER; btyp: Struct;
 		BEGIN
-			IF typ.comp = Record THEN FPrintFlds(typ.link, adr, FALSE)
+			IF typ.comp = Record THEN
+				IF typ.BaseTyp # NIL THEN FPrintHdFld(typ.BaseTyp, fld, adr) END ;
+				FPrintFlds(typ.link, adr, FALSE)
 			ELSIF typ.comp = Array THEN btyp := typ.BaseTyp; n := typ.n;
 				WHILE btyp.comp = Array DO n := btyp.n * n; btyp := btyp.BaseTyp END ;
 				IF (btyp.form = Pointer) OR (btyp.comp = Record) THEN
@@ -581,8 +579,8 @@ MODULE DevCPT;
 		BEGIN
 			WHILE (fld # NIL) & (fld.mode = Fld) DO
 				IF (fld.vis # internal) & visible THEN
-					DevCPM.FPrint(pvfp, fld.vis); FPrintName(pvfp, fld.name^); DevCPM.FPrint(pvfp, fld.adr);
-					DevCPM.FPrint(pbfp, fld.vis); FPrintName(pbfp, fld.name^); DevCPM.FPrint(pbfp, fld.adr);
+					DevCPM.FPrint(pvfp, fld.vis); FPrintName(pvfp, fld.name); DevCPM.FPrint(pvfp, fld.adr);
+					DevCPM.FPrint(pbfp, fld.vis); FPrintName(pbfp, fld.name); DevCPM.FPrint(pbfp, fld.adr);
 					FPrintStr(fld.typ); DevCPM.FPrint(pbfp, fld.typ.pbfp); DevCPM.FPrint(pvfp, fld.typ.pvfp)
 				ELSE FPrintHdFld(fld.typ, fld, fld.adr + adr)
 				END ;
@@ -605,8 +603,8 @@ MODULE DevCPT;
 						ELSIF extAttr IN obj.conval.setval THEN DevCPM.FPrint(fp, extAttr)
 						END;
 						DevCPM.FPrint(fp, TProc); DevCPM.FPrint(fp, obj.num);
-						FPrintSign(fp, obj.typ, obj.link); FPrintName(fp, obj.name^);
-						IF obj.entry # NIL THEN FPrintName(fp, obj.entry^) END;
+						FPrintSign(fp, obj.typ, obj.link); FPrintName(fp, obj.name);
+						IF obj.entry # NIL THEN FPrintName(fp, obj.entry) END;
 						DevCPM.FPrint(pvfp, fp); DevCPM.FPrint(pbfp, fp)
 					ELSIF DevCPM.ExpHdTProc THEN
 						DevCPM.FPrint(pvfp, TProc); DevCPM.FPrint(pvfp, obj.num)
@@ -619,7 +617,6 @@ MODULE DevCPT;
 	BEGIN
 		IF ~typ.fpdone THEN
 			IdFPrint(typ); pbfp := typ.idfp;
-			IF typ.sysflag # 0 THEN DevCPM.FPrint(pbfp, typ.sysflag) END;
 			IF typ.ext # NIL THEN FPrintName(pbfp, typ.ext^) END;
 			IF typ.attribute # 0 THEN DevCPM.FPrint(pbfp, typ.attribute) END;
 			pvfp := pbfp; typ.pbfp := pbfp; typ.pvfp := pvfp;	(* initial fprints may be used recursively *)
@@ -645,7 +642,7 @@ MODULE DevCPT;
 	END FPrintStr;
 
 	PROCEDURE FPrintObj*(obj: Object);
-		VAR fprint: INTEGER; f, m: SHORTINT; rval: SHORTREAL; ext: ConstExt; mod: Object; r: REAL; x: INTEGER;
+		VAR fprint, f, m: INTEGER; rval: SHORTREAL; ext: ConstExt; mod: Object; r: REAL; x: INTEGER;
 	BEGIN
 		IF ~obj.fpdone THEN
 			fprint := 0; obj.fpdone := TRUE;
@@ -678,35 +675,38 @@ MODULE DevCPT;
 				FPrintSign(fprint, obj.typ, obj.link)
 			ELSIF obj.mode = CProc THEN
 				FPrintSign(fprint, obj.typ, obj.link); ext := obj.conval.ext;
-				m := ORD(ext^[0]); f := 1; DevCPM.FPrint(fprint, m);
-				WHILE f <= m DO DevCPM.FPrint(fprint, ORD(ext^[f])); INC(f) END
+				IF ext # NIL THEN m := LEN(ext^); x := 0; DevCPM.FPrint(fprint, m);
+					WHILE x < m DO DevCPM.FPrint(fprint, ORD(ext^[x])); INC(x) END
+				ELSE DevCPM.FPrint(fprint, 0);
+				END
 			ELSIF obj.mode = Typ THEN
 				FPrintStr(obj.typ); DevCPM.FPrint(fprint, obj.typ.pbfp)
 			END ;
 			IF obj.sysflag < 0 THEN DevCPM.FPrint(fprint, obj.sysflag) END;
 			IF obj.mode IN {LProc, XProc, CProc, Var, Typ, Con} THEN
 				IF obj.library # NIL THEN
-					FPrintName(fprint, obj.library^)
+					FPrintName(fprint, obj.library)
 				ELSIF obj.mnolev < 0 THEN
 					mod := GlbMod[-obj.mnolev];
 					IF (mod.library # NIL) THEN
-						FPrintName(fprint, mod.library^)
+						FPrintName(fprint, mod.library)
 					END
 				ELSIF obj.mnolev = 0 THEN
 					IF libName # "" THEN FPrintName(fprint, libName) END
 				END;
-				IF obj.entry # NIL THEN FPrintName(fprint, obj.entry^) END
+				IF obj.entry # NIL THEN FPrintName(fprint, obj.entry) END
 			END;
 			obj.fprint := fprint
 		END
 	END FPrintObj;
 
 	PROCEDURE FPrintErr* (obj: Object; errno: SHORTINT);	(* !!! *)
+		VAR res: INTEGER; n: ARRAY MaxIdLen OF CHAR;
 	BEGIN
 		IF errno = 249 THEN
 			DevCPM.LogWLn; DevCPM.LogWStr("  ");
-			DevCPM.LogWStr(GlbMod[-obj.mnolev].name^);
-			DevCPM.LogW("."); DevCPM.LogWStr(obj.name^);
+			Strings.Utf8ToString(GlbMod[-obj.mnolev].name^, n, res); DevCPM.LogWStr(n);
+			Strings.Utf8ToString(obj.name^, n, res); DevCPM.LogW("."); DevCPM.LogWStr(n);
 			DevCPM.LogWStr(" is not consistently imported");
 			err(249)
 		ELSIF obj = NIL THEN	(* changed module sys flags *)
@@ -716,7 +716,7 @@ MODULE DevCPT;
 		ELSIF obj.mnolev = 0 THEN	(* don't report changes in imported modules *)
 			IF sfpresent THEN
 				IF symChanges < 20 THEN
-					DevCPM.LogWLn; DevCPM.LogWStr("  "); DevCPM.LogWStr(obj.name^);
+					DevCPM.LogWLn; DevCPM.LogWStr("  "); Strings.Utf8ToString(obj.name^, n, res); DevCPM.LogWStr(n);
 					IF errno = 250 THEN DevCPM.LogWStr(" is no longer in symbol file")
 					ELSIF errno = 251 THEN DevCPM.LogWStr(" is redefined internally ")
 					ELSIF errno = 252 THEN DevCPM.LogWStr(" is redefined")
@@ -736,8 +736,8 @@ MODULE DevCPT;
 
 (*-------------------------- Import --------------------------*)
 
-	PROCEDURE InName(VAR name: String);
-		VAR i: SHORTINT; ch: SHORTCHAR; n: Name;
+	PROCEDURE InName(OUT name: String);
+		VAR i: INTEGER; ch: SHORTCHAR; n: Name;
 	BEGIN i := 0;
 		REPEAT
 			DevCPM.SymRCh(ch); n[i] := ch; INC(i)
@@ -745,8 +745,8 @@ MODULE DevCPT;
 		IF i > 1 THEN NEW(name, i); name^ := n$ ELSE name := null END
 	END InName;
 	
-	PROCEDURE InMod(tag: INTEGER; VAR mno: BYTE);	(* mno is global *)
-		VAR head: Object; name: String; mn: INTEGER; i: BYTE; lib: String;
+	PROCEDURE InMod(tag: INTEGER; OUT mno: BYTE);	(* mno is global *)
+		VAR head: Object; name: String; i: BYTE; lib: String;
 	BEGIN
 		IF tag = 0 THEN mno := impCtxt.glbmno[0]
 		ELSIF tag > 0 THEN
@@ -774,7 +774,7 @@ MODULE DevCPT;
 	END InMod;
 
 	PROCEDURE InConstant(f: INTEGER; conval: Const);
-		VAR ch, ch1: SHORTCHAR; ext, t: ConstExt; rval: SHORTREAL; r, s: REAL; i, x, y: INTEGER; str: Name;
+		VAR ch: SHORTCHAR; ext, t: ConstExt; rval: SHORTREAL; r, s: REAL; i, x, y: INTEGER; str: Name;
 	BEGIN
 		CASE f OF
 		| Byte, Char8, Bool:
@@ -819,22 +819,6 @@ MODULE DevCPT;
 				REPEAT DevCPM.GetUtf8(ext^, x, i); INC(y) UNTIL x = 0;
 				conval.intval2 := y
 			END
-(*		
-			ext := NewExt(); conval.ext := ext; i := 0;
-			REPEAT
-				DevCPM.SymRCh(ch); ext^[i] := ch; INC(i)
-			UNTIL ch = 0X;
-			conval.intval2 := i;
-			conval.intval := DevCPM.ConstNotAlloc
-		| String16:
-			ext := NewExt(); conval.ext := ext; i := 0;
-			REPEAT
-				DevCPM.SymRCh(ch); ext^[i] := ch; INC(i);
-				DevCPM.SymRCh(ch1); ext^[i] := ch1; INC(i)
-			UNTIL (ch = 0X) & (ch1 = 0X);
-			conval.intval2 := i;
-			conval.intval := DevCPM.ConstNotAlloc
-*)
 		| NilTyp:
 			conval.intval := 0
 (*
@@ -863,7 +847,7 @@ MODULE DevCPT;
 			IF tag = Ssys THEN
 				new.sysflag := SHORT(SHORT(DevCPM.SymRInt())); tag := DevCPM.SymRInt();
 				IF ODD(new.sysflag DIV inBit) THEN new.vis := inPar
-				ELSIF ODD(new.sysflag DIV inBit) THEN new.vis := outPar
+				ELSIF ODD(new.sysflag DIV outBit) THEN new.vis := outPar
 				END
 			END;
 			IF tag = Svalpar THEN new.mode := Var
@@ -1059,7 +1043,7 @@ MODULE DevCPT;
 	END InStruct;
 
 	PROCEDURE InObj(mno: BYTE): Object;	(* first number in impCtxt.nextTag *)
-		VAR ch: SHORTCHAR; obj, old: Object; typ: Struct;
+		VAR obj, old: Object; typ: Struct;
 			tag, i, s: INTEGER; ext: ConstExt;
 	BEGIN
 		tag := impCtxt.nextTag;
@@ -1084,9 +1068,11 @@ MODULE DevCPT;
 				| Sipro: obj.mode := IProc
 				| Scpro: obj.mode := CProc;
 					s := DevCPM.SymRInt();
-					NEW(ext, s + 1); obj.conval.ext := ext;
-					ext^[0] := SHORT(CHR(s)); i := 1;
-					WHILE i <= s DO DevCPM.SymRCh(ext^[i]); INC(i) END
+					IF s # 0 THEN NEW(ext, s); i := 0;
+						WHILE i < s DO DevCPM.SymRCh(ext^[i]); INC(i) END
+					ELSE ext := NIL
+					END;
+					obj.conval.ext := ext;
 				END
 			ELSIF tag = Salias THEN
 				obj.mode := Typ; InStruct(obj.typ)
@@ -1133,7 +1119,7 @@ MODULE DevCPT;
 		RETURN obj
 	END InObj;
 
-	PROCEDURE Import*(aliasName: Name; VAR name: Name; VAR done: BOOLEAN);
+	PROCEDURE Import*(IN aliasName, name: Name; VAR done: BOOLEAN);
 		VAR obj, h: Object; mno: BYTE; tag, p: INTEGER; lib: String;	(* done used in Browser *)
 	BEGIN
 		IF name = "SYSTEM" THEN
@@ -1192,8 +1178,8 @@ MODULE DevCPT;
 
 (*-------------------------- Export --------------------------*)
 
-	PROCEDURE OutName(VAR name: ARRAY OF SHORTCHAR);
-		VAR i: SHORTINT; ch: SHORTCHAR;
+	PROCEDURE OutName(IN name: ARRAY OF SHORTCHAR);
+		VAR i: INTEGER; ch: SHORTCHAR;
 	BEGIN i := 0;
 		REPEAT ch := name[i]; DevCPM.SymWCh(ch); INC(i) UNTIL ch = 0X
 	END OutName;
@@ -1204,11 +1190,11 @@ MODULE DevCPT;
 		IF expCtxt.locmno[mno] < 0 THEN (* new mod *)
 			mod := GlbMod[mno];
 			IF mod.library # NIL THEN
-				DevCPM.SymWInt(Slib); OutName(mod.library^)
+				DevCPM.SymWInt(Slib); OutName(mod.library)
 			END;
 			DevCPM.SymWInt(Smname);
 			expCtxt.locmno[mno] := expCtxt.nofm; INC(expCtxt.nofm);
-			OutName(mod.name^)
+			OutName(mod.name)
 		ELSE DevCPM.SymWInt(-expCtxt.locmno[mno])
 		END
 	END OutMod;
@@ -1219,7 +1205,9 @@ MODULE DevCPT;
 	PROCEDURE OutHdFld(typ: Struct; fld: Object; adr: INTEGER);
 		VAR i, j, n: INTEGER; btyp: Struct;
 	BEGIN
-		IF typ.comp = Record THEN OutFlds(typ.link, adr, FALSE)
+		IF typ.comp = Record THEN
+			IF typ.BaseTyp # NIL THEN OutHdFld(typ.BaseTyp, fld, adr) END ;
+			OutFlds(typ.link, adr, FALSE)
 		ELSIF typ.comp = Array THEN btyp := typ.BaseTyp; n := typ.n;
 			WHILE btyp.comp = Array DO n := btyp.n * n; btyp := btyp.BaseTyp END ;
 			IF (btyp.form = Pointer) OR (btyp.comp = Record) THEN
@@ -1250,7 +1238,7 @@ MODULE DevCPT;
 		WHILE (fld # NIL) & (fld.mode = Fld) DO
 			IF (fld.vis # internal) & visible THEN
 				IF fld.vis = externalR THEN DevCPM.SymWInt(Srfld) ELSE DevCPM.SymWInt(Sfld) END ;
-				OutStr(fld.typ); OutName(fld.name^); DevCPM.SymWInt(fld.adr)
+				OutStr(fld.typ); OutName(fld.name); DevCPM.SymWInt(fld.adr)
 			ELSE OutHdFld(fld.typ, fld, fld.adr + adr)
 			END ;
 			fld := fld.link
@@ -1269,7 +1257,7 @@ MODULE DevCPT;
 			END ;
 			OutStr(par.typ);
 			DevCPM.SymWInt(par.adr);
-			OutName(par.name^); par := par.link
+			OutName(par.name); par := par.link
 		END ;
 		DevCPM.SymWInt(Send)
 	END OutSign;
@@ -1290,7 +1278,7 @@ MODULE DevCPT;
 				IF obj.vis # internal THEN
 					IF obj.vis = externalR THEN DevCPM.SymWInt(Simpo) END;
 					IF obj.entry # NIL THEN
-						DevCPM.SymWInt(Sentry); OutName(obj.entry^); portable := FALSE
+						DevCPM.SymWInt(Sentry); OutName(obj.entry); portable := FALSE
 					END;
 					IF limAttr IN obj.conval.setval THEN DevCPM.SymWInt(Slimpro)
 					ELSIF absAttr IN obj.conval.setval THEN DevCPM.SymWInt(Sabspro)
@@ -1298,7 +1286,7 @@ MODULE DevCPT;
 					ELSIF extAttr IN obj.conval.setval THEN DevCPM.SymWInt(Sextpro)
 					ELSE DevCPM.SymWInt(Stpro)
 					END;
-					OutSign(obj.typ, obj.link); OutName(obj.name^);
+					OutSign(obj.typ, obj.link); OutName(obj.name);
 					DevCPM.SymWInt(obj.num)
 				ELSIF DevCPM.ExpHdTProc THEN
 					DevCPM.SymWInt(Shdtpro);
@@ -1319,7 +1307,7 @@ MODULE DevCPT;
 			typ.ref := expCtxt.ref; INC(expCtxt.ref);
 			IF expCtxt.ref >= maxStruct THEN err(228) END ;
 			OutMod(typ.mno); strobj := typ.strobj;
-			IF (strobj # NIL) & (strobj.name # null) THEN OutName(strobj.name^);
+			IF (strobj # NIL) & (strobj.name # null) THEN OutName(strobj.name);
 				CASE strobj.history OF
 				| pbmodified: FPrintErr(strobj, 252)
 				| pvmodified: FPrintErr(strobj, 251)
@@ -1334,14 +1322,14 @@ MODULE DevCPT;
 			END;
 			IF strobj # NIL THEN
 				IF strobj.library # NIL THEN
-					DevCPM.SymWInt(Slib); OutName(strobj.library^); portable := FALSE
+					DevCPM.SymWInt(Slib); OutName(strobj.library); portable := FALSE
 				END;
 				IF strobj.entry # NIL THEN
-					DevCPM.SymWInt(Sentry); OutName(strobj.entry^); portable := FALSE
+					DevCPM.SymWInt(Sentry); OutName(strobj.entry); portable := FALSE
 				END
 			END;
 			IF typ.ext # NIL THEN
-				DevCPM.SymWInt(String8); OutName(typ.ext^); portable := FALSE
+				DevCPM.SymWInt(String8); OutName(typ.ext); portable := FALSE
 			END;
 			CASE typ.form OF
 			| Pointer:
@@ -1376,7 +1364,7 @@ MODULE DevCPT;
 	END OutStr;
 
 	PROCEDURE OutConstant(obj: Object);
-		VAR f, i: SHORTINT; rval: SHORTREAL; a, b, c: INTEGER; r: REAL;
+		VAR f: SHORTINT; rval: SHORTREAL; a, b, c: INTEGER; r: REAL;
 	BEGIN
 		f := obj.typ.form;
 (*
@@ -1438,7 +1426,7 @@ MODULE DevCPT;
 	END OutConstant;
 
 	PROCEDURE OutObj(obj: Object);
-		VAR i, j: SHORTINT; ext: ConstExt;
+		VAR i, j: INTEGER; ext: ConstExt;
 	BEGIN
 		IF obj # NIL THEN
 			OutObj(obj.left);
@@ -1457,35 +1445,37 @@ MODULE DevCPT;
 					IF obj.mode IN {LProc, XProc, CProc, Var, Con} THEN
 						(* name alias for types handled in OutStr *)
 						IF obj.library # NIL THEN
-							DevCPM.SymWInt(Slib); OutName(obj.library^); portable := FALSE
+							DevCPM.SymWInt(Slib); OutName(obj.library); portable := FALSE
 						END;
 						IF obj.entry # NIL THEN
-							DevCPM.SymWInt(Sentry); OutName(obj.entry^); portable := FALSE
+							DevCPM.SymWInt(Sentry); OutName(obj.entry); portable := FALSE
 						END
 					END;
 					CASE obj.mode OF
 					| Con:
-						OutConstant(obj); OutName(obj.name^)
+						OutConstant(obj); OutName(obj.name)
 					| Typ:
 						IF obj.typ.strobj = obj THEN DevCPM.SymWInt(Stype); OutStr(obj.typ)
-						ELSE DevCPM.SymWInt(Salias); OutStr(obj.typ); OutName(obj.name^)
+						ELSE DevCPM.SymWInt(Salias); OutStr(obj.typ); OutName(obj.name)
 						END
 					| Var:
 						IF obj.vis = externalR THEN DevCPM.SymWInt(Srvar) ELSE DevCPM.SymWInt(Svar) END ;
-						OutStr(obj.typ); OutName(obj.name^);
+						OutStr(obj.typ); OutName(obj.name);
 						IF (obj.typ.strobj = NIL) OR (obj.typ.strobj.name = null) THEN
 							(* compute fingerprint to avoid structural type equivalence *)
 							DevCPM.FPrint(expCtxt.reffp, obj.typ.ref)
 						END
 					| XProc:
-						DevCPM.SymWInt(Sxpro); OutSign(obj.typ, obj.link); OutName(obj.name^)
+						DevCPM.SymWInt(Sxpro); OutSign(obj.typ, obj.link); OutName(obj.name)
 					| IProc:
-						DevCPM.SymWInt(Sipro); OutSign(obj.typ, obj.link); OutName(obj.name^)
+						DevCPM.SymWInt(Sipro); OutSign(obj.typ, obj.link); OutName(obj.name)
 					| CProc:
 						DevCPM.SymWInt(Scpro); OutSign(obj.typ, obj.link); ext := obj.conval.ext;
-						j := ORD(ext^[0]); i := 1; DevCPM.SymWInt(j);
-						WHILE i <= j DO DevCPM.SymWCh(ext^[i]); INC(i) END ;
-						OutName(obj.name^); portable := FALSE
+						IF ext # NIL THEN j := LEN(ext^); i := 0; DevCPM.SymWInt(j);
+							WHILE i < j DO DevCPM.SymWCh(ext[i]); INC(i) END
+						ELSE DevCPM.SymWInt(0)
+						END;
+						OutName(obj.name); portable := FALSE
 					END
 				END
 			END ;
@@ -1494,7 +1484,7 @@ MODULE DevCPT;
 	END OutObj;
 
 	PROCEDURE Export*(VAR ext, new: BOOLEAN);
-			VAR i: SHORTINT; nofmod: BYTE; done: BOOLEAN; old: Object; oldCSum: INTEGER;
+			VAR i: INTEGER; nofmod: BYTE; done: BOOLEAN; old: Object; oldCSum: INTEGER;
 	BEGIN
 		symExtended := FALSE; symNew := FALSE; nofmod := nofGmod;
 		Import("@self", SelfName, done); nofGmod := nofmod;
@@ -1542,20 +1532,20 @@ MODULE DevCPT;
 		typ.idfp := form; typ.idfpdone := TRUE
 	END InitStruct;
 
-	PROCEDURE EnterBoolConst(name: Name; val: INTEGER);
+	PROCEDURE EnterBoolConst(IN name: Name; val: INTEGER);
 		VAR obj: Object;
 	BEGIN
 		Insert(name, obj); obj.conval := NewConst();
 		obj.mode := Con; obj.typ := booltyp; obj.conval.intval := val
 	END EnterBoolConst;
 
-	PROCEDURE EnterRealConst(name: Name; val: REAL; VAR obj: Object);
+	PROCEDURE EnterRealConst(IN name: Name; val: REAL; VAR obj: Object);
 	BEGIN
 		Insert(name, obj); obj.conval := NewConst();
 		obj.mode := Con; obj.typ := real32typ; obj.conval.realval := val
 	END EnterRealConst;
 
-	PROCEDURE EnterTyp(name: Name; form: BYTE; size: SHORTINT; VAR res: Struct);
+	PROCEDURE EnterTyp(IN name: Name; form: BYTE; size: SHORTINT; VAR res: Struct);
 		VAR obj: Object; typ: Struct;
 	BEGIN
 		Insert(name, obj);
@@ -1565,19 +1555,19 @@ MODULE DevCPT;
 		typ.idfp := form; typ.idfpdone := TRUE; res := typ
 	END EnterTyp;
 
-	PROCEDURE EnterProc(name: Name; num: SHORTINT);
+	PROCEDURE EnterProc(IN name: Name; num: SHORTINT);
 		VAR obj: Object;
 	BEGIN Insert(name, obj);
 		obj.mode := SProc; obj.typ := notyp; obj.adr := num
 	END EnterProc;
 	
-	PROCEDURE EnterAttr(name: Name; num: SHORTINT);
+	PROCEDURE EnterAttr(IN name: Name; num: SHORTINT);
 		VAR obj: Object;
 	BEGIN Insert(name, obj);
 		obj.mode := Attr; obj.adr := num
 	END EnterAttr;
 
-	PROCEDURE EnterTProc(ptr, rec: Struct; name: Name; num, typ: SHORTINT);
+	PROCEDURE EnterTProc(ptr, rec: Struct; IN name: Name; num, typ: SHORTINT);
 		VAR obj, par: Object;
 	BEGIN
 		InsertField(name, rec, obj);
@@ -1606,6 +1596,7 @@ MODULE DevCPT;
 		par.link := obj.link; obj.link := par;
 	END EnterTProc;
 
+(*
 	PROCEDURE EnterHdField(VAR root: Object; offs: SHORTINT);
 		VAR obj: Object;
 	BEGIN
@@ -1613,6 +1604,7 @@ MODULE DevCPT;
 		obj.name := NewName(DevCPM.HdPtrName); obj.typ := undftyp; obj.adr := offs;
 		obj.link := root; root := obj
 	END EnterHdField;
+*)
 
 BEGIN
 	NEW(null, 1); null^ := "";

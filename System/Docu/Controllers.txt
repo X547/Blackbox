@@ -205,7 +205,7 @@ CONST doubleClick
 This value means that a mouse button has been pressed in a way which is interpreted by the underlying user interface as a "double click". A double click is signaled to the application as a modifier; other modifiers are extend and modify.
 
 CONST extend, modify
-BlackBox operates with two virtual modifier keys. The extend key is used to extend or toggle selections (usually the shift key), the modify key to change the default behavior of a command (e.g., to change a drag-and-move into a drag-and-copy, using the control key (Windows) / option key (Mac OS)). The behavior of possible additional modifier keys is platform-specific (see the document on platform-specific issues for such modifiers). Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input.
+BlackBox operates with two virtual modifier keys. The extend key is used to extend or toggle selections (usually the shift key), the modify key to change the default behavior of a command (e.g., to change a drag-and-move into a drag-and-copy, using the control key). The behavior of possible additional modifier keys is platform-specific (see the document on platform-specific issues for such modifiers). Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input.
 
 CONST noMark, mark
 Used internally.

@@ -38,10 +38,8 @@ MODULE DevPacker;
 			cha := a[i]; chb := b[i]; INC(i);
 			IF cha # chb THEN
 				IF ~caseSens THEN
-					IF (cha >= "a") & ((cha <= "z") OR (cha >= 0E0X) & (cha <= 0FEX) & (cha # 0F7X)) THEN cha := CAP(cha)
-					END;
-					IF (chb >= "a") & ((chb <= "z") OR (chb >= 0E0X) & (chb <= 0FEX) & (chb # 0F7X)) THEN chb := CAP(chb)
-					END
+					cha := Strings.Upper(cha);
+					chb := Strings.Upper(chb);
 				END;
 				IF cha = "\" THEN cha := "/" END;
 				IF chb = "\" THEN chb := "/" END;
@@ -185,13 +183,13 @@ MODULE DevPacker;
 	PROCEDURE ListLoadedModules*;
 		VAR
 			t: TextModels.Model; f: TextMappers.Formatter; tv: TextViews.View;
-			path, name: Files.Name; m: Kernel.Module;
+			path, name: Files.Name; m: Kernel.Module; modName: Kernel.Name;
 	BEGIN
 		t := TextModels.dir.New(); f.ConnectTo(t); f.SetPos(0);
 		f.WriteView(DevCommanders.dir.New()); f.WriteString(' DevPacker.PackThis exefilename.exe :='); f.WriteLn;
 		m := Kernel.modList;
 		WHILE m # NIL DO
-			Kernel.SplitName(m.name$, path, name);
+			Kernel.GetModName(m, modName); Kernel.SplitName(modName, path, name);
 			IF path = "" THEN path := 'System' END;
 			path := path + '/Code/';
 			f.WriteString(path + name + '.ocf ');
@@ -246,7 +244,7 @@ MODULE DevPacker;
 
 	PROCEDURE RemoveWhiteSpaces (rd: TextModels.Reader; end: INTEGER);
 	BEGIN
-		WHILE (rd.Pos() <= end) & (rd.char <= 20X) DO GetCh(rd) END
+		WHILE ~rd.eot & (rd.Pos() <= end) & (rd.char <= 20X) DO GetCh(rd) END
 	END RemoveWhiteSpaces;
 
 	PROCEDURE FileName (rd: TextModels.Reader; end: INTEGER;

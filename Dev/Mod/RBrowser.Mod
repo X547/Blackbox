@@ -13,7 +13,7 @@ MODULE DevRBrowser;
 
 	IMPORT
 		Strings, Dialog, Files, Stores, Converters, Fonts, Ports, Views, Containers,
-		TextModels, TextMappers, TextRulers, TextViews, StdLinks, StdFolds, TextControllers, Models;
+		TextModels, TextMappers, TextRulers, TextViews, StdLinks, StdFolds, Models;
 
 	TYPE
 		SubDesc = RECORD	(* description of subsystem contents *)
@@ -23,22 +23,22 @@ MODULE DevRBrowser;
 
 	PROCEDURE Eq (a, b: CHAR): BOOLEAN;
 	BEGIN
-		IF (a >= "a") & (a <= "z") THEN a := CAP(a) END;
-		IF (b >= "a") & (b <= "z") THEN b := CAP(b) END;
+		a := Strings.Upper(a);
+		b := Strings.Upper(b);
 		RETURN a = b
 	END Eq;
 
 	PROCEDURE Gt (a, b: CHAR): BOOLEAN;
 	BEGIN
-		IF (a >= "a") & (a <= "z") THEN a := CAP(a) END;
-		IF (b >= "a") & (b <= "z") THEN b := CAP(b) END;
+		a := Strings.Upper(a);
+		b := Strings.Upper(b);
 		RETURN a > b
 	END Gt;
 
 	PROCEDURE ClipName (VAR s: ARRAY OF CHAR);
 		VAR h, k: INTEGER; ch: CHAR;
 	BEGIN	(* strip file name suffix *)
-		IF (Dialog.platform DIV 10 = 1) OR (Dialog.platform = Dialog.linux) THEN	(* some Windows variant or Linux *)
+		IF Dialog.IsWindows() OR Dialog.IsLinux() THEN
 			k := - 1; h := 0; ch := s[0];
 			WHILE ch # 0X DO
 				IF ch = "." THEN k := h END;
@@ -48,7 +48,7 @@ MODULE DevRBrowser;
 		END
 	END ClipName;
 
-	PROCEDURE Equal (IN a: ARRAY OF CHAR; b: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE Equal (IN a, b: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; cha, chb: CHAR;
 	BEGIN	(* string comparison, not case sensitive *)
 		i := 0; cha := a[0]; chb := b[0];
@@ -56,7 +56,7 @@ MODULE DevRBrowser;
 		RETURN Eq(cha, chb)
 	END Equal;
 
-	PROCEDURE ClippedEqual (a: ARRAY OF CHAR; b: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE ClippedEqual (a, b: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; cha, chb: CHAR;
 	BEGIN	(* string comparison, not case sensitive *)
 		ClipName(a); ClipName(b);
@@ -65,7 +65,7 @@ MODULE DevRBrowser;
 		RETURN Eq(cha, chb)
 	END ClippedEqual;
 
-	PROCEDURE ClippedGreater (a: ARRAY OF CHAR; b: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE ClippedGreater (a, b: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; cha, chb: CHAR;
 	BEGIN	(* string comparison, not case sensitive *)
 		ClipName(a); ClipName(b);
@@ -81,12 +81,7 @@ MODULE DevRBrowser;
 		ClipName(s); i := 0;
 		REPEAT
 			ch := s[i]; INC(i)
-		UNTIL (ch < "0")
-					OR ("9" < ch) & (CAP(ch) < "A")
-					OR ("Z" < CAP(ch)) & (ch # "_") & (ch < "À")
-					OR (ch = "×")
-					OR (ch = "÷")
-					OR (i = MaxIdLen);
+		UNTIL ~Strings.IsIdent(ch) OR (i = MaxIdLen);
 		RETURN ch = 0X
 	END Ident;
 
@@ -107,7 +102,8 @@ MODULE DevRBrowser;
 		IF collaps THEN fold.Flip; m := f.rider.Base(); f.SetPos(m.Length()) END
 	END WriteCloseFold;
 
-	PROCEDURE WriteLink (VAR f: TextMappers.Formatter; subsystem, directory, file: ARRAY OF CHAR);
+	PROCEDURE WriteLink (VAR f: TextMappers.Formatter; subsystem, directory, file: ARRAY OF CHAR; 
+										attr: TextModels.Attributes);
 		VAR v: Views.View; s: Files.Name;
 	BEGIN
 		IF directory = "" THEN
@@ -126,6 +122,7 @@ MODULE DevRBrowser;
 			IF subsystem # "System" THEN s := s + subsystem END;
 			s := s + file + "')"
 		END;
+		f.rider.SetAttr(attr);
 		v := StdLinks.dir.NewLink(s);
 		f.WriteView(v);	(* insert left link view in text *)
 		IF directory # "" THEN s := directory$ ELSE s := file$; ClipName(s) END;
@@ -133,6 +130,21 @@ MODULE DevRBrowser;
 		v := StdLinks.dir.NewLink("");
 		f.WriteView(v)	(* insert right link view in text *)
 	END WriteLink;
+
+	PROCEDURE WriteString (VAR f: TextMappers.Formatter; s: ARRAY OF CHAR; attr: TextModels.Attributes);
+	BEGIN
+		f.rider.SetAttr(attr); f.WriteString(s);
+	END WriteString;
+
+	PROCEDURE WriteTab (VAR f: TextMappers.Formatter; attr: TextModels.Attributes);
+	BEGIN
+		f.rider.SetAttr(attr); f.WriteTab;
+	END WriteTab;
+
+	PROCEDURE WriteLn (VAR f: TextMappers.Formatter; attr: TextModels.Attributes);
+	BEGIN
+		f.rider.SetAttr(attr); f.WriteLn;
+	END WriteLn;
 
 	PROCEDURE NewRuler (): TextRulers.Ruler;
 		VAR p: TextRulers.Prop;
@@ -177,7 +189,7 @@ MODULE DevRBrowser;
 	END Sort;
 
 	PROCEDURE GetThisSubsystem (loc: Files.Locator; VAR sub: SubDesc; VAR isSubsystem: BOOLEAN);
-		VAR i: Files.LocInfo; l: Files.Locator;
+		VAR i: Files.LocInfo;
 	BEGIN
 		isSubsystem := FALSE; sub.rsrc := FALSE;
 		i := Files.dir.LocList(loc);
@@ -233,60 +245,56 @@ MODULE DevRBrowser;
 													VAR sub: SubDesc; name: Files.Name);
 		VAR i: Files.FileInfo; modname: Files.Name;
 	BEGIN
-		f.rider.SetAttr(bold); f.WriteString(name); f.rider.SetAttr(old);
-		f.WriteString("   ");
-		WriteOpenFold(f, ""); f.WriteLn;
-		f.rider.SetAttr(new);
-		IF sub.rsrc THEN f.WriteTab; WriteLink(f, name, "Rsrc", ""); f.WriteLn END;
+		WriteString(f, name, bold);
+		WriteString(f, "   ", old);
+		WriteOpenFold(f, ""); WriteLn(f, old);
+		IF sub.rsrc THEN WriteTab(f, old); WriteLink(f, name, "Rsrc", "", new); WriteLn(f, old) END;
 		GetNonmodule(sub.docu, i);
 		IF i # NIL THEN
-			f.WriteTab;
+			WriteTab(f, old);
 			REPEAT
-				WriteLink(f, name, "", i.name); f.WriteString("   ");
+				WriteLink(f, name, "", i.name, new); WriteString(f, "   ", old);
 				GetNonmodule(sub.docu, i)
 			UNTIL i = NIL;
-			f.WriteLn
+			WriteLn(f, old)
 		END;
-		f.rider.SetAttr(old);
 		GetModule(sub, i);
 		WHILE i # NIL DO	(* iterate over all modules for which there is a symbol file *)
-			f.WriteTab;
-			IF ~Equal(name, "System") THEN f.WriteString(name) END;	(* subsystem name *)
+			WriteTab(f, old);
+			IF ~Equal(name, "System") THEN WriteString(f, name, old) END;	(* subsystem name *)
 			modname := i.name;
 			ClipName(modname);	(* file name => module name *)
-			f.WriteString(modname);
-			f.rider.SetAttr(new);
-			f.WriteTab;
+			WriteString(f, modname, old);
+			WriteTab(f, old);
 			IF (sub.sym # NIL) & ClippedEqual(sub.sym.name, i.name) THEN
-				IF Convertible(sub.sym) THEN WriteLink(f, name, "Sym", sub.sym.name) END;
+				IF Convertible(sub.sym) THEN WriteLink(f, name, "Sym", sub.sym.name, new) END;
 				sub.sym := sub.sym.next
 			END;
-			f.WriteTab;
+			WriteTab(f, old);
 			IF (sub.code # NIL) & ClippedEqual(sub.code.name, i.name) THEN
-				IF Convertible(sub.code) THEN WriteLink(f, name, "Code", sub.code.name) END;
+				IF Convertible(sub.code) THEN WriteLink(f, name, "Code", sub.code.name, new) END;
 				sub.code := sub.code.next
 			END;
-			f.WriteTab;
+			WriteTab(f, old);
 			IF (sub.mod # NIL) & ClippedEqual(sub.mod.name,  i.name) THEN
-				IF Convertible(sub.mod) THEN WriteLink(f, name, "Mod", sub.mod.name) END;
+				IF Convertible(sub.mod) THEN WriteLink(f, name, "Mod", sub.mod.name, new) END;
 				sub.mod := sub.mod.next
 			END;
-			f.WriteTab;
+			WriteTab(f, old);
 			IF (sub.docu # NIL) & ClippedEqual(sub.docu.name, i.name) THEN
-				IF Convertible(sub.docu) THEN WriteLink(f, name, "Docu", sub.docu.name) END;
+				IF Convertible(sub.docu) THEN WriteLink(f, name, "Docu", sub.docu.name, new) END;
 				sub.docu := sub.docu.next
 			END;
-			f.rider.SetAttr(old);
-			f.WriteLn;
+			WriteLn(f, old);
 			GetModule(sub, i)
 		END;
 		WriteCloseFold(f, TRUE);
-		f.WriteLn
+		WriteLn(f, old)
 	END WriteSubsystem;
 	
 	PROCEDURE AddFiles(VAR  t: TextModels.Model);
-		VAR f: TextMappers.Formatter; tv: TextViews.View;
-			c: Containers.Controller; old, new, bold: TextModels.Attributes; title: Views.Title;
+		VAR f: TextMappers.Formatter;
+			old, new, bold: TextModels.Attributes;
 			subinfo: Files.LocInfo; root, subloc: Files.Locator; subdesc: SubDesc; isSubsystem: BOOLEAN;
 			v: Views.View;
 	BEGIN
@@ -302,6 +310,7 @@ MODULE DevRBrowser;
 		f.WriteString("Update"); f.WriteLn;
 		v := StdLinks.dir.NewLink("");
 		f.WriteView(v);	(* insert right link view in text *)
+		f.WriteLn;
 		root := Files.dir.This("");
 		subinfo := Files.dir.LocList(root);
 		WHILE subinfo # NIL DO	(* iterate over all locations; no particular sorting order is guaranteed *)
@@ -316,7 +325,7 @@ MODULE DevRBrowser;
 	
 	PROCEDURE ShowRepository*;
 		VAR t: TextModels.Model; tv: TextViews.View;
-			c: Containers.Controller; v: Views.View;
+			c: Containers.Controller;
 	BEGIN
 		t := TextModels.dir.New();
 		AddFiles(t);
@@ -328,7 +337,7 @@ MODULE DevRBrowser;
 	END ShowRepository;
 
 	PROCEDURE Update*;
-		VAR t, t0: TextModels.Model; v: Views.View; script: Stores.Operation;
+		VAR t, t0: TextModels.Model; script: Stores.Operation;
 	BEGIN
 		t0 := TextViews.FocusText();
 		Models.BeginScript(t0, "Update repository", script);

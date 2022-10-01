@@ -13,7 +13,8 @@ MODULE HostPackedFiles;
 
 	(* This module depends on the implementation of DevPacker. *)
 
-	IMPORT SYSTEM, Files, HostFiles (*, Dialog*);
+	IMPORT SYSTEM, Kernel, Files, HostFiles (*, Dialog*);
+		(* no other imports allowed because of DevDependencies.CreateTool *)
 
 	CONST
 		packTag* = 12681268H;
@@ -87,10 +88,8 @@ MODULE HostPackedFiles;
 			cha := a[i]; chb := b[i]; INC(i);
 			IF cha # chb THEN
 				IF ~caseSens THEN
-					IF (cha >= "a") & ((cha <= "z") OR (cha >= 0E0X) & (cha <= 0FEX) & (cha # 0F7X)) THEN cha := CAP(cha)
-					END;
-					IF (chb >= "a") & ((chb <= "z") OR (chb >= 0E0X) & (chb <= 0FEX) & (chb # 0F7X)) THEN chb := CAP(chb)
-					END
+					cha := Kernel.Upper(cha);
+					chb := Kernel.Upper(chb);
 				END;
 				IF cha = "\" THEN cha := "/" END;
 				IF chb = "\" THEN chb := "/" END;
@@ -239,11 +238,13 @@ MODULE HostPackedFiles;
 	END Delete;
 
 	PROCEDURE (d: Directory) FileList (floc: Files.Locator): Files.FileInfo;
-		VAR pi, fi, tfi, nfi, last: Files.FileInfo; diff: INTEGER; caseSens: BOOLEAN;
+		VAR pi, fi, tfi, nfi, last: Files.FileInfo; firstRes, diff: INTEGER; caseSens: BOOLEAN;
 	BEGIN
 		ASSERT(floc IS HostFiles.Locator, 20);
 		fi := orgdir.FileList(floc); (* Gives an alphabetically sorted list of files. *)
+		firstRes := floc.res;
 		pi := packedDir.FileList(floc); (* Gives an alphabetically sorted list of files. *)
+		IF floc.res = 2 THEN floc.res := firstRes END;
 		nfi := NIL; last := NIL; tfi := NIL;
 		(* Both fi and l are alphabetically sorted. And the returned list also has to be alphabetically sorted. *)
 		caseSens := floc(HostFiles.Locator).caseSens;
@@ -274,10 +275,12 @@ MODULE HostPackedFiles;
 	END GetFileName;
 
 	PROCEDURE (d: Directory) LocList (floc: Files.Locator): Files.LocInfo;
-		VAR pi, li, nli, last: Files.LocInfo; diff: INTEGER; caseSens: BOOLEAN;
+		VAR pi, li, nli, last: Files.LocInfo; firstRes, diff: INTEGER; caseSens: BOOLEAN;
 	BEGIN
 		li := orgdir.LocList(floc);
+		firstRes := floc.res;
 		pi := packedDir.LocList(floc);
+		IF floc.res = 2 THEN floc.res := firstRes END;
 		caseSens := floc(HostFiles.Locator).caseSens;
 		nli := NIL;
 		(* Both pi and li are alphabetically ordered. *)
@@ -360,7 +363,10 @@ MODULE HostPackedFiles;
 				IF nfi = NIL THEN nfi := tfi ELSE last.next := tfi END;
 				last := tfi;
 				l := l.next
-			END
+			END;
+			floc.res := 0
+		ELSE
+			floc.res := 2
 		END;
 		RETURN nfi
 	END FileList;
@@ -375,7 +381,7 @@ MODULE HostPackedFiles;
 	BEGIN
 		hloc := floc(HostFiles.Locator); nli := NIL;
 		loc := GetLoc(hloc.path$, FALSE);
-		IF loc # NIL THEN loc := loc.sublocs END;
+		IF loc # NIL THEN loc := loc.sublocs; floc.res := 0 ELSE floc.res := 2 END;
 		(* loc is alphabetically ordered. *)
 		WHILE loc # NIL DO
 			NEW(tli); tli.name := loc.name; tli.attr := {Files.readOnly};
@@ -401,10 +407,15 @@ MODULE HostPackedFiles;
 				f := Get(loc.path, name);
 				IF f # NIL THEN
 					loc.res := 0
+				ELSE
+					loc.res := 2
 				END
 			ELSE
+				loc.res := 2;	(* 2 or 6? *)
 				DebugPrint("HostPackedFiles: Directory.Old - This operation requires HostFiles. ")
 			END
+		ELSE
+			loc.res := 6
 		END;
 		RETURN f
 	END Old;
@@ -472,6 +483,14 @@ MODULE HostPackedFiles;
 	BEGIN
 		(* Do nothing since all packed files are opened on the exe file which should stay open. *)
 	END Close;
+	
+	PROCEDURE (f: File) Closed(): BOOLEAN;
+	BEGIN RETURN FALSE (* Always FALSE since all packed files are opened *)
+	END Closed;
+	
+	PROCEDURE (f: File) Shared(): BOOLEAN;
+	BEGIN RETURN TRUE (* Always TRUE since all packed files are read only *)
+	END Shared;
 
 	PROCEDURE (f: File) Flush;
 	BEGIN
@@ -496,7 +515,8 @@ MODULE HostPackedFiles;
 
 	PROCEDURE (f: File) NewWriter(old: Files.Writer): Files.Writer;
 	BEGIN
-		(* Return NIL since all packed files are read only. *)
+		HALT(21);
+		(* Always TRAP 21 since all packed files are read only *)
 		RETURN NIL
 	END NewWriter;
 

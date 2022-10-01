@@ -8,7 +8,7 @@ DEFINITION Dialog;
 		pressed = 1; released = 2; changed = 3; included = 5; excluded = 6; set = 7;
 		ok = 1; yes = 2; no = 3; cancel = 4;
 		windows32s = 11; windows95 = 12; windowsNT3 = 13; windowsNT4 = 14; windows2000 = 15;
-		windows98 = 16; windowsXP = 17; windowsVista = 18;
+		windows98 = 16; windowsXP = 17; windowsVista = 18; windows7 = 19; windows8 = 10;
 		macOS = 21; macOSX = 22; linux = 30; tru64 = 40;
 		firstPos = 0; lastPos = -1;
 		persistent = TRUE; nonPersistent = FALSE;
@@ -104,12 +104,19 @@ DEFINITION Dialog;
 		version: INTEGER;
 		platform: INTEGER;
 		appName: ARRAY 32 OF CHAR;
+		appVersion: ARRAY 32 OF CHAR;
 		language-: Language;
 		user: ARRAY 32 OF CHAR;
 		thickCaret: BOOLEAN;
 		caretPeriod: INTEGER;
+		beep: BOOLEAN;
+		serverMode: BOOLEAN;
 		commandLinePars: String;
 
+	PROCEDURE IsLinux (): BOOLEAN;
+	PROCEDURE IsMac (): BOOLEAN;
+	PROCEDURE IsWindows (): BOOLEAN;
+	PROCEDURE IsWine (): BOOLEAN;
 	PROCEDURE Update (IN x: ANYREC);
 	PROCEDURE UpdateBool (VAR x: BOOLEAN);
 	PROCEDURE UpdateByte (VAR x: BYTE);
@@ -143,6 +150,8 @@ DEFINITION Dialog;
 	PROCEDURE Call (IN cmd, errorMsg: ARRAY OF CHAR; OUT res: INTEGER);
 	PROCEDURE Beep;
 	PROCEDURE Notify (id0, id1: INTEGER; opts: SET);
+	PROCEDURE RunExternal (IN exeName: ARRAY OF CHAR);
+	PROCEDURE OpenExternal (IN fileName: ARRAY OF CHAR);
 
 END Dialog.
 
@@ -203,6 +212,12 @@ This is a possible value of variable platform. It indicates that BlackBox is run
 
 CONST windowsVista
 This is a possible value of variable platform. It indicates that BlackBox is running on Windows Vista.
+
+CONST windows7
+This is a possible value of variable platform. It indicates that BlackBox is running on Windows 7.
+
+CONST windows8
+This is a possible value of variable platform. It indicates that BlackBox is running on Windows 8.
 
 CONST macOS
 This is a possible value of variable platform. It indicates that BlackBox is running on Mac OS 7.x, 8.x, or 9.x. This platform is not supported anymore.
@@ -624,12 +639,17 @@ Indicates the current major version of BlackBox.
 	13 = version 1.3
 	14 = version 1.4
 	15 = version 1.5
+	16 = version 1.6
+	17 = version 1.7
 
 VAR platform: INTEGER
-Indicates on which host operating system the application is running. The currently supported platforms are: windows95, windowsNT3, windowsNT4, windows2000.
+Indicates on which host operating system the application is running.
 
 VAR appName: ARRAY 32 OF CHAR
 Gives the name of the application program which is currently running; the default is "BlackBox".
+
+VAR appVersion: ARRAY 32 OF CHAR
+Gives the version of the application program which is currently running; the default is taken from the System property 'appVersion'.
 
 VAR language-: Language
 Current language in ISO 639 codes. See SetLanguage for more information about language support.
@@ -643,6 +663,18 @@ Determines whether the text subsystem uses a Word-like thick caret or a normal t
 VAR caretPeriod: INTEGER
 Determines the blinking period that the text subsystem uses for caret blinking. The period is given in ticks (1/1000 second). The default is 500, i.e., half a second.
 
+VAR beep: BOOLEAN
+If not checked, Dialog.Beep is silent.
+
+VAR serverMode: BOOLEAN
+Optimizes BlackBox for operating as a server: 
+(1) background task processing while mouse tracking, 
+(2) shortest possible idle periods in main Windows thread (needs a restart of BlackBox in order to be effective).
+
+Warning about possible side-effects caused by background task processing in server mode.
+Note the potential CPU overhead in server mode caused by a smaller idlePeriod.
+For compatible with the BlackBox 1.6 switch off the serverMode.
+
 VAR commandLinePars: String
 Command line parameters that have been passed when starting BlackBox. Variable commandLinePars contains the string entered on the command line following the /PAR option. The string can be specified enclosed in either single or double quotes. Quotes may be omitted if no white space is contained in the string. If no /PAR option is present on the command line, commandLinePars contains the empty string.
 
@@ -651,6 +683,17 @@ Examples:
 /PAR "parameter string"
 /PAR 'A string containing a " can be entered like this'
 
+PROCEDURE IsLinux (): BOOLEAN;
+Returns TRUE if and only if the application is runing under any Linux version. Note that in case of using the Windows emulator Wine IsLinux returns FALSE.
+
+PROCEDURE IsMac (): BOOLEAN;
+Returns TRUE if and only if the application is runing under any MacOS version.
+
+PROCEDURE IsWindows (): BOOLEAN;
+Returns TRUE if and only if the application is runing under any Windows verson. Note that also in case of using the Windows emulator Wine IsWindows returns TRUE.
+
+PROCEDURE IsWine (): BOOLEAN;
+Returns TRUE if and only if the application is runing under the Windows emulator Wine. Note that IsWine() implies IsWindows().
 
 PROCEDURE Update (IN x: ANYREC)
 This procedure should be called after one or several fields of the interactor x have been modified by a program (it is called automatically when a field has been modified interactively via a control). It causes all controls which are bound to fields of this interactor to be updated, and then guards are evaluated.
@@ -738,7 +781,7 @@ PROCEDURE ShowParamMsg (IN str, p0, p1, p2: ARRAY OF CHAR)
 Presents str as a message to the user. The string str is mapped. The additional input parameters p0, p1, and p2 are not mapped. This procedure is used to present urgent messages to the user, typically alerting the user that some action has failed. It shouldn't be used for casual success messages. If a log window is present it is assumed that the user prefers these kind of messages in the log. Therefore the message is printed in the log if one exists, otherwise the message is displayed in a separately opened dialog box.
 
 Pre
-str # NIL	20
+LEN(str$) # 0	20
 
 PROCEDURE ShowMsg PROCEDURE (IN str: ARRAY OF CHAR)
 This is a simplified version of ShowParamMsg which has no additional input parameters.
@@ -747,7 +790,7 @@ Except for performance, equivalent to:
 	ShowParamMsg(str, "", "", "")
 
 Pre
-str # NIL	20
+LEN(str$) # 0	20
 
 PROCEDURE ShowParamStatus (IN str, p0, p1, p2: ARRAY OF CHAR)
 Presents str as a message to the user. The string str is mapped. The additional input parameters p0, p1, and p2 are not mapped. In contrast to ShowParamMsg, ShowParamStatus is used for shorter-lived and less urgent messages; e.g., messages produced and updated during a lengthy process. This procedure should not be used for vital messages, because on some platforms there may be no status area to display status messages, or the message mechanism may be switched off. These conditions are indicated by the global variable showsStatus.
@@ -778,8 +821,7 @@ res IN form
 
 PROCEDURE GetIntSpec (defType: Files.Type; VAR loc: Files.Locator; OUT name: Files.Name)
 Modal dialog
-Ask the user for a file specification (loc, name). defType indicates which file type is desired ("" stands for any file type; other types are platform-specific, e.g., "txt" for Windows Ascii files or "TEXT" for Mac OS Ascii files). loc # NIL indicates a valid file specification.
-Mac OS: loc is ignored.
+Ask the user for a file specification (loc, name). defType indicates which file type is desired ("" stands for any file type; other types are platform-specific, e.g., "txt" for Windows Ascii files). loc # NIL indicates a valid file specification.
 
 Pre
 defType = ""  OR  defType is legal type name on this platform	20
@@ -788,7 +830,6 @@ PROCEDURE GetExtSpec (defName: Files.Name; defType: Files.Type; VAR loc: Files.L
 												OUT name: Files.Name)
 Modal dialog
 Ask the user for a file specification for externalizing a file. defName is the default name presented to the user. defType is the file type which should be used as default type. loc # NIL indicates a valid file specification.
-Mac OS: loc is ignored.
 
 Pre
 defType = ""  OR  defType is legal type name on this platform	20
@@ -806,3 +847,14 @@ Emit a short beep sound.
 
 PROCEDURE Notify
 Used internally.
+
+PROCEDURE RunExternal (IN exeName: ARRAY OF CHAR)
+Run any external application.
+exeName is the command string, which includes the name of an external ".exe" filename, possibly including its full path, and any command line parameters that this application needs.
+Windows OS specific documentation:
+Some applications may close their "Run environment" window before their output can be read. This window can be kept open by adding the string "cmd /k " to the beginning of exeName before calling RunExternal.
+Opening this window can be avoided, with the default ExtCallHook, by setting HostDialog.hideExtRunWindow to TRUE before calling RunExternal, which then resets it to FALSE.
+
+PROCEDURE OpenExternal (IN fileName: ARRAY OF CHAR)
+Open fileName in external application associated with such file type.
+URLs will be opened in default browser application.

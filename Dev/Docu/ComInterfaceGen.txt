@@ -13,7 +13,11 @@ DEFINITION DevComInterfaceGen;
 
 	PROCEDURE Browse;
 	PROCEDURE GenAutomationInterface;
+	PROCEDURE GenCustomInterface;
+	PROCEDURE BrowseTypeLib;
 	PROCEDURE InitDialog;
+	PROCEDURE Open;
+	PROCEDURE Close;
 	PROCEDURE ListBoxNotifier (op, from, to: INTEGER);
 	PROCEDURE TextFieldNotifier (op, from, to: INTEGER);
 	... plus some private items ...	
@@ -34,13 +38,6 @@ Module DevComInterfaceGen provides services to automatically generate Automation
 3. Constant name is equal to some type name. Solution: Change constant name.
 
 
-A possible menu using commands from this module:
-
-MENU "Automation"
-	"Generate Automation Interface"	""	"DevComInterfaceGen.InitDialog; StdCmds.OpenToolDialog('Dev/Rsrc/ComInterfaceGen', 'Generate Automation Interface')"	""
-END
-
-
 VAR dialog: RECORD
 The interactor for the Generate Automation Interface dialog.
 
@@ -58,10 +55,22 @@ PROCEDURE Browse
 Open a standard open file dialog box, to let the user choose a type library or DLL file.
 
 PROCEDURE GenAutomationInterface
-Generate the interface module according to the parameters in dialog.
+Generates the automation interface module according to the parameters in dialog.
+
+PROCEDURE GenCustomInterface
+Generates the custom interface module according to the parameters in dialog.
+
+PROCEDURE BrowseTypeLib
+Generates an interface module suitable for browsing the contents of the type library according to the parameters in dialog.
 
 PROCEDURE InitDialog
-Call this command before opening the Generate Automation Interface dialog. It initializes the dialog interactor.
+Initializes the dialog interactor.
+
+PROCEDURE Open
+Calls InitDialog and opens the dialog if it was closed. Otherwise brings the dialog to front.
+
+PROCEDURE Close
+Closes the dialog and clears the state.
 
 PROCEDURE ListBoxNotifier (op, from, to: INTEGER)
 PROCEDURE TextFieldNotifier (op, from, to: INTEGER)

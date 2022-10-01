@@ -68,12 +68,6 @@ MODULE DevHeapSpy;
 		s[len - 1] := 0X
 	END Append;
 
-	PROCEDURE SAppend (VAR s: ARRAY OF CHAR; t: ARRAY OF SHORTCHAR);
-		VAR str: ARRAY 256 OF CHAR;
-	BEGIN
-		str := t$; Append(s, str)
-	END SAppend;
-
 	PROCEDURE SizeOf (f: SHORTCHAR; t: Kernel.Type): INTEGER;
 		VAR x: INTEGER;
 	BEGIN
@@ -100,8 +94,8 @@ MODULE DevHeapSpy;
 		END
 	END FormOf;
 		
-	PROCEDURE WriteName (t: Kernel.Type; VAR s: ARRAY OF CHAR);
-		VAR name: Kernel.Name; f: SHORTCHAR;
+	PROCEDURE WriteName (t: Kernel.Type; OUT s: ARRAY OF CHAR);
+		VAR modName, name: Kernel.Name; f: SHORTCHAR;
 	BEGIN
 		f := FormOf(t);
 		CASE f OF
@@ -123,10 +117,12 @@ MODULE DevHeapSpy;
 		| 0FX: s := "STRING"
 		| 10X, 11X, 13X:
 			IF (t.id DIV 256 # 0) & (t.mod.refcnt >= 0) THEN
-				s := t.mod.name$; Append(s, ".");
-				Kernel.GetTypeName(t, name); SAppend(s, name)
+				Kernel.GetModName(t.mod, modName); s := modName$; Append(s, ".");
+				Kernel.GetTypeName(t, name); Append(s, name)
+				(* s := modName + "." + name; *)
 			ELSIF f = 11X THEN
-				s := t.mod.name$; Append(s, ".RECORD"); 
+				Kernel.GetModName(t.mod, modName); s := modName$; Append(s, ".RECORD"); 
+				(* s := modName + ".RECORD";  *)
 			ELSIF f = 13X THEN
 				s := "POINTER"
 			ELSE
@@ -405,15 +401,16 @@ MODULE DevHeapSpy;
 
 	PROCEDURE SearchAnchor (blk: Block; VAR path: ARRAY OF CHAR);
 		VAR m, mod: Kernel.Module; ref, offs, i, j, k, p, x, a, n: INTEGER; offsets: ARRAY 1 OF INTEGER;
-			 t, f: SHORTCHAR; desc: Kernel.Type; name, title: Kernel.Name; tag, typ: Kernel.Type;
+			 t, f: SHORTCHAR; desc: Kernel.Type; modName, name: Kernel.Name; tag, typ: Kernel.Type;
+			 res: INTEGER; nn: Kernel.Utf8Name;
 	BEGIN
 		mod := NIL; offs := 0;
 		m := Kernel.ThisLoadedMod("HostWindows");
 		IF m # NIL THEN
-			ref := m.refs; Kernel.GetRefProc(ref, x, name);
+			ref := m.refs; Kernel.GetRefProc(ref, x, nn); Strings.Utf8ToString(nn, name, res);
 			IF x # 0 THEN
 				REPEAT
-					Kernel.GetRefVar(ref, t, f, desc, a, name)
+					Kernel.GetRefVar(ref, t, f, desc, a, nn); Strings.Utf8ToString(nn, name, res);
 				UNTIL (t # 1X) OR (name = "winAnchor");
 				IF t = 1X THEN
 					S.GET(m.data + a, p);
@@ -442,13 +439,13 @@ MODULE DevHeapSpy;
 		ResetMarks;
 		IF offs # 0 THEN
 			IF mod # NIL THEN
-				path := mod.name$; Append(path, ".");
-				ref := mod.refs; Kernel.GetRefProc(ref, x, name);
+				Kernel.GetModName(mod, modName); path := modName$; Append(path, ".");
+				ref := mod.refs; Kernel.GetRefProc(ref, x, nn); Strings.Utf8ToString(nn, name, res);
 				IF x # 0 THEN
 					REPEAT
-						Kernel.GetRefVar(ref, t, f, desc, a, name)
+						Kernel.GetRefVar(ref, t, f, desc, a, nn); Strings.Utf8ToString(nn, name, res);
 					UNTIL (t # 1X) OR (offs >= a) & (offs < a + SizeOf(f, desc));
-					IF t = 1X THEN SAppend(path, name)
+					IF t = 1X THEN Strings.Utf8ToString(nn, name, res); Append(path, name);
 					ELSE Append(path, "???")
 					END
 				END
@@ -466,7 +463,7 @@ MODULE DevHeapSpy;
 					UNTIL (j < typ.fields.num) OR (k > tag.id DIV 16 MOD 16);
 					IF j < typ.fields.num THEN
 						Kernel.GetObjName(typ.mod, S.ADR(typ.fields.obj[j]), name);
-						Append(path, "."); SAppend(path, name)
+						Append(path, "."); Strings.Utf8ToString(nn, name, res); Append(path, name);
 					ELSE
 						Append(path, ".?")
 					END
@@ -610,7 +607,7 @@ MODULE DevHeapSpy;
 	END Do;
 
 	PROCEDURE ShowHeap*;
-		VAR v: View; action: Action; d: Documents.Document;
+		VAR v: View; d: Documents.Document;
 	BEGIN
 		NEW(v); v.height := ViewHeight();
 		d := Documents.dir.New(v, W, v.height);

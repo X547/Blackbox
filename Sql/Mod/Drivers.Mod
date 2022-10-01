@@ -108,6 +108,12 @@ MODULE SqlDrivers;
 				column >= 0	22
 				column < columns	23 **)
 
+	PROCEDURE (t: Table) ReadLong* (row, column: INTEGER; OUT val: LONGINT), NEW, ABSTRACT;
+	(** Pre: row >= 0	20
+				row < rows	21
+				column >= 0	22
+				column < columns	23 **)
+
 	PROCEDURE (t: Table) ReadReal* (row, column: INTEGER; OUT val: REAL), NEW, ABSTRACT;
 	(** Pre: row >= 0	20
 				row < rows	21

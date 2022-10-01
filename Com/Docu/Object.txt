@@ -1,5 +1,4 @@
-ComObject Example
-
+ComObject Example
 This example implements a simple OLE server which provides the following OLE object:
 
 

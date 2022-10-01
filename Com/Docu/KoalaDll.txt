@@ -1,5 +1,4 @@
-ComKoalaDll Example
-
+ComKoalaDll Example
 This version of the Koala example can be linked as an independent DLL. It can be tested with the ObjUser.exe program which is provided with the book "Inside OLE". Note that you have to set the ObjUser.exe program into DLL mode.
 
 The implementation of the DLL only slightly differs from the first ComKoala implementation. One difference is that a counter is provided which counts the number of instances. This counter is incremented whenever a new object is created (CreateInstance method), and it is decremented if the last interface reference is removed (RELEASE finalizer).

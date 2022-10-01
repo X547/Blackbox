@@ -11,77 +11,61 @@ MODULE StdStamps;
 
 **)
 
-(*
-	StdStamps are used to keep track of document changes, in particular program texts.
-	StdStamps carry a sequence number and a fingerprint of the document with them.
-	Each time the document (and therefore its fingerprint) is changed and stored,
-	the sequence number is incremented. (When determining the fingerprint of the
-	document, whitespace is ignored, except in string literals.)
-	
-	Each StdStamp also keeps track of the history of most recent changes.
-	For the last maxHistoryEntries sequence numbers, the date and time,
-	and an optional one-line comment is stored. To avoid too many entries in the history
-	while working on a module, the most recent history entry is overwritten upon the
-	generation of a new sequence number if the current date is the same as the date in
-	the history entry.
-
-*)
-
 	IMPORT
 		SYSTEM, (* SYSTEM.ROT only, for fingerprint calculation *)
-		Strings, Dates, StdCmds,
+		Dialog, Strings, Dates, StdCmds,
 		Ports, Models, Stores, Containers, Properties, Views, Controllers, Fonts,
 		TextModels, TextSetters, TextMappers, TextViews, TextRulers;
 
 	CONST
 		setCommentKey = "#Std:Set Comment";
-		maxHistoryEntries = 25;
-		minVersion = 0; origStampVersion = 0; thisVersion = 2;
+		maxHistoryEntries = 25;	(* prepared for future expansion *)
+		minVersion = 0; origStampVersion = 0; noSnrVersion = 1; snrVersion = 2; wideCommentVersion = 3; 
+		maxVersion = 3;
 		
 	TYPE
-		History = ARRAY maxHistoryEntries OF RECORD
+		History = POINTER TO ARRAY OF RECORD
 			fprint, snr: INTEGER;	(* fingerprint, sequence number *)
 			date: INTEGER;			(* days since 1/1/1 *)
 			time: INTEGER;			(* min + 64 * hour *)
 			comment: POINTER TO ARRAY OF CHAR;	(* nil if no comment  *)
 		END;
-			
+		
+		Comment* = ARRAY 64 OF CHAR;
+		
 		StdView = POINTER TO RECORD (Views.View)
-			(*--snr: LONGINT;*)			
+			(*--snr: LONGINT;   for version 1*)			
 			nentries: INTEGER;	(* number of entries in history *)
 			history: History;			(* newest entry in history[0] *)
-			cache: ARRAY 64 OF CHAR;
+			comment0: Comment;	(* comment for new history entry or empty *)
 		END;
 
 		SetCmtOp = POINTER TO RECORD (Stores.Operation)
 			stamp: StdView;
+			age: INTEGER;
 			oldcomment: POINTER TO ARRAY OF CHAR;
 		END;
 
 	VAR
 		comment*: RECORD
-			s*: ARRAY 64 OF CHAR;
+			stamp: StdView;
+			snrList*: Dialog.List;
+			date-: Dates.Date;
+			s*: Comment;
 		END;
-
 
 	PROCEDURE (op: SetCmtOp) Do;
 		VAR temp: POINTER TO ARRAY OF CHAR;
 	BEGIN
-		temp := op.stamp.history[0].comment;
-		op.stamp.history[0].comment := op.oldcomment;
+		IF op.age = 0 THEN
+			NEW(temp, LEN(op.stamp.comment0) + 1); temp^ := op.stamp.comment0$;
+			op.stamp.comment0 := op.oldcomment^$
+		ELSE
+			temp := op.stamp.history[op.age - 1].comment;
+			op.stamp.history[op.age - 1].comment := op.oldcomment
+		END;
 		op.oldcomment := temp;
 	END Do;
-
-	PROCEDURE Format (v: StdView);
-		VAR s: ARRAY 64 OF CHAR; d: Dates.Date; t: INTEGER;
-	BEGIN
-		t := v.history[0].time;
-		Dates.DayToDate(v.history[0].date, d);
-		Dates.DateToString(d, Dates.plainAbbreviated, s); v.cache := s$;
-		Strings.IntToStringForm(v.history[0].snr, Strings.decimal, 4, "0", FALSE, s);
-		v.cache := v.cache + " (" + s + ")"
-	END Format;
-
 
 	PROCEDURE FontContext (v: StdView): Fonts.Font;
 		VAR c: Models.Context;
@@ -114,40 +98,85 @@ MODULE StdStamps;
 		RETURN fp;
 	END CalcFP;
 
+	PROCEDURE FillComment (v: StdView; age: INTEGER; rebuild: BOOLEAN);
+		VAR i: INTEGER; s: ARRAY 10 OF CHAR;
+	BEGIN
+		comment.stamp := v;
+		IF rebuild THEN
+			comment.snrList.SetLen(v.nentries + 1);
+			comment.snrList.SetItem(0, "#Std:new");
+			FOR i := 1 TO v.nentries DO
+				Strings.IntToString(v.history[i - 1].snr, s);
+				comment.snrList.SetItem(i, s);
+			END ;
+			comment.snrList.index := age;
+			Dialog.UpdateList(comment.snrList)
+		END;
+		IF age = 0 THEN
+			Dates.GetDate(comment.date);
+			comment.s := v.comment0$
+		ELSE DEC(age);
+			Dates.DayToDate(v.history[age].date, comment.date);
+			IF  v.history[age].comment = NIL THEN comment.s := '' ELSE comment.s := v.history[age].comment$ END
+		END;
+		Dialog.Update(comment)
+	END FillComment;
+
 	PROCEDURE Update (v: StdView; forcenew: BOOLEAN);
-		VAR fp: INTEGER; i: INTEGER; ndays: INTEGER; d: Dates.Date; t: Dates.Time;
+		VAR fp, ndays, i: INTEGER; d: Dates.Date; t: Dates.Time;
 	BEGIN
 		IF (v.context # NIL) & (v.context IS TextModels.Context) THEN
 			fp := CalcFP(v.context(TextModels.Context).ThisModel());
-			IF (fp # v.history[0].fprint) OR forcenew THEN
+			IF (fp # v.history[0].fprint) OR forcenew OR (v.comment0 # "") THEN
 				Dates.GetDate(d); Dates.GetTime(t);
 				ndays := Dates.Day(d);
 				IF (ndays # v.history[0].date) OR forcenew THEN
+					IF  v.nentries = LEN(v.history) THEN	(* find oldest uncommented entry *)
+						i := LEN(v.history) - 1;
+						WHILE (i > 0) & (v.history[i].comment # NIL) & (v.history[i].comment[0] # 0X) DO DEC(i) END;
+						IF i = 0 THEN i := LEN(v.history) - 1 END
+					ELSE i := v.nentries; INC(v.nentries)
+					END;
 					(* move down entries in history list *)
-					i := maxHistoryEntries-1;
 					WHILE i > 0 DO
 						v.history[i] := v.history[i-1];
 						DEC(i);
 					END;
-					v.history[0].comment := NIL;
+					v.history[0].comment := NIL
+				ELSIF v.nentries = 0 THEN v.nentries := 1
 				END;
-				IF v.nentries < maxHistoryEntries THEN INC(v.nentries) END;
 				INC(v.history[0].snr);
 				v.history[0].fprint := fp;
 				v.history[0].date := ndays;
 				v.history[0].time := t.minute + t.hour*64;
-				Format(v);
+				IF v.comment0 # "" THEN
+					NEW(v.history[0].comment, LEN(v.comment0$) + 1);
+					v.history[0].comment^ := v.comment0$; v.comment0 := ""
+				END;
 				Views.Update(v, Views.keepFrames);
+				IF comment.stamp = v THEN FillComment(v, 1, TRUE) END
 			END;
 		END;
 	END Update;
 
+	PROCEDURE HasWideChars (IN s: ARRAY OF CHAR): BOOLEAN;
+		VAR i: INTEGER; ch: CHAR;
+	BEGIN i := 0; ch := s[0];
+		WHILE (ch # 0X) & (ch <= 0FFX) DO INC(i); ch := s[i] END;
+		RETURN ch # 0X
+	END HasWideChars;
+
 	PROCEDURE (v: StdView) Externalize (VAR wr: Stores.Writer);
-		VAR i, len: INTEGER;
+		VAR i, len: INTEGER; version: INTEGER;
 	BEGIN
-		Update(v, FALSE);
+		Update(v, v.comment0 # "");
 		v.Externalize^(wr);
-		wr.WriteVersion(thisVersion);
+		i := 0; 
+		WHILE (i < v.nentries) & ~((v.history[i].comment # NIL) & HasWideChars(v.history[i].comment)) DO
+			INC(i)
+		END;
+		IF i < v.nentries THEN version := wideCommentVersion ELSE version := snrVersion END;
+		wr.WriteVersion(version);
 		(*--wr.WriteLInt(v.snr);*)
 		wr.WriteXInt(v.nentries);
 		FOR i := 0 TO v.nentries-1 DO
@@ -155,25 +184,30 @@ MODULE StdStamps;
 			wr.WriteInt(v.history[i].snr);
 			wr.WriteInt(v.history[i].date);
 			wr.WriteXInt(v.history[i].time);
-			IF v.history[i].comment # NIL THEN
+			IF (v.history[i].comment # NIL) & (LEN(v.history[i].comment$) > 0) THEN
 				len := LEN(v.history[i].comment$);
 				wr.WriteXInt(len);
-				wr.WriteXString(v.history[i].comment^);
+				IF version >= wideCommentVersion THEN
+					wr.WriteString(v.history[i].comment)
+				ELSE
+					wr.WriteXString(v.history[i].comment)
+				END
 			ELSE wr.WriteXInt(0);
 			END
 		END;
 	END Externalize;
 
 	PROCEDURE (v: StdView) Internalize (VAR rd: Stores.Reader);
-		VAR version: INTEGER; format: BYTE; i, len: INTEGER;
+		VAR version: INTEGER; format: BYTE; k, purge, i, len: INTEGER;
 			d: Dates.Date; t: Dates.Time;
 	BEGIN
 		v.Internalize^(rd);
 		IF ~rd.cancelled THEN
-			rd.ReadVersion(minVersion, thisVersion, version);
+			rd.ReadVersion(minVersion, maxVersion, version);
 			IF ~rd.cancelled THEN
 				IF version = origStampVersion THEN (* deal with old StdStamp format *)
 					(* would like to calculate fingerprint, but hosting model not available at this time *)
+					NEW(v.history, maxHistoryEntries);
 					v.history[0].fprint := 0;
 					v.history[0].snr := 1; v.nentries := 1;
 					rd.ReadXInt(d.year); rd.ReadXInt(d.month); rd.ReadXInt(d.day);
@@ -182,24 +216,41 @@ MODULE StdStamps;
 					v.history[0].date := Dates.Day(d);
 					v.history[0].time := t.minute + t.hour*64;
 				ELSE
-					IF version = 1 THEN rd.ReadInt(v.history[0].snr) END; (* red text: to be removed soon *)
+					IF version = noSnrVersion THEN NEW(v.history, maxHistoryEntries); rd.ReadInt(v.history[0].snr) END;
 					rd.ReadXInt(v.nentries);
-					FOR i := 0 TO v.nentries-1 DO
+					IF version > noSnrVersion THEN NEW(v.history, MAX(v.nentries, maxHistoryEntries)) END;
+					purge := 0;
+					FOR k := 0 TO v.nentries - 1 DO
+						i := k - purge;
 						rd.ReadInt(v.history[i].fprint);
-						IF version > 1 THEN rd.ReadInt(v.history[i].snr)
-						ELSIF (* (version = 1) & *) i > 0 THEN v.history[i].snr := v.history[i-1].snr - 1;
-						END; (* red text: to be removed soon *)
+						IF version > noSnrVersion THEN rd.ReadInt(v.history[i].snr)
+						ELSIF (* (version = noSnrVersion) & *) i > 0 THEN v.history[i].snr := v.history[i-1].snr - 1;
+						END;
 						rd.ReadInt(v.history[i].date);
 						rd.ReadXInt(v.history[i].time);
 						rd.ReadXInt(len);
 						IF len > 0 THEN
 							NEW(v.history[i].comment, len + 1);
-							rd.ReadXString(v.history[i].comment^);
-						ELSE v.history[i].comment := NIL;
+							IF version >= wideCommentVersion THEN
+								rd.ReadString(v.history[i].comment)
+							ELSE
+								rd.ReadXString(v.history[i].comment)
+							END
+						ELSE v.history[i].comment := NIL
+						END;
+						IF (i > 0) & (v.history[i].date = v.history[i-1].date) THEN
+							(* purge uncommented entry if another entry for the same date exists *)
+							IF v.history[i-1].comment = NIL THEN v.history[i-1].comment := v.history[i].comment; INC(purge)
+							ELSIF v.history[i].comment = NIL THEN INC(purge)
+							END
 						END
 					END;
-				END;
-				Format(v);
+					DEC(v.nentries, purge);
+					IF version < wideCommentVersion THEN (* cleanup *)
+						i := v.nentries - 1;
+						WHILE (i > 0) & (v.history[i].date = 0) DO DEC(i); DEC(v.nentries) END
+					END
+				END
 			END
 		END
 	END Internalize;
@@ -211,9 +262,10 @@ MODULE StdStamps;
 		WITH source: StdView DO
 			(*--v.snr := source.snr;*)
 			v.nentries := source.nentries;
-			v.history := source.history;
-			v.cache := source.cache;
-			FOR i := 0 TO v.nentries - 1 DO
+			v.comment0 := source.comment0;
+			NEW(v.history, LEN(source.history));
+			FOR i := 0 TO MAX(v.nentries - 1, 1) DO
+				v.history[i] := source.history[i];
 				IF source.history[i].comment # NIL THEN
 					NEW(v.history[i].comment, LEN(source.history[i].comment$) + 1);
 					v.history[i].comment^ := source.history[i].comment^$;
@@ -224,18 +276,21 @@ MODULE StdStamps;
 
 	PROCEDURE (v: StdView) Restore (f: Views.Frame; l, t, r, b: INTEGER);
 		VAR a: TextModels.Attributes; color: Ports.Color; c: Models.Context; font: Fonts.Font;
-			asc, dsc, fw: INTEGER;
+			asc, dsc, fw: INTEGER; d: Dates.Date; date: ARRAY 32 OF CHAR; seq: ARRAY 8 OF CHAR;
 	BEGIN
 		c := v.context;
 		IF (c # NIL) & (c IS TextModels.Context) THEN
 			a := v.context(TextModels.Context).Attr();
 			font := a.font;
-			color := a.color;
-		ELSE font := Fonts.dir.Default(); color := Ports.black;
+			color := a.color
+		ELSE font := Fonts.dir.Default(); color := Ports.black
 		END;
 		font.GetBounds(asc, dsc, fw);
 		f.DrawLine(f.l, asc + f.dot, f.r, asc + f.dot, 1, Ports.grey25 );
-		f.DrawString(0, asc, color, v.cache, font);
+		Dates.DayToDate(v.history[0].date, d);
+		Dates.DateToString(d, Dates.plainAbbreviated, date);
+		Strings.IntToStringForm(v.history[0].snr, Strings.decimal, 4, "0", FALSE, seq);
+		f.DrawString(0, asc, color, date +  " (" + seq + ")", font)
 	END Restore;
 
 	PROCEDURE SizePref (v: StdView; VAR p: Properties.SizePref);
@@ -292,12 +347,17 @@ MODULE StdStamps;
 		f.ConnectTo(text);
 		attr := f.rider.attr;
 		f.rider.SetAttr(TextModels.NewStyle(attr, {Fonts.italic}));
-		f.WriteString("seq nr."); f.WriteTab;
-		f.WriteString("fingerprint"); f.WriteTab;
-		f.WriteString("date and time"); f.WriteTab;
-		f.WriteString("comment"); f.WriteLn;
+		Dialog.MapString("#Std:seq nr.", s); f.WriteString(s); f.WriteTab;
+		Dialog.MapString("#Std:fingerprint", s); f.WriteString(s); f.WriteTab;
+		Dialog.MapString("#Std:date and time", s); f.WriteString(s); f.WriteTab;
+		Dialog.MapString("#Std:comment", s); f.WriteString(s); f.WriteLn;
 		f.rider.SetAttr(attr); f.WriteLn;
 		(*--n := v.snr;*)
+		IF v.comment0 # "" THEN
+			Dialog.MapString("#Std:new", s); f.WriteString(s); f.WriteTab; f.WriteTab;
+			Dates.GetDate(d); Dates.DateToString(d, Dates.plainAbbreviated, s); f.WriteString(s);
+			f.WriteTab; f.WriteString(v.comment0); f.WriteLn
+		END ;
 		FOR i := 0 TO v.nentries-1 DO
 			f.WriteIntForm(v.history[i].snr, 10, 4, "0", FALSE);
 			(*--DEC(n);*)
@@ -325,6 +385,7 @@ MODULE StdStamps;
 
 	PROCEDURE Track (v: StdView; f: Views.Frame; x, y: INTEGER; buttons: SET);
 		VAR c: Models.Context; w, h: INTEGER; isDown, in, in0: BOOLEAN; m: SET;
+			d: Dates.Date; today, age: INTEGER;
 	BEGIN
 		c := v.context; c.GetSize(w, h); in0 := FALSE; in := TRUE;
 		REPEAT
@@ -337,10 +398,12 @@ MODULE StdStamps;
 		IF in0 THEN
 			f.MarkRect(0, 0, w, h, Ports.fill, Ports.invert, Ports.hide);
 			IF Controllers.modify IN m THEN
-				IF v.history[0].comment # NIL THEN comment.s := v.history[0].comment^$;
-				ELSE comment.s := "";
+				Dates.GetDate(d); today := Dates.Day(d);
+				IF (v.nentries = 0) OR (v.history[0].date # today) OR (v.comment0 # "") THEN age := 0 
+				ELSE age := 1
 				END;
-				StdCmds.OpenToolDialog("Std/Rsrc/Stamps", "Comment");
+				FillComment(v, age, TRUE);
+				StdCmds.OpenToolDialog("Std/Rsrc/Stamps", "#Std:Comment");
 			ELSE ShowHistory(v);
 			END
 		END
@@ -357,6 +420,17 @@ MODULE StdStamps;
 		END
 	END HandleCtrlMsg;
 
+	PROCEDURE GetActiveStamp (): StdView;
+		VAR context: Models.Context;
+	BEGIN
+		IF comment.stamp # NIL THEN
+			context := comment.stamp.context;
+			IF context # NIL THEN
+				IF context.ThisModel() = TextViews.FocusText() THEN RETURN comment.stamp END
+			END
+		END;
+		RETURN NIL
+	END GetActiveStamp;
 
 	(* ------------ programming interface: ---------------------- *)
 
@@ -376,31 +450,35 @@ MODULE StdStamps;
 		RETURN v IS StdView;
 	END IsStamp;
 
-	PROCEDURE GetInfo* (v: Views.View; VAR snr, historylen: INTEGER);
+	PROCEDURE GetInfo* (v: Views.View; OUT historylen: INTEGER);
 	BEGIN
 		ASSERT(v IS StdView, 20);
 		WITH v: StdView DO
-			snr := v.history[0].snr; historylen := v.nentries;
+			historylen := v.nentries;
 		END
 	END GetInfo;
 
 	PROCEDURE GetData* (v: Views.View; entryno: INTEGER;
-				VAR fprint: INTEGER; VAR date: Dates.Date; VAR time: Dates.Time);
+				OUT snr, fprint: INTEGER; OUT date: Dates.Date; OUT time: Dates.Time; 
+				OUT comment: ARRAY OF CHAR);
 	BEGIN
 		ASSERT(v IS StdView, 20);
 		WITH v: StdView DO
-			IF entryno <= v.nentries THEN
-				fprint := v.history[entryno].fprint;
-				Dates.DayToDate(v.history[entryno].date, date);
-				time.minute := v.history[entryno].time MOD 64;
-				time.minute := v.history[entryno].time DIV 64;
-				time.second := 0;
+			ASSERT(entryno < v.nentries, 21);
+			snr := v.history[entryno].snr;
+			fprint := v.history[entryno].fprint;
+			Dates.DayToDate(v.history[entryno].date, date);
+			time.hour := v.history[entryno].time DIV 64;
+			time.minute := v.history[entryno].time MOD 64;
+			time.second := 0;
+			IF v.history[entryno].comment # NIL THEN comment := v.history[entryno].comment^$
+			ELSE comment := ""
 			END
 		END
 	END GetData;
 
 	(** Insert new history entry with comment in v. *)
-	PROCEDURE Stamp* (v: Views.View; comment: ARRAY OF CHAR);
+	PROCEDURE Stamp* (v: Views.View; IN comment: ARRAY OF CHAR);
 	BEGIN
 		ASSERT(v IS StdView, 20);
 		WITH v: StdView DO
@@ -413,26 +491,23 @@ MODULE StdStamps;
 	PROCEDURE New* (): Views.View;
 		VAR v: StdView; d: Dates.Date; t: Dates.Time;
 	BEGIN
-		NEW(v); v.history[0].snr := 0; v.nentries := 0;
-		v.history[0].fprint := 0;
+		NEW(v); NEW(v.history, maxHistoryEntries); v.history[0].snr := 0; v.nentries := 0;
+		v.history[0].fprint := -1;
 		Dates.GetDate(d); Dates.GetTime(t);
 		v.history[0].date := Dates.Day(d);
 		v.history[0].time := t.minute + t.hour*64;
-		Format(v);
 		RETURN v;
 	END New;
 
 	PROCEDURE SetComment*;
-		VAR v: Views.View; op: SetCmtOp;
+		VAR v: StdView; op: SetCmtOp;
 	BEGIN
-		v := GetFirstInText(TextViews.FocusText());
+		v := GetActiveStamp();
 		IF v # NIL THEN
-			WITH v: StdView DO
-				NEW(op); op.stamp := v;
-				NEW(op.oldcomment, LEN(comment.s$) + 1);
-				op.oldcomment^ := comment.s$;
-				Views.Do(v, setCommentKey, op);
-			END
+			NEW(op); op.stamp := v; op.age := comment.snrList.index;
+			NEW(op.oldcomment, LEN(comment.s$) + 1);
+			op.oldcomment^ := comment.s$;
+			Views.Do(v, setCommentKey, op)
 		END
 	END SetComment;
 
@@ -440,5 +515,18 @@ MODULE StdStamps;
 	BEGIN
 		Views.Deposit(New())
 	END Deposit;
+
+	PROCEDURE Guard* (VAR par: Dialog.Par);
+	BEGIN
+		par.disabled := GetActiveStamp() = NIL
+	END Guard;
+
+	PROCEDURE SnrNotifier* (op, from, to: INTEGER);
+		VAR v: StdView;
+	BEGIN
+		IF op = Dialog.changed THEN
+			FillComment(comment.stamp, comment.snrList.index, FALSE)
+		END
+	END SnrNotifier;
 
 END StdStamps.

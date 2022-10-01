@@ -59,4 +59,3 @@ This procedure can be used to quickly initialize a FORMATETC structure.
 	
 
 ComTools  sources
-	

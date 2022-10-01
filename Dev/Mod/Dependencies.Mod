@@ -103,14 +103,15 @@ MODULE DevDependencies;
 	END RNum;
 	
 	PROCEDURE RName (reader: Files.Reader; OUT name: ARRAY OF CHAR);
-		VAR b: BYTE; i, n: INTEGER;
+		VAR b: BYTE; i, n, res: INTEGER; s: ARRAY 256 OF SHORTCHAR;
 	BEGIN
 		i := 0; n := LEN(name) - 1; reader.ReadByte(b);
-		WHILE (i < n) & (b # 0) DO name[i] := SHORT(CHR(b)); INC(i); reader.ReadByte(b) END;
+		WHILE (i < n) & (b # 0) DO s[i] := SHORT(CHR(b)); INC(i); reader.ReadByte(b) END;
 		WHILE b # 0 DO reader.ReadByte(b) END;
-		name[i] := 0X
+		s[i] := 0X;
+		Strings.Utf8ToString(s, name, res); ASSERT(res = 0)
 	END RName;
-				
+	
 	PROCEDURE GetImports(IN name: String; 
 									OUT imps: POINTER TO ARRAY OF String; OUT nofImps: INTEGER; OUT found: BOOLEAN);
 		VAR 
@@ -765,6 +766,18 @@ MODULE DevDependencies;
 		Views.Do(v, "Move", mo)
 	END HandleMove;
 	
+	PROCEDURE OpName(op, arg: ARRAY OF CHAR):  POINTER TO ARRAY OF CHAR;
+		VAR len: INTEGER; s: POINTER TO ARRAY OF CHAR;
+	BEGIN
+		len := LEN(op$) + 1(*space*) + LEN(arg$) + 2(*quotes*) + 1(*0X*); 
+		NEW(s, len); 
+		s^ := op$ + ' "' + arg$ + '"';
+		IF len > LEN(Stores.OpName) THEN
+			Strings.Replace(s, LEN(Stores.OpName) - 5, len - LEN(Stores.OpName) + 3, "...");
+		END;
+		RETURN s
+	END OpName;
+	
 	PROCEDURE (v: View) HandleCtrlMsg (f: Views.Frame; VAR msg: Controllers.Message;  VAR focus: Views.View);
 		CONST movedist = Ports.mm * Ports.mm; arrowdist = Ports.mm;
 		VAR
@@ -779,9 +792,9 @@ MODULE DevDependencies;
 				IF v.OnSelectedObject(msg.x, msg.y) THEN
 					NEW(e); e.view := v; e.AddSelection;
 					IF (e.mods # NIL) & (e.subs = NIL) & (e.mods.next = NIL) THEN
-						e.expand := FALSE; Views.Do(v, "Collapse " + e.mods.list.name, e)
+						e.expand := FALSE; Views.Do(v, OpName("Collapse", e.mods.list.name)$, e)
 					ELSIF (e.mods = NIL) & (e.subs # NIL) & (e.subs.next = NIL) THEN
-						e.expand := TRUE; Views.Do(v, "Expand " + e.subs.sslist.name, e)
+						e.expand := TRUE; Views.Do(v, OpName("Expand", e.subs.sslist.name)$, e)
 					END
 				END
 			ELSE

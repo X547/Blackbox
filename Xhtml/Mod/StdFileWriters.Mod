@@ -11,7 +11,7 @@ MODULE XhtmlStdFileWriters;
 
 **)
 
-	IMPORT Files, XhtmlWriters;
+	IMPORT Files, Strings, XhtmlWriters, XhtmlEntitySets;
 
 	CONST tab = 09X; line = 0AX;
 
@@ -32,32 +32,39 @@ MODULE XhtmlStdFileWriters;
 
 	(* generic output procedures *)
 
-	PROCEDURE Char (wr:Writer; ch: CHAR);
-	BEGIN	(* UTF-8 format *)
-		IF ch <= 7FX THEN
-			wr.rider.WriteByte(SHORT(SHORT(ORD(ch))))
-		ELSIF ch <= 7FFX THEN
-			wr.rider.WriteByte(SHORT(SHORT(-64 + ORD(ch) DIV 64)));
-			wr.rider.WriteByte(SHORT(SHORT(-128 + ORD(ch) MOD 64)))
-		ELSE
-			wr.rider.WriteByte(SHORT(SHORT(-32 + ORD(ch) DIV 4096)));
-			wr.rider.WriteByte(SHORT(SHORT(-128 + ORD(ch) DIV 64 MOD 64)));
-			wr.rider.WriteByte(SHORT(SHORT(-128 + ORD(ch) MOD 64)))
-		END
-	END Char;
-
 	PROCEDURE String (wr: Writer; IN str: ARRAY OF CHAR);
-		VAR i: INTEGER; ch: CHAR;
+		VAR ch: CHAR; i, res: INTEGER; s1: ARRAY 2 OF CHAR; utf8Str: ARRAY 4 OF SHORTCHAR;
+			j: INTEGER; u: SHORTCHAR;
 	BEGIN
 		i := 0; ch := str[0];
-		WHILE ch # 0X DO Char(wr, ch); INC(i); ch := str[i] END
+		WHILE ch # 0X DO
+			IF ch <= 7FX THEN wr.rider.WriteByte(SHORT(SHORT(ORD(ch))))
+			ELSE s1[0] := ch; s1[1] := 0X; Strings.StringToUtf8(s1, utf8Str, res); ASSERT(res = 0);
+				j := 0; u := utf8Str[0];
+				WHILE u # 0X DO wr.rider.WriteByte(SHORT(ORD(u))); INC(j); u := utf8Str[j] END
+			END;
+			INC(i); ch := str[i]
+		END
 	END String;
+
+	PROCEDURE HtmlEncodedString (wr: Writer; IN str: ARRAY OF CHAR);
+		VAR ch: CHAR; i: INTEGER; entityStr: ARRAY 10 OF CHAR;
+	BEGIN
+		i := 0; ch := str[0];
+		WHILE ch # 0X DO
+			XhtmlEntitySets.MapCharToEntity(ch, entityStr);
+			String(wr, entityStr);
+			INC(i); ch := str[i]
+		END
+	END HtmlEncodedString;
 
 	PROCEDURE Tabs (wr: Writer);
 		VAR i: INTEGER;
 	BEGIN
 		IF ~wr.current.preserve THEN
-			i := 0; WHILE i # wr.level DO Char(wr, tab); INC(i) END
+			i := 0; WHILE i # wr.level DO
+				wr.rider.WriteByte(ORD(tab));
+			INC(i) END
 		END
 	END Tabs;
 
@@ -78,7 +85,7 @@ MODULE XhtmlStdFileWriters;
 	PROCEDURE (wr: Writer) Ln;
 	BEGIN
 		IF ~wr.current.preserve THEN
-			Char(wr, line)
+			wr.rider.WriteByte(ORD(line))
 		END
 	END Ln;
 
@@ -119,7 +126,9 @@ MODULE XhtmlStdFileWriters;
 	PROCEDURE (wr: Writer) Attr (IN name, value: ARRAY OF CHAR);
 	BEGIN
 		ASSERT(wr.level >= 1, 100);
-		String(wr, ' ' + name + '="' + value + '"')
+		String(wr, ' ' + name + '="');
+		HtmlEncodedString(wr, value);
+		String(wr, '"')
 	END Attr;
 
 	PROCEDURE (wr: Writer) Data (IN data: ARRAY OF CHAR);
@@ -137,6 +146,9 @@ MODULE XhtmlStdFileWriters;
 	PROCEDURE (wr: Writer) EndTag;
 	BEGIN
 		ASSERT(wr.level >= 1, 100);
+		IF (wr.current.name = "p") & ~wr.current.inContent THEN
+			wr.Data("&nbsp;") (* fixes empty paragraph issue *)
+		END;
 		DEC(wr.level);
 		IF wr.current.inContent THEN
 			IF wr.afterData THEN wr.Ln END;
@@ -180,7 +192,7 @@ MODULE XhtmlStdFileWriters;
 		NEW(wr.current); wr.current.name := ""; wr.current.up := NIL;
 		wr.rider := f.NewWriter(NIL);
 		ASSERT(wr # NIL, 100); ASSERT(wr.rider # NIL, 101); ASSERT(wr.level >= 0, 102);
-		String(wr, '<?xml version="1.0" encoding="UTF-8"?>'); wr.Ln;
+		String(wr, '<?xml version="1.0" encoding="utf-8"?>'); wr.Ln;
 		RETURN wr
 	END New;
 

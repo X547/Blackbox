@@ -1,3 +1,10 @@
 HostPackedFiles
 
 This module has a private interface, it is only used internally.
+
+For internal documentation see
+	Dev/Spec/PackedFiles
+	Dev/Spec/StoresFileFormat
+and
+	Dev/Spec/ObjFile
+	Dev/Spec/SymFile

@@ -8,64 +8,59 @@ MODULE XhtmlExporter;
 	license	= "Docu/BB-License"
 	changes	= ""
 	issues	= ""
-
+	
+	The generated output follows the structure: html = prefix { paragraph | table } postfix.
+	prefix and postfix are constant except for the title and the default font.
+	A paragraph is a <p> element and a table is a <table> element.
+	A table results only from special start and end marker views provided by XhtmlTextTableMarkers
+	and uses the current ruler for the alignment of table cells but not for cell spacing.
+	Within a table, newlines, paragraphs and rulers introduce a new table row. A tab introduces a table column.
+	Link and Target views can be embedded in paragraphs and tables as <a> elements.
+	Tables and links cannot be nested otherwise.
+	Empty lines, empty paragraphs and multiple spaces  are preserved by the exporter.
+	Unknown views are skipped and terminate the current paragraph.
+	The exporter tolerates some pairing/nesting errors in the input text but also traps for some.
+
+	Naming convention: BeginXXX means begin or continue XXX, EndXXX means terminate XXX if it is open.
 **)
 
-(*
- add the following statement to Config.Setup:
-		Converters.Register("", "XhtmlExporter.ExportText", "TextViews.View", "html", {});
-
- supported elements & attributes: html, head, title, body, p, a(href,id), font(face,size, color), strong, em, u
-
- assumptions:
-	- there is only one "special" non-RGB color: Ports.defaultColor
-	- one specific font size (defaultSize) is used as default size
-	- no embedded views are in the text, except link and target views
-	- link views only contain local references within the text (i.e., StdLinks.ShowTarget('anchorname') commands)
-
-*)
-
 	IMPORT
-		Strings, Files, Dialog, Stores, Fonts, Ports, Views, Properties,
+		Strings, Files, Stores, Fonts, HostFonts, Ports, Views, Windows, Dialog,
 		TextModels, TextViews, TextRulers, StdLinks,
 		XhtmlWriters, XhtmlStdFileWriters,
 		XhtmlEntitySets, XhtmlTextTableMarkers;
 
 	CONST
-		untitled = "#Xhtml:New Page";
-		defaultSize = 10 * Fonts.point;	(* currently, BlackBox has no notion of default font size *)
+		pubidLiteral = "-//W3C//DTD XHTML 1.0 Strict//EN";
+		sysidLiteral = "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd";
 		left = 0; center = 1; right = 2;
+		untitled = "#Xhtml:New Page";
 
 	TYPE
-		Msg* = RECORD (Properties.Message)
-			string*: ARRAY 2048 OF CHAR
-		END;
-
 		Exporter = POINTER TO RECORD
 			inLink: BOOLEAN;	(* this variable is used for a state machine used for translating hyperlinks *)
 			inTable: BOOLEAN;	(* this variable is used for a state machine used for translating tables *)
 			inRow: BOOLEAN;	(* this variable is used for a state machine used for translating tables *)
 			inField: BOOLEAN;	(* this variable is used for a state machine used for translating tables *)
-			inPara: BOOLEAN;	(* Generating paragraph elements is delayed so that empty elements are never created.
-												This variable is used for a state machine that implements the necessary delaying.
-											*)
-			afterSpace: BOOLEAN;	(* this variable is used for a state machine that avoids successive spaces in an element *)
-			attr: TextModels.Attributes;	(* current attributes; needed to decide whether an attribute change becomes necessary *)
-			level: INTEGER;	(* indentation level *)
+			inPara: BOOLEAN;	(* Generating paragraph elems is delayed so that empty elements are never created.
+											This variable is used for a state machine that implements the necessary delaying.*)
+			afterSpace: BOOLEAN;	(* used for a state machine that avoids successive spaces in an element *)
+			inSpan: BOOLEAN;	(* used for maintaining attribute spans *)
+			attr: TextModels.Attributes;	(* current attributes; needed for detecting attribute changes *)
 			currentRuler: TextRulers.Ruler;	(* most recently read ruler *)
-			tabIndex: INTEGER;	(* tab index in current line *)
+			tabIndex: INTEGER;	(* tab index in current line, -1 means  no tab read in this line yet*)
+			defaultSize: INTEGER;	(* the default font size in world coordinates *)
+			defaultTypeface: Fonts.Typeface;	(* the default font name *)
 			wr: XhtmlWriters.Writer
 		END;
-
 
 	PROCEDURE Invariant (e: Exporter);
 	BEGIN
 		ASSERT(e # NIL, 100);
-		ASSERT(e.inPara OR (e.attr = NIL), 101);	(* ~e.inPara => (e.attr = NIL) *)
+		ASSERT(e.inPara OR e.inTable OR (e.attr = NIL), 101);	(* (~e.inPara & ~e.inTable) => (e.attr = NIL) *)
 		ASSERT(~e.inField OR e.inRow, 102);	(* e.inField => e.inRow *)
 		ASSERT(~e.inRow OR e.inTable, 103);	(* e.inRow => e.inTable *)
-		ASSERT(~e.afterSpace OR e.inPara, 104);	(* e.afterSpace => e.inPara *)
-		ASSERT(e.level >= 0, 105);
+		ASSERT(~e.afterSpace OR e.inPara OR e.inTable, 104);	(* e.afterSpace => (e.inPara OR e.inTable) *)
 		ASSERT(e.tabIndex >= -1, 106);
 		ASSERT(~e.inField OR (e.tabIndex >= 0), 107);	(* e.inField => e.tabIndex >= 0 *)
 		ASSERT(~e.inTable OR (e.currentRuler # NIL), 108);	(* e.inTable => (e.currentRuler # NIL) *)
@@ -85,86 +80,120 @@ MODULE XhtmlExporter;
 		str := "#" + h
 	END ColorToString;
 
-	PROCEDURE SizeToString (s: INTEGER; OUT str: ARRAY OF CHAR);
-	BEGIN	(* note: defaultSize is already handled *)
-		s := s DIV Fonts.point;
-		IF s < 8 THEN s := 1
-		ELSIF s <= 10 THEN s := 2
-		ELSIF s <= 12 THEN s := 3
-		ELSIF s <= 14 THEN s := 4
-		ELSIF s <= 18 THEN s := 5
-		ELSIF s <= 24 THEN s := 6
-		ELSE s := 7
-		END;
-		Strings.IntToString(s, str)
-	END SizeToString;
-
-
 	(*
 		text = p | parsed text
 		body = text | (table tr td text)
 	*)
 
-	PROCEDURE SetAttr (e: Exporter; a: TextModels.Attributes);
-	(* nesting: <p> <font> <strong> <em> <u>   text   </u> </em> </strong> </font> </p> *)
-	(* font has face, color, size attributes. size ranges from 1..7 *)
+	PROCEDURE SetAttr (e: Exporter; newAttr: TextModels.Attributes);
+	(* nesting: <span> <b> <i> text </i> </b> </span> *)
 		CONST bold = (Fonts.normal + Fonts.bold) DIV 2;
-		VAR s: ARRAY 256 OF CHAR;
+		VAR s, tmp: ARRAY 256 OF CHAR;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		IF e.inPara THEN
-			IF (e.attr # NIL) & (e.attr # a) THEN	(* close all special attributes *)
-				IF Fonts.underline IN e.attr.font.style THEN e.wr.EndTag END;
-				IF Fonts.italic IN e.attr.font.style THEN e.wr.EndTag END;
-				IF e.attr.font.weight >= bold THEN e.wr.EndTag END;
-				IF (e.attr.font.typeface # Fonts.default) OR (e.attr.color # Ports.defaultColor) OR (e.attr.font.size # defaultSize) THEN
-					e.wr.EndTag
+		IF (e.attr # newAttr) & ((e.attr = NIL) OR (newAttr = NIL) OR ~e.attr.Equals(newAttr)) THEN
+			IF e.attr # NIL THEN (* close all special attributes *)
+				IF Fonts.italic IN e.attr.font.style THEN e.wr.EndTag(*i*) END;
+				IF e.attr.font.weight >= bold THEN e.wr.EndTag(*b*) END;
+			END;
+			IF (newAttr = NIL) OR (e.attr = NIL)
+			OR (e.attr.font.typeface # newAttr.font.typeface)
+			OR (e.attr.font.size # newAttr.font.size)
+			OR (e.attr.color # newAttr.color)
+			OR (Fonts.underline IN newAttr.font.style / e.attr.font.style)
+			OR (Fonts.strikeout IN newAttr.font.style / e.attr.font.style) THEN (* close span *)
+				IF e.inSpan THEN e.wr.EndTag(*span*); e.inSpan := FALSE END
+			END;
+			IF (newAttr # NIL) & (~e.inSpan) THEN (* open span *)
+				s := "";
+				IF (newAttr.font.typeface # e.defaultTypeface) & (newAttr.font.typeface # Fonts.default) THEN
+					s := "font-family: " + newAttr.font.typeface$ + ";"
+				END;
+				IF newAttr.color # Ports.defaultColor THEN
+					IF s[0] # 0X THEN s := s + " " END;
+					ColorToString(newAttr.color, tmp);
+					s := s + "color: " + tmp + ";"
+				END;
+				IF newAttr.font.size # e.defaultSize THEN
+					IF s[0] # 0X THEN s := s + " " END;
+					Strings.IntToString(newAttr.font.size DIV Fonts.point, tmp);
+					s := s + "font-size: " + tmp + "pt;"
+				END;
+				IF Fonts.underline IN newAttr.font.style THEN
+					IF s[0] # 0X THEN s := s + " " END;
+					IF Fonts.strikeout IN newAttr.font.style THEN s := s + "text-decoration: underline line-through;"
+					ELSE s := s + "text-decoration: underline;"
+					END
+				ELSIF Fonts.strikeout IN newAttr.font.style THEN
+					IF s[0] # 0X THEN s := s + " " END;
+					s := s + "text-decoration: line-through;"
+				END;
+				IF s[0] # 0X THEN
+					e.wr.StartTag("span", XhtmlWriters.preserve); e.wr.Attr("style", s);
+					e.inSpan := TRUE
 				END
 			END;
-			IF (a # NIL) & (e.attr # a) THEN	(* open new special attributes *)
-				IF (a.font.typeface # Fonts.default) OR (a.color # Ports.defaultColor) OR (a.font.size # defaultSize) THEN
-					e.wr.StartTag("font", XhtmlWriters.preserve);
-					IF a.font.typeface # Fonts.default THEN
-						IF a.font.typeface = "Arial" THEN s := a.font.typeface$ ELSE s := a.font.typeface + ", Arial" END;
-						e.wr.Attr("face", s$)
-					END;
-					IF a.color # Ports.defaultColor THEN
-						ColorToString(a.color, s); e.wr.Attr("color", s$)
-					END;
-					SizeToString(a.font.size, s);
-					IF a.font.size # defaultSize THEN e.wr.Attr("size", s$) END
-				END;
-				IF a.font.weight >= bold THEN e.wr.StartTag("strong", XhtmlWriters.preserve) END;
-				IF Fonts.italic IN a.font.style THEN e.wr.StartTag("em", XhtmlWriters.preserve) END;
-				IF Fonts.underline IN a.font.style THEN e.wr.StartTag("u", XhtmlWriters.preserve) END
+			IF newAttr # NIL THEN (* open all special attributes *)
+				IF newAttr.font.weight >= bold THEN e.wr.StartTag("b", XhtmlWriters.preserve) END;
+				IF Fonts.italic IN newAttr.font.style THEN e.wr.StartTag("i", XhtmlWriters.preserve) END
 			END;
-			e.attr := a
+			e.attr := newAttr
 		END
 	END SetAttr;
 
 	PROCEDURE BeginPara (e: Exporter);
+		VAR attr: ARRAY 128 OF CHAR; str: ARRAY 64 OF CHAR;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inPara, 20);
-		IF ~e.inLink & ~ e.inTable THEN
-			e.wr.StartTag("p", XhtmlWriters.preserve)
-		END;
-		e.inPara := TRUE
+		IF ~e.inPara & ~e.inLink & ~e.inTable THEN
+			e.wr.StartTag("p", XhtmlWriters.preserve);
+			attr := "";
+			IF e.currentRuler # NIL THEN
+				IF TextRulers.rightAdjust IN e.currentRuler.style.attr.opts THEN
+					IF TextRulers.leftAdjust IN e.currentRuler.style.attr.opts THEN
+						attr := "text-align: justify;"
+					ELSE
+						attr := "text-align: right;"
+					END
+				ELSIF ~ (TextRulers.leftAdjust IN e.currentRuler.style.attr.opts) THEN
+					attr := "text-align: center;"
+				END
+			END;
+			IF e.currentRuler.style.attr.left # 0 THEN
+				Strings.IntToString(e.currentRuler.style.attr.left DIV Fonts.point, str);
+				IF attr[0] # 0X THEN attr := attr + " " END;
+				attr := attr + "margin-left: " + str$ + "pt;"
+			END;
+			IF (TextRulers.rightFixed IN e.currentRuler.style.attr.opts) THEN
+				Strings.IntToString( (e.currentRuler.style.attr.right - e.currentRuler.style.attr.left) DIV Fonts.point, str);
+				IF attr[0] # 0X THEN attr := attr + " " END;
+				attr := attr + "width: " + str$ + "pt;"
+			END;
+			IF e.currentRuler.style.attr.first # 0 THEN
+				Strings.IntToString((e.currentRuler.style.attr.first - e.currentRuler.style.attr.left)
+					DIV Fonts.point, str);
+				IF attr[0] # 0X THEN attr := attr + " " END;
+				attr := attr + "text-indent: " + str$ + "pt;"
+			END;
+			IF e.currentRuler.style.attr.lead > 0 THEN
+				Strings.IntToString(e.currentRuler.style.attr.lead DIV Fonts.point + 3, str);
+				IF attr[0] # 0X THEN attr := attr + " " END;
+				attr := attr + "margin-top: " + str$ + "pt;"
+			END;
+			IF attr[0] # 0X THEN
+				e.wr.Attr("style", attr)
+			END;
+			e.inPara := TRUE
+		END
 	END BeginPara;
 
 	PROCEDURE EndPara (e: Exporter);
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(e.inPara, 20);
-		SetAttr(e, NIL);
-		IF ~e.inLink & ~e.inTable THEN
-			e.wr.EndTag
-		END;
-		e.wr.Ln;
-		e.afterSpace := FALSE;
-		e.inPara := FALSE
+		IF e.inPara THEN
+			SetAttr(e, NIL);
+			e.wr.EndTag(*p*);
+			e.afterSpace := FALSE;
+			e.inPara := FALSE
+		END
 	END EndPara;
-
 
 	PROCEDURE Alignment (r: TextRulers.Ruler; tabIndex: INTEGER): INTEGER;
 		VAR a: INTEGER; type: SET;
@@ -184,119 +213,113 @@ MODULE XhtmlExporter;
 		RETURN a
 	END Alignment;
 
+	PROCEDURE BeginRow (e: Exporter);
+	BEGIN
+		IF ~e.inRow THEN
+			ASSERT(~e.inField, 21); ASSERT(~e.inPara, 22);
+			e.wr.StartTag("tr", XhtmlWriters.prettyPrint);
+			e.inRow := TRUE
+		END
+	END BeginRow;
+
 	PROCEDURE BeginField (e: Exporter);
 		VAR a: INTEGER;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inField, 20); ASSERT(~e.inPara, 21);
-		a := Alignment(e.currentRuler, e.tabIndex);
-		e.wr.StartTag("td", XhtmlWriters.preserve);
-		IF a = center THEN
-			e.wr.Attr("align", "center")
-		ELSIF a = right THEN
-			e.wr.Attr("align", "right")
-		END;
-		e.inField := TRUE
+		IF ~e.inField THEN
+			BeginRow(e);
+			ASSERT(~e.inField, 20); ASSERT(~e.inPara, 21);
+			a := Alignment(e.currentRuler, e.tabIndex);
+			e.wr.StartTag("td", XhtmlWriters.preserve);
+			IF a = center THEN
+				e.wr.Attr("align", "center")
+			ELSIF a = right THEN
+				e.wr.Attr("align", "right")
+			END;
+			e.inField := TRUE
+		END
 	END BeginField;
 
 	PROCEDURE EndField (e: Exporter);
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(e.inField, 20); ASSERT(~e.inPara, 21);
-		e.wr.EndTag;
-		e.inField := FALSE
+		IF e.inField THEN
+			ASSERT(~e.inPara, 21);
+			SetAttr(e, NIL);
+			e.wr.EndTag(*td*);
+			e.inField := FALSE
+		END
 	END EndField;
-
-
-	PROCEDURE BeginRow (e: Exporter);
-	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inRow, 20); ASSERT(~e.inField, 21); ASSERT(~e.inPara, 22);
-		e.wr.StartTag("tr", XhtmlWriters.prettyPrint);
-		e.inRow := TRUE
-	END BeginRow;
-
-	PROCEDURE EndRow (e: Exporter);
-	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(e.inRow, 20); ASSERT(~e.inField, 21);
-		e.wr.EndTag;
-		e.inRow := FALSE
-	END EndRow;
-
 
 	PROCEDURE BeginTable (e: Exporter);
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inTable, 20); ASSERT(~e.inRow, 21); ASSERT(~e.inField, 22); ASSERT(~e.inPara, 23);
-		e.wr.StartTag("table", XhtmlWriters.prettyPrint); e.wr.Attr("border", "1"); e.wr.Attr("width", "100%");
-		e.inTable := TRUE
+		IF ~e.inTable THEN
+			ASSERT(~e.inRow, 21); ASSERT(~e.inField, 22); ASSERT(~e.inPara, 23);
+			e.wr.StartTag("table", XhtmlWriters.prettyPrint); e.wr.Attr("border", "1"); e.wr.Attr("width", "100%");
+			e.inTable := TRUE
+		END
 	END BeginTable;
+
+	PROCEDURE EndRow (e: Exporter);
+		VAR n, i: INTEGER;
+	BEGIN
+		ASSERT(e.inTable, 101);
+		IF e.inRow THEN
+			ASSERT(e.currentRuler # NIL, 102);
+			IF e.tabIndex >= 0 THEN
+				IF ~e.inField THEN BeginField(e); e.wr.Data("&nbsp;") END;
+				EndField(e)
+			END;
+			n := e.currentRuler.style.attr.tabs.len - e.tabIndex - 1;
+			IF n >= 1 THEN	(* fill row with empty fields *)
+				i := 0;
+				WHILE i # n DO
+					INC(e.tabIndex);
+					BeginField(e); e.wr.Data("&nbsp;"); EndField(e);
+					INC(i)
+				END
+			END;
+			e.wr.EndTag(*tr*); e.inRow := FALSE
+		END;
+		ASSERT(~e.inRow, 21); ASSERT(~e.inField, 22); ASSERT(~e.inPara, 23)
+	END EndRow;
 
 	PROCEDURE EndTable (e: Exporter);
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(e.inTable, 20); ASSERT(~e.inRow, 21); ASSERT(~e.inField, 22); ASSERT(~e.inPara, 23);
-		e.wr.EndTag;
-		e.inTable := FALSE
+		IF e.inTable THEN
+			EndRow(e);
+			e.wr.EndTag(*table*);	
+			e.inTable := FALSE
+		END
 	END EndTable;
 
-	PROCEDURE CompleteRow (e: Exporter);
-		VAR n, i: INTEGER;
+	PROCEDURE BegOfTable (v: Views.View): BOOLEAN;
 	BEGIN
-		ASSERT(e # NIL, 100); ASSERT(e.inTable, 101); ASSERT(e.currentRuler # NIL, 102);
-		IF ~e.inRow THEN BeginRow(e) END;
-		IF e.tabIndex >= 0 THEN
-			IF e.inPara THEN EndPara(e) END;
-			IF ~e.inField THEN BeginField(e); e.wr.Data("&nbsp;") END;
-			EndField(e)
-		END;
-		n := e.currentRuler.style.attr.tabs.len - e.tabIndex - 1;
-		IF n >= 1 THEN	(* fill row with empty fields *)
-			i := 0;
-			WHILE i # n DO
-				INC(e.tabIndex);
-				BeginField(e); e.wr.Data("&nbsp;"); EndField(e);
-				INC(i)
-			END
-		END;
-		EndRow(e)
-	END CompleteRow;
-
-	PROCEDURE BegOfTable (e: Exporter; v: Views.View): BOOLEAN;
-		VAR b: BOOLEAN;
-	BEGIN
-		ASSERT(e # NIL, 100);
-		b := FALSE;
-		IF v # NIL THEN
-			b := XhtmlTextTableMarkers.IsOpenMark(v)
-		END;
-		RETURN b
+		IF v # NIL THEN RETURN XhtmlTextTableMarkers.IsOpenMark(v)
+		ELSE RETURN FALSE
+		END
 	END BegOfTable;
 
-	PROCEDURE EndOfTable (e: Exporter; v: Views.View): BOOLEAN;
-		VAR b: BOOLEAN;
+	PROCEDURE EndOfTable (v: Views.View): BOOLEAN;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		b := FALSE;
-		IF v # NIL THEN
-			b := XhtmlTextTableMarkers.IsCloseMark(v)
-		END;
-		RETURN b
+		IF v # NIL THEN RETURN XhtmlTextTableMarkers.IsCloseMark(v)
+		ELSE RETURN FALSE
+		END
 	END EndOfTable;
 
-
 	PROCEDURE BeginHref (e: Exporter; v: StdLinks.Link);
-		VAR s, s0: ARRAY 256 OF CHAR;
+		VAR s, cmd: ARRAY 256 OF CHAR; pos: INTEGER;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inLink, 20); ASSERT(~e.inTable, 21); ASSERT(~e.inPara, 22);
+		ASSERT(~e.inLink, 20);
 		v.GetCmd(s);
-		s0 := s$; s0[19] := 0X;	(* clip the command to the (supposed) ShowTarget name *)
+		Strings.Find(s, "(", 0, pos);
+		IF pos >= 0 THEN Strings.Extract(s, 0, pos, cmd) ELSE cmd := "" END;
+		SetAttr(e, NIL);
 		e.wr.StartTag("a", XhtmlWriters.preserve);
-		IF s0 = "StdLinks.ShowTarget" THEN
-			Strings.Extract(s, 21, LEN(s$) - 23, s);	(* extract the name of the target anchor *)
-			e.wr.Attr("href", "#" + s)
+		IF cmd = "StdLinks.ShowTarget" THEN
+			Strings.Extract(s, pos + 2, LEN(s$) - pos - 4, s);	(* extract the name of the target anchor *)
+			e.wr.Attr("href", "#a" + s)
+		ELSIF cmd = "Dialog.OpenExternal" THEN
+			Strings.Extract(s, pos + 2, LEN(s$) - pos - 4, s);	(* extract the name of the url *)
+			e.wr.Attr("href", s)
 		ELSE
 			e.wr.Attr("href", s$)
 		END;
@@ -305,108 +328,145 @@ MODULE XhtmlExporter;
 
 	PROCEDURE EndHref (e: Exporter);
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(e.inLink, 20); ASSERT(~e.inTable, 21); ASSERT(~e.inPara, 22);
-		e.wr.EndTag;
-		e.inLink := FALSE
+		IF e.inLink THEN 
+			SetAttr(e, NIL);
+			e.wr.EndTag(*a*);	
+			e.inLink := FALSE
+		END
 	END EndHref;
 
-	PROCEDURE Id (e: Exporter; v: StdLinks.Target);
+	PROCEDURE Anchor (e: Exporter; v: StdLinks.Target);
 		VAR s: ARRAY 256 OF CHAR;
 	BEGIN
-		ASSERT(e # NIL, 100);
-		ASSERT(~e.inLink, 20); ASSERT(~e.inTable, 21); ASSERT(~e.inPara, 22);
+		ASSERT(~e.inLink, 20);
 		v.GetIdent(s);
-		e.wr.StartTag("a", XhtmlWriters.preserve); e.wr.Attr("id", s$)
-	END Id;
+		e.wr.StartTag("a", XhtmlWriters.preserve); e.wr.Attr("id", "a" + s$); e.wr.EndTag(*a*)
+	END Anchor;
 
-	PROCEDURE View (e: Exporter; v: Views.View);
+	PROCEDURE View (e: Exporter; rd: TextModels.Reader);
+		VAR v: Views.View;
 	BEGIN
-		ASSERT(e # NIL, 100); ASSERT(v # NIL, 101);
+		v := rd.view;
+		ASSERT(v # NIL, 101);
 		WITH v: StdLinks.Link DO
-			ASSERT(v.leftSide # e.inLink, 101);	(* links must not be nested *)
-			IF v.leftSide THEN	(* open link *)
+			IF v.leftSide & ~e.inLink THEN	(* open link *)
+				IF e.inTable THEN BeginField(e) ELSE BeginPara(e) END;
 				BeginHref(e, v)
-			ELSE	(* close link *)
+			ELSIF ~v.leftSide THEN	(* close link *)
 				EndHref(e)
+			(* ELSE ignore inappropriately nested link views *)
 			END
 		| v: StdLinks.Target DO
-			IF v.leftSide THEN Id(e, v) END	(* open anchor *)
+			IF v.leftSide THEN
+				IF e.inTable THEN BeginField(e) ELSE BeginPara(e) END;
+				Anchor(e, v)
+			END
 		ELSE	(* unknown view: here, an extension mechanism would be needed to handle such views *)
+			EndPara(e) 
 			(* skip *)
 		END
 	END View;
+	
+	PROCEDURE GetTitle(v: Stores.Store; VAR title: Views.Title);
+		VAR win: Windows.Window;
+	BEGIN
+		win := Windows.dir.First();
+		WHILE (win # NIL) & (win.doc.Domain() # v.Domain()) DO win := Windows.dir.Next(win) END;
+		IF win = NIL THEN Dialog.MapString(untitled, title)
+		ELSE win.GetTitle(title)
+		END
+	END GetTitle;
+	
+	PROCEDURE WriteHtmlEncoded(e: Exporter; IN title: Views.Title);
+		VAR i: INTEGER; ch: CHAR; str: ARRAY 10 OF CHAR;
+	BEGIN
+		i := 0; ch := title[0];
+		WHILE ch # 0X DO XhtmlEntitySets.MapCharToEntity(ch, str); e.wr.Data(str$); INC(i); ch := title[i] END
+	END WriteHtmlEncoded;
 
 	PROCEDURE ExportText* (s: Stores.Store; f: Files.File);
 		VAR
 			e: Exporter;
 			t: TextModels.Model; rd: TextModels.Reader;
 			len: INTEGER;	(* number of characters that remain to be translated *)
-			ch: CHAR; str: ARRAY 256 OF CHAR;
+			ch: CHAR; str, tmp: ARRAY 256 OF CHAR; title: Views.Title;
 	BEGIN
 		ASSERT(s # NIL, 20); ASSERT(f # NIL, 21); ASSERT(f.Length() = 0, 22);
 		ASSERT(s IS TextViews.View, 23);
-		NEW(e); e.inLink := FALSE; e.inTable := FALSE; e.inPara := FALSE; e.attr := NIL; e.afterSpace := FALSE; e.level := 0;
+		NEW(e); e.inLink := FALSE; e.inTable := FALSE; e.inPara := FALSE; e.afterSpace := FALSE; e.inSpan := FALSE;
+		e.defaultSize := Fonts.dir.Default().size;
+		e.defaultTypeface := Fonts.dir.Default()(HostFonts.Font).alias;
+		IF e.defaultTypeface = "*" THEN e.defaultTypeface := "Arial" END;
 		e.wr := XhtmlStdFileWriters.New(f);
 		t := s(TextViews.View).ThisModel();
 		len := t.Length();
-		e.wr.DocType("html", "-//W3C//DTD XHTML 1.0 Strict//EN", "http://www.w3.org/TR/xhtml1/DTD/strict.dtd");
-		e.wr.Ln;
+		e.wr.DocType("html", pubidLiteral, sysidLiteral );
 		e.wr.StartTag("html", XhtmlWriters.prettyPrint);
+		e.wr.Attr("xmlns", "http://www.w3.org/1999/xhtml");
 		e.wr.StartTag("head", XhtmlWriters.prettyPrint);
-		e.wr.StartTag("title", XhtmlWriters.preserve); Dialog.MapString(untitled, str); e.wr.Data(str$); e.wr.EndTag;
-		e.wr.EndTag;	(* head *)
-		e.wr.Ln;
+		e.wr.StartTag("meta", XhtmlWriters.preserve);
+		e.wr.Attr("http-equiv", "content-type");
+		e.wr.Attr("content", "text/html; charset=utf-8");
+		e.wr.EndTag(*meta*);
+		GetTitle(s, title);
+		e.wr.StartTag("title", XhtmlWriters.preserve); WriteHtmlEncoded(e, title); e.wr.EndTag(*title*);
+		(* body style *)
+		str := "font-family: " + e.defaultTypeface + "; ";
+		ColorToString(Ports.defaultColor, tmp);
+		str := str + "color: " + tmp + "; ";
+		Strings.IntToString(e.defaultSize DIV Ports.point, tmp);
+		str := str + "font-size: " + tmp + "pt;";
+		(* common CSS *)
+		e.wr.StartTag("style", XhtmlWriters.prettyPrint);
+		e.wr.Attr("type", "text/css");
+		e.wr.Data("body { " + str$ + " }");
+		e.wr.Ln; e.wr.Data(09X + 09X + 09X + "p { margin-top: 3pt; margin-bottom: 0pt; }");
+		e.wr.EndTag(*style*);	
+		e.wr.EndTag(*head*);	
 		e.wr.StartTag("body", XhtmlWriters.prettyPrint);
+		s(TextViews.View).PollDefaults(e.currentRuler, e.attr);
+		e.attr := NIL; (* to prevent Invariant TRAP 101 *)
 		rd := t.NewReader(NIL);
-		e.tabIndex := -1;	(* no tab read in this line yet *)
+		e.tabIndex := -1;
 		WHILE len # 0 DO
 			Invariant(e);
 			rd.ReadChar(ch);
-			IF (rd.view # NIL) & (rd.view IS TextRulers.Ruler) THEN e.currentRuler := rd.view(TextRulers.Ruler) END;
-			IF BegOfTable(e, rd.view) THEN
-				ASSERT(~e.inTable, 101);
-				IF e.inPara THEN EndPara(e) END;
-				BeginTable(e);
-				e.tabIndex := -1	(* no tab read in this line yet *)
-			ELSIF EndOfTable(e, rd.view) THEN
-				IF e.inRow THEN CompleteRow(e) END;
-				EndTable(e);
-				e.tabIndex := -1	(* no tab read in this line yet *)
+			IF (rd.view # NIL) & (rd.view IS TextRulers.Ruler) THEN
+				e.currentRuler := rd.view(TextRulers.Ruler)
+			END;
+			IF BegOfTable(rd.view) THEN
+				EndPara(e); EndTable(e); BeginTable(e); e.tabIndex := -1
+			ELSIF EndOfTable(rd.view) THEN
+				EndTable(e); e.tabIndex := -1
 			ELSIF (ch = TextModels.para) OR (ch = TextModels.line) OR (ch = 0X) THEN
-				IF e.inTable THEN CompleteRow(e) END;
-
-				IF ~e.inPara THEN BeginPara(e) END;
-				EndPara(e);
-				e.tabIndex := -1	(* no tab read in this line yet *)
-			ELSIF ch = TextModels.tab THEN
-				INC(e.tabIndex);
 				IF e.inTable THEN
-					IF ~e.inRow THEN BeginRow(e) END;
+					EndRow(e); e.tabIndex := -1
+				ELSIF ch = TextModels.line THEN
+					BeginPara(e); e.wr.Data("<br/>"+0AX)
+				ELSE
+					EndPara(e); BeginPara(e)
+				END
+			ELSIF ch = TextModels.tab THEN
+				IF e.inTable THEN
+					INC(e.tabIndex);
+					BeginRow(e);
 					IF e.tabIndex >= 1 THEN	(* space until first tab is not part of a table column *)
-						IF e.inField THEN
-							IF e.inPara THEN EndPara(e) END
-						ELSE	(* last table field is empty *)
-							BeginField(e); e.wr.Data("&nbsp;")
-						END;
+						IF ~e.inField THEN (* last table field is empty *) BeginField(e); e.wr.Data("&nbsp;") END;
 						EndField(e)
 					END
 				ELSE
-					IF ~e.inPara THEN BeginPara(e) END;
+					BeginPara(e);
 					e.wr.Data("&nbsp;&nbsp;&nbsp;"); e.afterSpace := TRUE	(* emulate tab with three spaces *)
 				END
 			ELSIF ch = TextModels.viewcode THEN	(* translate rd.view into HTML *)
-				IF e.inPara THEN EndPara(e) END;
-				View(e, rd.view)
+				View(e, rd)
 			ELSE
-				IF e.inTable THEN
-					IF ~e.inRow THEN BeginRow(e) END;
-					IF ~e.inField THEN BeginField(e) END
-				END;
-				IF ~e.inPara THEN BeginPara(e) END;
+				IF e.inTable THEN BeginField(e) ELSE BeginPara(e) END;
 				SetAttr(e, rd.attr);
-				IF (ch = " ") OR (ch = TextModels.nbspace) OR (ch = TextModels.digitspace) THEN
+				IF ch = " " THEN
 					IF e.afterSpace THEN e.wr.Data("&nbsp;") ELSE e.wr.Data(" "); e.afterSpace := TRUE END
+				ELSIF (ch = TextModels.nbspace) OR (ch = TextModels.digitspace) THEN
+					e.wr.Data("&nbsp;"); e.afterSpace := FALSE
 				ELSIF ch = TextModels.zwspace THEN
 					e.wr.Data("&zwnj;"); e.afterSpace := TRUE
 				ELSIF (ch = TextModels.hyphen) OR (ch = TextModels.nbhyphen) THEN
@@ -417,12 +477,12 @@ MODULE XhtmlExporter;
 				END
 			END;
 			DEC(len)
-		END;
-		ASSERT(~e.inLink, 101); ASSERT(~e.inTable, 102);
-		IF e.inPara THEN EndPara(e) END;
-		e.wr.EndTag;	(* body *)
-		e.wr.EndTag;	(* html *)
-		e.wr.Ln
+		END; (* WHILE *)
+		EndHref(e);
+		EndTable(e);
+		EndPara(e);
+		e.wr.EndTag(*body*);
+		e.wr.EndTag(*html*)
 	END ExportText;
 
 END XhtmlExporter.

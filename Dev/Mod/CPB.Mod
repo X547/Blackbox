@@ -134,7 +134,7 @@ MODULE DevCPB;
 	
 	PROCEDURE IntToBool(i: INTEGER): BOOLEAN;
 	BEGIN
-		IF i = 0 THEN RETURN FALSE ELSE RETURN TRUE END
+		RETURN i # 0
 	END IntToBool;
 	
 	PROCEDURE NewBoolConst*(boolval: BOOLEAN): DevCPT.Node;
@@ -189,7 +189,7 @@ MODULE DevCPB;
 	END MarkAsUsed;
 	
 	
-	PROCEDURE GetTempVar* (name: ARRAY OF SHORTCHAR; typ: DevCPT.Struct; VAR obj: DevCPT.Object);
+	PROCEDURE GetTempVar* (IN name: ARRAY OF SHORTCHAR; typ: DevCPT.Struct; VAR obj: DevCPT.Object);
 		VAR n: DevCPT.Name; o: DevCPT.Object;
 	BEGIN
 		n := "@@  "; DevCPT.Insert(n, obj); obj.name^ := name$;	(* avoid err 1 *)
@@ -287,21 +287,6 @@ MODULE DevCPB;
 		& ((form # Real32) OR (ABS(x.realval) > DevCPM.MaxReal32) & (ABS(x.realval) # DevCPM.InfReal)) THEN
 			err(errno); x.intval := 1; x.realval := 0
 		END
-(*
-		IF (form IN intSet + charSet) & (x.realval + x.intval >= MIN(INTEGER))
-				& (x.realval + x.intval <= MAX(INTEGER)) THEN
-			x.intval := SHORT(ENTIER(x.realval + x.intval)); x.realval := 0
-		END;
-		IF (form = Int64) & ((x.intval < -MAXL - x.realval) OR (x.intval >= MAXL - x.realval))
-		OR (form = Int32) & (x.realval # 0)
-		OR (form = Int16) & ((x.realval # 0) OR (x.intval < -32768) OR (x.intval > 32767))
-		OR (form = Int8) & ((x.realval # 0) OR (x.intval < -128) OR (x.intval > 127))
-		OR (form = Char16) & ((x.realval # 0) OR (x.intval < 0) OR (x.intval > 65535))
-		OR (form = Char8) & ((x.realval # 0) OR (x.intval < 0) OR (x.intval > 255))
-		OR (form = Real32) & (ABS(x.realval) > DevCPM.MaxReal32) & (ABS(x.realval) # DevCPM.InfReal) THEN
-			err(errno); x.intval := 1; x.realval := 0
-		END
-*)
 	END CheckConstType;
 	
 	PROCEDURE ConvConst (x: DevCPT.Const; from, to: INTEGER);
@@ -514,7 +499,7 @@ MODULE DevCPB;
 	END CharToString8;
 	
 	PROCEDURE CharToString16 (n: DevCPT.Node);
-		VAR ch, ch1: SHORTCHAR; i: INTEGER;
+		VAR i: INTEGER;
 	BEGIN
 		n.typ := DevCPT.string16typ; NEW(n.conval.ext, 4);
 		IF n.conval.intval = 0 THEN
@@ -588,7 +573,7 @@ MODULE DevCPB;
 
 
 	PROCEDURE Convert(VAR x: DevCPT.Node; typ: DevCPT.Struct);
-		VAR node: DevCPT.Node; f, g: SHORTINT; k: INTEGER; r: REAL;
+		VAR node: DevCPT.Node; f, g: SHORTINT;
 	BEGIN f := x.typ.form; g := typ.form;
 		IF x.class = Nconst THEN
 			IF g = String8 THEN
@@ -648,7 +633,7 @@ MODULE DevCPB;
 			IF g IN charSet + {String8, String16} THEN
 				IF (f = String16) OR (g = String16) OR (f = Char16) & (g = String8) OR (f = String8) & (g = Char16) THEN
 					new := DevCPT.string16typ
-				ELSIF (f = Char16) OR (g = Char16) THEN new := DevCPT.char16typ
+				ELSIF ((f = Char16) OR (g = Char16)) & (op # plus) THEN new := DevCPT.char16typ
 				ELSIF (f = String8) OR (g = String8) THEN new := DevCPT.string8typ
 				ELSIF op = plus THEN
 					IF (f = Char16) OR (g = Char16) THEN new := DevCPT.string16typ
@@ -694,7 +679,7 @@ MODULE DevCPB;
 	END CheckParameters;
 
 	PROCEDURE CheckNewParamPair* (newPar, iidPar: DevCPT.Node);
-		VAR ityp, ntyp: DevCPT.Struct;
+		VAR ntyp: DevCPT.Struct;
 	BEGIN
 		ntyp := newPar.typ.BaseTyp;
 		IF (newPar.class = Nvarpar) & ODD(newPar.obj.sysflag DIV newBit) THEN
@@ -887,7 +872,7 @@ MODULE DevCPB;
 				END ;
 				z.typ := DevCPT.booltyp
 			| adr: (*ADR*)
-				IF z.class = Nproc THEN
+				IF (z.class = Nproc) & (z.obj.mode # CProc) THEN
 					IF z.obj.mnolev > 0 THEN err(73)
 					ELSIF z.obj.mode = LProc THEN z.obj.mode := XProc
 					END;
@@ -918,7 +903,7 @@ MODULE DevCPB;
 	END MOp;
 	
 	PROCEDURE ConstOp(op: SHORTINT; x, y: DevCPT.Node);
-		VAR f: SHORTINT; i, j: INTEGER; xval, yval: DevCPT.Const; ext: DevCPT.ConstExt; t: DevCPT.Struct;
+		VAR f: SHORTINT; i, j: INTEGER; xval, yval: DevCPT.Const; ext: DevCPT.ConstExt;
 	BEGIN
 		f := x.typ.form;
 		IF f = y.typ.form THEN
@@ -1267,7 +1252,7 @@ MODULE DevCPB;
 		ASSERT((str.class = Nconst) & (str.typ.form IN {String8, String16}));
 		IF (x.typ.comp IN {Array, DynArr}) & (str.conval.intval2 = 1) THEN	(* x := "" -> x[0] := 0X *)
 			Index(x, NewIntConst(0));
-			str.typ := x.typ; str.conval.intval := 0;
+			str.typ := x.typ; str.conval.intval := 0; str.obj := NIL
 		END;
 		BindNodes(Nassign, DevCPT.notyp, x, str); x.subcl := assign
 	END AssignString;
@@ -1288,7 +1273,7 @@ MODULE DevCPB;
 	END CheckOldType;
 	
 	PROCEDURE StPar0*(VAR par0: DevCPT.Node; fctno: SHORTINT);	(* par0: first param of standard proc *)
-		VAR f: SHORTINT; typ: DevCPT.Struct; x, t: DevCPT.Node;
+		VAR f: SHORTINT; typ: DevCPT.Struct; x: DevCPT.Node;
 	BEGIN x := par0; f := x.typ.form;
 		CASE fctno OF
 		  haltfn: (*HALT*)
@@ -1752,7 +1737,7 @@ MODULE DevCPB;
 
 	PROCEDURE StParN*(VAR par0: DevCPT.Node; x: DevCPT.Node; fctno, n: SHORTINT);
 	(* x: n+1-th param of standard proc *)
-		VAR node: DevCPT.Node; f: SHORTINT; p: DevCPT.Node; typ: DevCPT.Struct;
+		VAR node: DevCPT.Node; f: SHORTINT; p: DevCPT.Node;
 	BEGIN p := par0; f := x.typ.form;
 		IF fctno = newfn THEN (*NEW(p, ..., x...*)
 			IF (x.class = Ntype) OR (x.class = Nproc) THEN err(126)
@@ -1904,11 +1889,6 @@ MODULE DevCPB;
 					IF fp.vis = inPar THEN
 						IF (ft = DevCPT.guidtyp) & (ap.class = Nconst) & (at.form = String8) THEN
 							StringToGuid(ap); at := ap.typ
-(*
-						ELSIF ((at.form IN charSet + {String8, String16}) OR (at = DevCPT.guidtyp))
-								& ((ap.class = Nderef) OR (ap.class = Nconst)) THEN (* ok *)
-						ELSIF NotVar(ap) THEN err(122)
-*)
 						END;
 						IF ~NotVar(ap) THEN CheckLeaf(ap, FALSE) END
 					ELSE
@@ -1981,7 +1961,6 @@ MODULE DevCPB;
 	END Return;
 
 	PROCEDURE Assign*(VAR x: DevCPT.Node; y: DevCPT.Node);
-		VAR z: DevCPT.Node;
 	BEGIN
 		IF (x.class >= Nconst) OR (x.typ.form IN {String8, String16}) THEN err(56) END ;
 		CheckAssign(x.typ, y);
@@ -2182,7 +2161,6 @@ MODULE DevCPB;
 	END Evaluate;
 	
 	PROCEDURE Rebuild (VAR root: DevCPT.Node; head: DevCPT.Node);
-		VAR n: DevCPT.Node;
 	BEGIN
 		IF root # head THEN
 			IF head.conval.intval2 < root.conval.intval THEN

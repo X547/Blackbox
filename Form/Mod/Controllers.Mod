@@ -535,9 +535,11 @@ MODULE FormControllers;
 		VAR minW, maxW, minH, maxH, l, t, sw, sh: INTEGER;
 			s: Views.View; p, q: List;
 			m: FormModels.Model; rd: FormModels.Reader; wr: FormModels.Writer;
+			script: Stores.Operation;
 	BEGIN	(* cf. MarkDropTarget *)
 		DEC(dx, rx); DEC(dy, ry);
 		IF ~isSingle & (v IS FormViews.View) THEN
+			Models.BeginScript(c.form, "#System:Insertion", script);
 			m := v(FormViews.View).ThisModel();
 			rd := m.NewReader(NIL); wr := c.form.NewWriter(NIL);
 			rd.ReadView(s); p := NIL;
@@ -549,6 +551,7 @@ MODULE FormControllers;
 				NEW(q); q.next := p; p := q; q.view := s;
 				rd.ReadView(s)
 			END;
+			Models.EndScript(c.form, script); (* this line was added *)
 			c.SetSelection(p)
 		ELSE
 			FormViews.RoundToGrid(c.view, dx, dy);

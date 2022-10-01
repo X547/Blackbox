@@ -197,7 +197,7 @@ MODULE StdLog;
 
 	(* Sub support *)
 
-	PROCEDURE* Guard (o: ANYPTR): BOOLEAN;
+	PROCEDURE Guard (o: ANYPTR): BOOLEAN;
 	BEGIN
 		RETURN
 			(o # NIL) &
@@ -207,13 +207,13 @@ MODULE StdLog;
 			)
 	END Guard;
 
-	PROCEDURE* ClearBuf;
+	PROCEDURE ClearBuf;
 		VAR subBuf: TextModels.Model;
 	BEGIN
 		subBuf := subOut.rider.Base(); subBuf.Delete(0, subBuf.Length())
 	END ClearBuf;
 
-	PROCEDURE* FlushBuf;
+	PROCEDURE FlushBuf;
 		VAR buf: TextModels.Model;
 	BEGIN
 		buf := subOut.rider.Base();
@@ -223,16 +223,13 @@ MODULE StdLog;
 		END
 	END FlushBuf;
 
-	PROCEDURE* SubFlush;
+	PROCEDURE SubFlush;
 	BEGIN
 		IF Log.synch THEN
 			FlushBuf;
 			IF Log.force THEN Views.RestoreDomain(text.Domain()) END
 		END;
 	END SubFlush;
-
-
-
 
 	PROCEDURE (log: LogHook) Guard* (o: ANYPTR): BOOLEAN;
 	BEGIN RETURN Guard(o)

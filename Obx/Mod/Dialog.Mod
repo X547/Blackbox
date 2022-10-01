@@ -23,7 +23,7 @@ MODULE ObxDialog;
 		END;
 		sel*: Dialog.Selection; (* hadled separately to avoid race condition in notifier *)
 
-	PROCEDURE SetList (IN l: Dialog.List; n: INTEGER);
+	PROCEDURE SetList (VAR l: Dialog.List; n: INTEGER);
 		VAR i: INTEGER;
 	BEGIN
 		l.SetLen(n);

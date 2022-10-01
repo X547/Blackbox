@@ -1,5 +1,4 @@
-ComConnect Example
-
+ComConnect Example
 This example shows how connectable objects are implemented using the COM compiler. The example is described in detail in chapter four of the book "Inside OLE". Connectable objects offer an interface which allows to install interfaces which can be called back by the connectable object.
 
 A connectable object has to implement the interface IConnectionPointContainer with the two methods FindConnectionPoint and EnumConnectionPoints. With the first method, the connectable object can be asked for a specific outgoing interface. If the interface is supported, then a pointer to the IConnectionPoint is returned, the interface through which the callback interface can be installed. With the method EnumConnectionPoints the supported outgoing interfaces can be requested. The list of supported interfaces is returned in the form of an enumeration interface, IEnumConnectionPoints.
@@ -25,7 +24,7 @@ All installed connections are stored in the unk array. If an event is distribute
 The cookies corresponding to the connections are stored in the cookies array. They are necessary to search a connection when Unadvise is called.
 The conn field counts the number of installed connections, and the next field finally contains the last distributed cookie.
 
-The IDuckEvents interface is used in this example as the outgoing interface. This interface supports the following three functions:
+The IDuckEvents interface is used in this example as the outgoing interface. This interface supports the following three functions:
 
 		IDuckEvents = POINTER TO ABSTRACT RECORD
 				["{00021145-0000-0000-C000-000000000046}"] (COM.IUnknown)

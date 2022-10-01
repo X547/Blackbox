@@ -1,18 +1,18 @@
-Dev Subsystem
+Dev Subsystem
 User Manual
 
-
 Contents
-1 Compiling Component Pascal modules
-2 Browsing tools
-3 Loading and unloading modules
-4 Executing commands
-5 Debugging
-6 Deployment
-7 Cross-Platform issues
 
-
+1 Compiling Component Pascal modules
+2 Browsing tools
+3 Loading and unloading modules
+4 Executing commands
+5 Debugging
+6 Deployment
+
+
 1 Compiling Component Pascal modules
+
 Besides consuming stored text documents, the Component Pascal compiler can compile modules from anywhere in any displayed text document. If the beginning of a displayed text is also the beginning of a module, the command Dev->Compile is used to compile the module. If the module begins somewhere in the middle of a displayed text, its beginning can be selected, e.g., by doubleclicking on the keyword MODULE, and then the command Dev->Compile Selection is used.
 
 To compile a list of modules at once, a list of module names needs to appear in some displayed text, e.g.,
@@ -23,12 +23,11 @@ By selecting the part of the list that should be considered by the compiler, and
 
 The log is a development tool, i.e., it is mainly used for debugging purposes and for development tools. End-user applications are not expected to display a log. Whether or not a log window is opened upon startup of BlackBox is determined by the configuration's Config module (in directory System/Mod). This module can be changed by the programmer as desired; by default its Setup procedure only contains a statement which opens the log.
 
-Dev->Open Module List is a convenient command which opens the module sources of one or several modules: select a module name, e.g., FormCmds, and then execute Dev->Open Module List. This command can save you much time when you work with multiple subsystems (-> 7.2 Modules and Subsystems) at the same time.
+Dev->Open Module List is a convenient command which opens the module sources of one or several modules: select a module name, e.g., FormCmds, and then execute Dev->Open Module List. This command can save you much time when you work with multiple subsystems (cf. Modules and Subsystems) at the same time.
 
 When compiling a newly created or a modified module, direct compilation of the displayed program text with Dev->Compile is recommended. In addition to writing to the system log, the compiler then also inserts error markers into the source text and places the caret after the first marker, if some syntax error was encountered. Each marker represents an error flagged by the compiler in the source text. Normally, a marker is displayed as a crossedout box. However, simply by clicking into it, a marker expands to display the corresponding error message. If the insertion point is directly behind a marker, it can be expanded via the command Dev->Toggle Error Mark (or more likely via its keyboard shortcut).
 
-Windows:
-At the bottom of a window there is a status bar. If the user clicks into an error marker, the error message is written into the status bar instead of expanding the error marker. The error marker can be forced to expand by a modifier-click or a double-click on the marker.
+At the bottom of a window there is a status bar. If the user clicks into an error marker, the error message is written into the status bar instead of expanding the error marker. The error marker can be forced to expand by a ctrl-click or a double-click on the marker.
 
 The command Dev->Next Error can be used to skip forward to the next marker. Dev->Unmark Errors removes all remaining markers from a text. However, this command is rarely required: The compiler automatically removes all old markers when recompiling a text; and when storing a text, contained markers are filtered out, i.e., do not appear anymore when the text is opened again.
 
@@ -43,7 +42,9 @@ Code files are produced, but never read during compilation. They are necessary t
 
 See also modules DevCompiler, DevCmds, and DevMarkers.
 
+
 2 Browsing tools
+
 A common cause of compiletime errors is the wrong use of interfaces. To quickly retrieve the actual definitions of items exported by modules, the browser may be used. The interface of a whole module is displayed when selecting the name of a module and executing Info->Client Interface. To display the definition of an individual item, e.g., a type or procedure, the qualified name of that item, i.e., module.item should be selected with the same command. The browser displays its output in a form that can directly be used as input for further browsing actions. Command Info->Client Interface only shows the part of a module's interface which is relevant for clients, i.e., it leaves out implement-only methods and similar items that are only relevant for implementers of object types. For implementers, the command Info->Extension Interface shows the full interface.
 
 Two related commands, Info->Source and Info->Documentation, allow to look up an item's definition in a source file, or in an on-line documentation, respectively. They both work on selected module names as well as on names in the form module.item, just as the Info->Interface command.
@@ -52,7 +53,9 @@ The general text search commands Info->Search in Sources and Info->Search in�
 
 See also modules DevBrowser, DevReferences, DevSearch, and DevDependencies.
 
+
 3 Loading and unloading modules
+
 Once a module successfully passes the compiler it can be loaded to the system and used.
 The BlackBox loader can dynamically link and load a module at run-time. A code file basically is a language-specific light-weight DLL (dynamic link library). The loader can be invoked from within a program by calling the procedure Dialog.Call. This procedure takes a command name as parameter. It loads the command's module, if it isn't loaded yet. Afterwards, it executes the command's procedure. For example,
 
@@ -89,7 +92,9 @@ Command Dev->Unload takes a focused module source as input and tries to unload t
 
 See also module DevDebug.
 
+
 4 Executing commands
+
 There are several ways to execute commands (i.e., procedures exported by Component Pascal modules, intended for direct invocation by the user) within BlackBox. A command name can be written to a text, as a string of the form "module.procedure", selected, and executed using Dev->Execute. An easier way is to insert a commander in front of the command name, using Tools->Insert Commander. Clicking on a commander interprets the string following it as a sequence of commands, e.g.
 
   "Dialog.Beep; DevDebug.ShowLoadedModules"
@@ -98,7 +103,7 @@ If the string consists of only one parameterless command, the string delimiters 
 
   Dialog.Beep
 
-With such simple commands, it is possible to combine the unloading of an old version with the execution of a new version of a command (resp. of its module): modifier-click on the commander causes the command's module to be unloaded, and then the new module version is loaded and the procedure executed. Note that this "unload shortcut" only works for top-level modules, i.e. for modules which are not imported by any other modules.
+With such simple commands, it is possible to combine the unloading of an old version with the execution of a new version of a command (resp. of its module): ctrl-click on the commander causes the command's module to be unloaded, and then the new module version is loaded and the procedure executed. Note that this "unload shortcut" only works for top-level modules, i.e. for modules which are not imported by any other modules.
 
 The allowed parameter lists for commands are documented with module StdInterpreter.
 
@@ -106,7 +111,9 @@ The BlackBox Component Framework tries to call the command Config.Setup when it 
 
 See also modules DevDebug and Config.
 
+
 5 Debugging
+
 When a run-time error occurs, e.g., a division by zero or some assertion trap, a trap window is opened. Such a window contains a text which shows the stack contents at the time when the trap occurred. An extract of such a trap text is shown below:
 
 	
@@ -147,7 +154,7 @@ If a trap in one of those categories occurs, this behavior will be disabled (i.e
 
 This means that erroneous views "degrade gracefully", by freezing only those behaviors that already have led to traps. If for some reason a view should be "unfrozen" again, the command Dev->Revalidate View can be used.
 
-An endless loop can be interrupted by pressing ctrl-break (Windows) / command-option-. (Mac OS).
+An endless loop can be interrupted by pressing ctrl-break.
 
 The following standard traps may occur at run-time (depending on the platform, some of these errors don't occur):
 
@@ -190,10 +197,12 @@ Invariants	100 .. 120
 Reserved	121 .. 125
 Not Yet Implemented	         126
 Reserved	         127
+Silent Trap	         128
+
+Silent Trap is a special case. It terminates the execution of the current command without generating a trap window.
 
 You can use trap codes 0..19 freely in your programs, typically as temporary breakpoints during debugging. By convention, the other trap codes are generated by various assertions, i.e., statements which check a certain condition, and terminate the command if the condition is violated. Conditions which must be fulfilled upon entry of a procedure are called preconditions, conditions which must be fulfilled upon exit of a procedure are called postconditions, and conditions which must be fulfilled in between are called invariants. Most procedures in the BlackBox Component Framework check some preconditions. Typically, trap numbers are kept unique inside of a procedure. Thus, if a trap occurs, consult the documentation (or source, if available) of the trapped procedure. There you should get more information about the cause of the trap.
 The developer may even provide a plain-text description of the trap's cause, by providing suitable resources in the subsystem's string resource file: module name without subsystem prefix, followed by ".", followed by the procedure name, followed by ".", followed by the trap number. The following are examples:
-
 Math.Power.23	Pre: x # 1.0  OR  ABS(y) # INF
 
 Views.View.CopyFrom.20	Views.CopyFrom and Views.CopyFromModelView must not both
@@ -216,7 +225,9 @@ This defensive programming strategy has proven itself again and again during the
 
 See also module DevDebug.
 
-6 Deployment
+
+6 Deployment
+
 If you develop add-on components (i.e., new subsystems) for BlackBox, deployment simply means to distribute copies of your subsystem directory. You may not want to distribute the source texts, in order to protect your intellectual property rights. In this case you should not put them into the distribution copies. You may not want to make one or several of your module interfaces public, or none at all if your application is not meant to be extensible. In this case, you should not put the corresponding symbol files into the distribution copies. However, for each public module you should put a documentation file into the subsystem's Docu directory. For example, for module FormCmds there is a docu file Form/Docu/Cmds.
 It is customary to put a Sys-Map file in the Docu directory. This map text contains a list of all public modules; the elements of the list are hyperlinks.
 If the subsystem implements user interface elements such as views or commands, a user manual should be made available. This document is called User-Man and also resides in the Docu directory.
@@ -235,21 +246,7 @@ For a linked version you need to use the linker to pack your code files together
 All approaches:
 In addition, you need to create your own versions of the menu definition file and of the About... dialog box (System/Rsrc/Menus and System/Rsrc/About). If your application is meant to be extensible, you also need to copy the symbol files (Sym/Xyz) of all modules whose interfaces should be public. This may or may not encompass the standard BlackBox modules. Make sure the structure of your new directories matches the subdirectory structure in the original BlackBox directory!
 
-Windows:
 Adapt the Help menu command, and the corresponding help text in an appropriate way.
-
-Mac OS:
-Edit the Help text in the System/Rsrc directory in an appropriate way.
 
 To distribute software electronically over a medium which doesn't support binary distribution, e.g., over e-mail, a standard ASCII encoder is available.
 
-
-7 Cross-Platform issues
-If you use BlackBox both on Mac OS and on Windows, you'll regularly transfer documents between the two platforms. Code files cannot be transferred, since their formats are non-portable. To simplify the transfer of documents, you should configure the available tools (e.g., Apple's PC Exchange software) such that they map the Mac OS file type ("oODC") and file creator ("obnF") to the Windows file name suffix ".odc" and vice versa.
-
-Furthermore, you may want to use fonts which are available on both platforms, either TrueType fonts or PostScript fonts if you have Adobe's Type Manager available. If you don't have equivalent fonts on both platforms, you can still read the text, with another font substituted for the correct one. This will likely result in visually unsatisfactory results.
-Use the default font for cross-platform documents, if you have no preference for a specific font. Typically, the default font is used for on-line documentation. The default font automatically adapts to the reader's system configuration, so that he or she can select their preferred font.
-
-Like any other document, a dialog box can be transferred between the two platforms. However, for best results you may want to fine-tune a dialog box layout for the platform's controls before distributing it.
-
-In order to minimize installation problems, it is recommended to limit module names to at most eight characters (not counting the subsystem prefix, which itself may be up to eight characters), and not to use module names which only differ in their use of small or capital letters.

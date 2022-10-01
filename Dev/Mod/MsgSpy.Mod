@@ -12,7 +12,7 @@ MODULE DevMsgSpy;
 **)
 
 	IMPORT SYSTEM, 
-		DevDebug, Dialog, Stores, Models, Views, Controllers, Properties, Kernel, 
+		Strings, DevDebug, Dialog, Stores, Models, Views, Controllers, Properties, Kernel, 
 		Ports, TextModels, TextViews, TextMappers, StdDialog,
 		Files, Converters, FormViews, FormModels, Windows, Containers, Services;
 
@@ -80,7 +80,7 @@ MODULE DevMsgSpy;
 			END
 		END InsertTree;
 	BEGIN
-		INC(size);  para.sel.SetLen(size);	(* increase size and reset all items *)
+		INC(size); para.sel.SetLen(size);	(* increase size and reset all items *)
 		InsertTree(msgs);						(* insert the new item *)
 		Dialog.UpdateList(para.sel)
 	END Insert;
@@ -212,13 +212,14 @@ MODULE DevMsgSpy;
 		RETURN desc
 	END DescOfMsg;
 	
-	PROCEDURE WriteLog(t: Kernel.Type; VAR msg: ANYREC; name: ARRAY OF SHORTCHAR);
-		VAR link: RefView; p: ANYPTR; name2 : ARRAY 256 OF CHAR; f: TextMappers.Formatter;
+	PROCEDURE WriteLog(t: Kernel.Type; VAR msg: ANYREC; name: ARRAY OF CHAR);
+		VAR link: RefView; p: ANYPTR; modName, name2 : Kernel.Name; f: TextMappers.Formatter;
 	BEGIN
 		Kernel.NewObj(p, t);
 		SYSTEM.MOVE(SYSTEM.ADR(msg), p, t.size);
 		NEW(link); link.msg := p;
-		name2 := t.mod.name$ + "." + name$;
+		Kernel.GetModName(t.mod, modName); 
+		name2 := modName$ + "." + name$;
 		
 		f.ConnectTo(text);
 		f.WriteString(name2 + " ");
@@ -228,12 +229,13 @@ MODULE DevMsgSpy;
 	END WriteLog;
 	
 	PROCEDURE (v: View) HandleCtrlMsg (f: Views.Frame; VAR msg: Controllers.Message; VAR focus: Views.View);
-		VAR name: Kernel.Name; t: Kernel.Type; m: Msgs;
+		VAR modName, name: Kernel.Name; t: Kernel.Type; m: Msgs;
 	BEGIN
 		t := DescOfMsg(msg);
+		Kernel.GetModName(t.mod, modName); 
 		Kernel.GetTypeName (t, name);
-		m := Find(t.mod.name, name);
-		IF m = NIL THEN Insert(t.mod.name, name)
+		m := Find(modName, name);
+		IF m = NIL THEN Insert(modName, name)
 		ELSIF para.sel.In(m.index) & para.showMessages THEN WriteLog(t, msg, name);
 		END;
 		focus := v.inner	(* forward all controller messages to wrapped view *)
@@ -245,24 +247,26 @@ MODULE DevMsgSpy;
 	END ExternalizeAs;
 	
 	PROCEDURE (v: View) HandlePropMsg (VAR msg: Properties.Message);
-		VAR name: Kernel.Name; t: Kernel.Type; m: Msgs;
+		VAR modName, name: Kernel.Name; t: Kernel.Type; m: Msgs; res: INTEGER; nn: Kernel.Utf8Name;
 	BEGIN
 		t := DescOfMsg(msg);
+		Kernel.GetModName(t.mod, modName); 
 		Kernel.GetTypeName (t, name);
-		m := Find(t.mod.name, name);
-		IF m = NIL THEN Insert(t.mod.name, name)
+		m := Find(modName, name);
+		IF m = NIL THEN Insert(modName, name)
 		ELSIF para.sel.In(m.index) & para.showMessages THEN WriteLog(t, msg, name);
 		END;			
 		Views.HandlePropMsg(v.inner, msg)
 	END HandlePropMsg;
 	
 	PROCEDURE (v: View) HandleViewMsg (f: Views.Frame; VAR msg: Views.Message);
-		VAR name: Kernel.Name; t: Kernel.Type; m: Msgs;
+		VAR modName, name: Kernel.Name; t: Kernel.Type; m: Msgs;
 	BEGIN
 		t := DescOfMsg(msg);
+		Kernel.GetModName(t.mod, modName); 
 		Kernel.GetTypeName (t, name);
-		m := Find(t.mod.name, name);
-		IF m = NIL THEN Insert(t.mod.name, name)
+		m := Find(modName, name);
+		IF m = NIL THEN Insert(modName, name)
 		ELSIF para.sel.In(m.index) & para.showMessages THEN WriteLog(t, msg, name);
 		END;
 
@@ -274,12 +278,13 @@ MODULE DevMsgSpy;
 	END HandleViewMsg;
 
 	PROCEDURE (v: View) HandleModelMsg (VAR msg: Models.Message);
-		VAR name: Kernel.Name; t: Kernel.Type; m: Msgs;
+		VAR modName, name: Kernel.Name; t: Kernel.Type; m: Msgs;
 	BEGIN
 		t := DescOfMsg(msg);
+		Kernel.GetModName(t.mod, modName); 
 		Kernel.GetTypeName (t, name);
-		m := Find(t.mod.name, name);
-		IF m = NIL THEN Insert(t.mod.name, name)
+		m := Find(modName, name);
+		IF m = NIL THEN Insert(modName, name)
 		ELSIF para.sel.In(m.index) & para.showMessages THEN WriteLog(t, msg, name);
 		END;
 		(* framework performs message propagation *)

@@ -1342,11 +1342,11 @@ MODULE StdTables;
 	PROCEDURE SetupSelectionStyleList (VAR l: Dialog.List);
 	BEGIN
 		l.SetLen(5);
-		l.SetItem(noSelect, "No Selection");
-		l.SetItem(cellSelect, "Select Cell");
-		l.SetItem(rowSelect, "Select Row");
-		l.SetItem(colSelect, "Select Column");
-		l.SetItem(crossSelect, "Select Row & Column")
+		l.SetItem(noSelect, "#Std:No Selection");
+		l.SetItem(cellSelect, "#Std:Select Cell");
+		l.SetItem(rowSelect, "#Std:Select Row");
+		l.SetItem(colSelect, "#Std:Select Column");
+		l.SetItem(crossSelect, "#Std:Select Row & Column")
 	END SetupSelectionStyleList;
 
 	PROCEDURE Init;

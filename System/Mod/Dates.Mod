@@ -121,8 +121,6 @@ MODULE Dates;
 		hook.GetTime(d, t)
 	END GetTime;
 
-	(* UTC = Coordinated Universal Time, also konown as Greenwich Mean time (GMT). *)
-
 	PROCEDURE GetUTCDate* (OUT d: Date);
 		VAR t: Time;
 	BEGIN
@@ -136,19 +134,12 @@ MODULE Dates;
 		ASSERT(hook # NIL, 100);
 		hook.GetUTCTime(d, t)
 	END GetUTCTime;
-	
+
 	PROCEDURE GetUTCBias* (OUT bias: INTEGER);
-	(*
-		Returns the current bias, in minutes, for local time translation on this computer. The bias is the difference, 
-		in minutes, between Coordinated Universal Time (UTC) and local time. All translations between UTC and
-		local time are based on the following formula: 
-			UTC = local time + bias 
- 	*)		
 	BEGIN
 		ASSERT(hook # NIL, 100);
 		hook.GetUTCBias(bias)
 	END GetUTCBias;
-	
 
 	PROCEDURE GetEasterDate* (year: INTEGER; OUT d: Date);
 		VAR  k, m, n, a, b, c, d0, e, o: INTEGER; month, day: INTEGER;

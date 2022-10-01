@@ -41,6 +41,8 @@ DEFINITION Files;
 			(f: File) Flush, NEW, ABSTRACT;
 			(f: File) Register (name: Name; type: Type; ask: BOOLEAN; OUT res: INTEGER), NEW, ABSTRACT;
 			(f: File) Close, NEW, ABSTRACT;
+			(f: File) Closed(): BOOLEAN, NEW, ABSTRACT;
+			(f: File) Shared(): BOOLEAN, NEW, ABSTRACT;
 			(f: File) InitType (type: Type), NEW
 		END;
 
@@ -117,7 +119,7 @@ Open files for which no more riders exist are automatically closed by the garbag
 
 A directory object represents all accessible files (not just one subdirectory), independent of their location in the file hierarchy. There is exactly one file hierarchy. However, every BlackBox service may implement its own file directory object. Such an object represents exactly the same file hierarchy, but may provide different ways to look up files, e.g., by applying default search paths, or it may define a current directory relative to which path names are evaluated, etc.
 
-Files are typed. This means that each file has a type attribute which is a string, typically of length 3 (Windows) or 4 (Mac OS). On some platforms, the host file system knows about file types (Mac OS), while on others file types are simulated by using file suffixes as extensions (Windows). File types are useful to tell the system which operations are permissible on files and which aren't. For example, it is possible to install file converters (-> Converters) in BlackBox which translate between file and memory data structures.
+Files are typed. This means that each file has a type attribute which is a string, typically of length 3. On some platforms, the host file system knows about file types (Mac OS), while on others file types are simulated by using file suffixes as extensions (Windows). File types are useful to tell the system which operations are permissible on files and which aren't. For example, it is possible to install file converters (-> Converters) in BlackBox which translate between file and memory data structures.
 
 Example: ObxAscii  docu
 
@@ -149,7 +151,7 @@ String type for file names.
 
 
 TYPE Type
-String type for file type names. Under Windows, file type names correspond to the three-character file name extensions, e.g., file XYZ.txt has type txt. On Mac OS, the appropriate four-character file type name is used, e.g. an ASCII file xyz has file type TEXT.
+String type for file type names. Under Windows, file type names correspond to the three-character file name extensions, e.g., file XYZ.txt has type txt.
 
 
 TYPE Locator
@@ -255,7 +257,11 @@ PROCEDURE (f: File) NewWriter (old: Writer): Writer
 NEW, ABSTRACT
 Returns a writer which has the appropriate type (for this file type). If old = NIL, then a new writer is allocated. If old # NIL and old has the appropriate type, old is returned. Otherwise, a new writer is allocated. The returned writer is connected to f, and its position is somewhere on the file. If an old writer is passed as parameter, the old position will be retained if possible.
 If an old writer is passed as parameter, it is the application's responsibility to guarantee that it is not in use anymore. Passing an unused old writer is recommended because it avoids unnecessary allocations.
-Read-only files allow no writers at all. In such cases, NewWriter returns NIL.
+Read-only files allow no writers at all.
+
+Pre
+~ f.Closed()	20
+~ f.Shared()	21
 
 Post
 result # NIL
@@ -263,8 +269,6 @@ result # NIL
 		result.Pos() = old.Pos()
 	old = NIL OR old.Base() # f
 		result.Pos() = f.Length()
-result = NIL
-	read-only file
 
 PROCEDURE (f: File) Flush
 NEW, ABSTRACT
@@ -306,6 +310,14 @@ Closes an open file. Close does nothing if the file is not open. If a call to Ne
 The file f and the riders operating on file f are not valid anymore after closing f, i.e., no more file or rider operations may be performed on it. However, the closed file can be retrieved and opened again by procedure Old.
 Close may call Flush internally.
 Close should (but need not necessarily) be called explicitly after a file is not needed anymore.
+
+PROCEDURE (f: File) Closed (): BOOLEAN,
+NEW, ABSTRACT;
+Returns the information about file state.
+
+PROCEDURE (f: File) Shared (): BOOLEAN,
+NEW, ABSTRACT;
+Returns the information about file state.
 
 PROCEDURE (f: File) InitType (type: Type)
 Initializes the file's type field.
@@ -547,7 +559,7 @@ loc.res = 4	write-protection
 loc.res = 5	io error
 
 PROCEDURE (d: Directory) SameFile (loc0: Locator; name0: Name;
-															loc1: Locator; name1: Name): BOOLEAN;
+															loc1: Locator; name1: Name): BOOLEAN
 NEW, ABSTRACT
 Determines whether two (locator, name) pairs denote the same file.
 
@@ -574,8 +586,7 @@ loc # NIL	20
 PROCEDURE (d: Directory) GetFileName (name: Name; type: Type; OUT filename: Name)
 NEW, ABSTRACT
 Make a file name out of a file and its type.
-Windows: filename = name + "." + type
-Mac OS: filename = name
+filename = name + "." + type
 
 
 VAR dir-, stdDir-: Directory	(dir # NIL) & (stdDir # NIL)

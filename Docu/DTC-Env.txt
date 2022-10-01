@@ -1,9 +1,7 @@
- Direct-To-COM Compiler
+Direct-To-COM Compiler
 
 The Integrated Development Environment
 
-
-
 Contents
 
 Linker
@@ -11,11 +9,10 @@ Contents
 COMInterfaceInspector
 OtherCOMCommands
 
-
 Besides the compiler (which is described in COM Compiler Extension documentation), the DTC development environment offers some special facilities. Most of them are accessible through the COM menu.
 
-
 Linker
+
 With the linker Component Pascal modules can be linked to DLL (in process servers) or to EXE (out of process servers) files. Furthermore it can be decided whether a dynamic module loader should be added or not. This leads to the following four link commands:
 
 	EXE	DLL
@@ -58,7 +55,7 @@ When the DLL is released from the process, the terminator of the main module is 
 Initialization and termination of the dynamically loaded modules must be done by the runtime system.
 
 
-Interface Browser
+Interface Browser
 
 To quickly retrieve the actual definition of an interface, a special interface browser is available under the menu command COM->Interface Info. In contrast to the BlackBox browser, the COM interface browser displays additional information such as the number of the functions in the interface. Note that the first three entries of every interface are used by the functions of the IUnknown interface.
 
@@ -66,7 +63,8 @@ If you select WinOle.IEnumUnknown and execute COM->Interface Info the following 
 
 
 
-COM Interface Inspector
+
+COM Interface Inspector
 
 The COM interface inspector is the most important tool for the development of COM objects. It allows to inspect all currently allocated interface records. The browser is opened with the command COM->Show Interfaces.
 
@@ -76,8 +74,10 @@ The COM interface inspector is the most important tool for the development of CO
 With the Update link the interface inspector can be updated, and the All link allows to toggle between the display of all interfaces and of only the non-BlackBox-internal ones.
 Interfaces with reference count zero are no longer referenced through an interface pointer, however they might still be referenced by a Component Pascal pointer. Interfaces which are neither referenced through an interface pointer nor through a Component Pascal pointer are garbage collected upon the next run of the garbage collector. The run of the garbage collector can be enforced through the menu command COM->Collect. The collected interfaces disappear when the interface inspector is updated.
 
-Note: If you look at the ComObject example, you will see that every ComObject.Object interface contains Component Pascal pointers to the three interfaces ComObject.IOleObject, ComObject.IDataObject and ComObject.IPersistStorage, i.e. they are not removed by the garbage collector as long as interface pointers refer to a ComObject.Object.
-Other COM Commands
+Note: If you look at the ComObject example, you will see that every ComObject.Object interface contains Component Pascal pointers to the three interfaces ComObject.IOleObject, ComObject.IDataObject and ComObject.IPersistStorage, i.e. they are not removed by the garbage collector as long as interface pointers refer to a ComObject.Object.
+
+
+Other COM Commands
 
 Show Error
 

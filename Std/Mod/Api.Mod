@@ -13,8 +13,11 @@ MODULE StdApi;
 	
 	IMPORT
 		Kernel, Views, Files, Dialog, Converters, Windows, Sequencers, Stores, Meta,
-		Containers, StdDialog, Documents;
+		Containers, StdDialog, Documents, Strings;
 
+	VAR
+		modeHook*: PROCEDURE(c: Containers.Controller); (* for setting nested forms to the container's mode *)
+		
 	(* Auxiliary procedures *)
 
 	PROCEDURE CheckQualident (VAR str, mod, name: ARRAY OF CHAR);
@@ -23,39 +26,57 @@ MODULE StdApi;
 		i := 0; 
 		REPEAT
 			ch := str[i]; mod[i] := ch; INC(i)
-		UNTIL (i = LEN(str)) OR (i = LEN(mod)) OR (ch < "0") OR (ch > "9") & (CAP(ch) < "A") OR (CAP(ch) > "Z");
+		UNTIL (i = LEN(str)) OR (i = LEN(mod)) OR ~Strings.IsIdent(ch);
 		IF ch = "." THEN
 			mod[i - 1] := 0X; j := 0;
 			REPEAT
 				ch := str[i]; name[j] := ch; INC(i); INC(j)
-			UNTIL (i = LEN(str)) OR (j = LEN(name)) OR (ch < "0") OR (ch > "9") & (CAP(ch) < "A") OR (CAP(ch) > "Z");
+			UNTIL (i = LEN(str)) OR (j = LEN(name)) OR ~Strings.IsIdent(ch);
 			IF ch # 0X THEN mod[0] := 0X; name[0] := 0X END
 		ELSE mod[0] := 0X; name[0] := 0X
 		END
 	END CheckQualident;
-	
-	PROCEDURE PathToSpec (VAR path: ARRAY OF CHAR; VAR loc: Files.Locator; VAR name: Files.Name);
-		VAR i, j: INTEGER; ch: CHAR;
+
+	PROCEDURE FileExists (loc: Files.Locator; IN name: ARRAY OF CHAR): BOOLEAN;
+		VAR fi: Files.FileInfo; found: BOOLEAN;
 	BEGIN
-		i := 0; j := 0; loc := Files.dir.This("");
+		fi := Files.dir.FileList(loc);
+		found := FALSE;
+		WHILE (fi # NIL) & ~found DO found := fi.name$ = name$; fi := fi.next END;
+		RETURN found
+	END FileExists;
+
+	PROCEDURE PathToSpec (IN path: ARRAY OF CHAR; OUT loc: Files.Locator; OUT name: Files.Name;
+											useLang: BOOLEAN);
+		VAR i, j: INTEGER; ch: CHAR;
+			nameUpper, fn: Files.Name; langParent: Files.Locator;
+	BEGIN
+		i := 0; j := 0; loc := Files.dir.This(""); langParent := NIL;
 		WHILE (loc.res = 0) & (i < LEN(path) - 1) & (j < LEN(name) - 1) & (path[i] # 0X) DO
 			ch := path[i]; INC(i);
 			IF (j > 0) & ((ch = "/") OR (ch = "\")) THEN
 				name[j] := 0X; j := 0;
-				IF name = "*" THEN
-					IF Dialog.language # "" THEN loc := loc.This(Dialog.language) END
+				IF (loc = langParent) & (name = "en") THEN langParent := NIL (* map ".../Docu/en/..." to ".../Docu/..." *)
 				ELSE loc := loc.This(name)
+				END;
+				IF useLang & (langParent = NIL) THEN Strings.ToUpper(name, nameUpper);
+					IF nameUpper = "DOCU" THEN langParent := loc END
 				END
 			ELSE
 				name[j] := ch; INC(j)
 			END
 		END;
-		IF path[i] = 0X THEN name[j] := 0X
+		IF path[i] = 0X THEN name[j] := 0X;
+			IF (loc = langParent) & (Dialog.language # "") & (Dialog.language # "en") THEN (* use Dialog.language *)
+				loc := loc.This(Dialog.language);
+				fn := name; Kernel.MakeFileName(fn, "");
+				IF ~FileExists(loc, fn) THEN loc := langParent END
+			END
 		ELSE loc.res := 1; name := ""
 		END
 	END PathToSpec;
 	
-	PROCEDURE ThisDialog (dialog: ARRAY OF CHAR): Views.View;
+	PROCEDURE ThisDialog (dialog: ARRAY OF CHAR; useLang: BOOLEAN): Views.View;
 		VAR fname, submod, sub, mod: Files.Name; canCreate: BOOLEAN; conv: Converters.Converter;
 			loc: Files.Locator; file: Files.File; v: Views.View; s: Stores.Store; var: Meta.Item;
 	BEGIN
@@ -83,7 +104,7 @@ MODULE StdApi;
 			END
 		END;
 		IF (file = NIL) & ~canCreate THEN	(* try file name *)
-			PathToSpec(dialog, loc, fname);
+			PathToSpec(dialog, loc, fname, useLang);
 			IF loc.res = 0 THEN
 				Kernel.MakeFileName(fname, "");
 				file := Files.dir.Old(loc, fname, Files.shared)
@@ -100,15 +121,16 @@ MODULE StdApi;
 		RETURN v
 	END ThisDialog;
 
-	PROCEDURE ThisMask (param: ARRAY OF CHAR): Views.View;
+	PROCEDURE ThisMask (param: ARRAY OF CHAR; useLang: BOOLEAN): Views.View;
 		VAR v: Views.View; c: Containers.Controller;
 	BEGIN
-		v := ThisDialog(param);
+		v := ThisDialog(param, useLang);
 		IF v # NIL THEN
 			WITH v: Containers.View DO
 				c := v.ThisController();
 				IF c # NIL THEN
-					c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noCaret, Containers.noSelection})
+					c.SetOpts(c.opts - {Containers.noFocus} + {Containers.noCaret, Containers.noSelection});
+					IF modeHook # NIL THEN modeHook(c) END
 				ELSE Dialog.ShowMsg("#System:NotEditable")
 				END
 			ELSE Dialog.ShowMsg("#System:ContainerExpected")
@@ -141,7 +163,7 @@ MODULE StdApi;
 	PROCEDURE OpenAux* (file, title: ARRAY OF CHAR; OUT v: Views.View);
 		VAR loc: Files.Locator; name: Files.Name; t: Views.Title;
 	BEGIN
-		PathToSpec(file, loc, name);
+		PathToSpec(file, loc, name, FALSE);
 		IF loc.res = 0 THEN
 			loc.res := 77; v := Views.OldView(loc, name); loc.res := 0;
 			IF v # NIL THEN t := title$; Views.OpenAux(v, t)
@@ -157,31 +179,43 @@ MODULE StdApi;
 		Dialog.MapString(title, t0);
 		Windows.SelectByTitle(NIL, {Windows.isAux}, t0, done);
 		IF ~done THEN
-			v := ThisMask(file);
+			v := ThisMask(file, TRUE);
 			IF v # NIL THEN
 				StdDialog.Open(v, title, NIL, "", NIL, FALSE, TRUE, TRUE, FALSE, TRUE)
 			END
 		END
 	END OpenAuxDialog;
 	
+	(* Opening a file in 'Browser' mode is used mainly for online help files. 
+	In that case, but also in others, it is convenient to bring an existing window to the front in case the 
+	same file is browsed again. This behavior is the same as with opening a file as a normal window.
+	In order to be able to browse and edit at the same time, i.e. in two different domains, the 
+	isAux flag is used to distinguish between both.
+	*)
 	PROCEDURE OpenBrowser* (file, title: ARRAY OF CHAR; OUT v: Views.View);
 		VAR loc: Files.Locator; name: Files.Name; t: Views.Title;
-			c: Containers.Controller;
+			c: Containers.Controller; w: Windows.Window;
 	BEGIN
-		PathToSpec(file, loc, name);
+		PathToSpec(file, loc, name, TRUE);
 		IF loc.res = 0 THEN
-			loc.res := 77; v := Views.OldView(loc, name); loc.res := 0;
-			IF v # NIL THEN
-				WITH v: Containers.View DO
-					c := v.ThisController();
-					IF c # NIL THEN
-						c.SetOpts(c.opts - {Containers.noFocus, Containers.noSelection} + {Containers.noCaret})
-					END
-				ELSE
-				END;
-				t := title$;
-				StdDialog.Open(v, t, NIL, "", NIL, FALSE, TRUE, FALSE, TRUE, FALSE)
-			ELSE Dialog.ShowParamMsg("#System:FileNotFound", file, "", "")
+			w := Windows.GetBySpec(loc, name, Converters.list, {Windows.isAux});
+			IF w # NIL THEN (* bring to front; avoid re-loading the document *)
+				Windows.dir.Select(w, Windows.lazy);
+				v := w.doc.ThisView();
+			ELSE (* load document and open reusable aux window in Browser mode *)
+				loc.res := 77; v := Views.OldView(loc, name); loc.res := 0;
+				IF v # NIL THEN
+					WITH v: Containers.View DO
+						c := v.ThisController();
+						IF c # NIL THEN
+							c.SetOpts(c.opts - {Containers.noFocus, Containers.noSelection} + {Containers.noCaret})
+						END
+					ELSE
+					END;
+					t := title$;
+					StdDialog.Open(v, t, loc, name, NIL, FALSE, TRUE, FALSE, FALSE, FALSE)
+				ELSE Dialog.ShowParamMsg("#System:FileNotFound", file, "", "")
+				END
 			END
 		ELSE Dialog.ShowParamMsg("#System:FileNotFound", file, "", "")
 		END
@@ -190,7 +224,7 @@ MODULE StdApi;
 	PROCEDURE OpenDoc* (file: ARRAY OF CHAR; OUT v: Views.View);
 		VAR loc: Files.Locator; name: Files.Name; conv: Converters.Converter;
 	BEGIN
-		PathToSpec(file, loc, name);
+		PathToSpec(file, loc, name, FALSE);
 		IF loc.res = 0 THEN
 			conv := NIL; v := Views.Old(Views.dontAsk, loc, name, conv);
 			IF loc.res = 78 THEN loc := NIL; name := "" END;	(* stationery *)
@@ -204,7 +238,7 @@ MODULE StdApi;
 	PROCEDURE OpenCopyOf* (file: ARRAY OF CHAR; OUT v: Views.View);
 		VAR loc: Files.Locator; name: Files.Name; conv: Converters.Converter;
 	BEGIN
-		PathToSpec(file, loc, name);
+		PathToSpec(file, loc, name, FALSE);
 		IF loc.res = 0 THEN
 			conv := NIL; v := Views.Old(Views.dontAsk, loc, name, conv);
 			IF loc.res = 78 THEN loc := NIL; name := "" END;	(* stationary *)
@@ -227,7 +261,7 @@ MODULE StdApi;
 		Dialog.MapString(title, t0);
 		Windows.SelectByTitle(NIL, {Windows.isTool}, t0, done);
 		IF ~done THEN
-			v := ThisMask(file);
+			v := ThisMask(file, FALSE);
 			IF v # NIL THEN
 				StdDialog.Open(v, title, NIL, "", NIL, TRUE, FALSE, TRUE, FALSE, TRUE)
 			END

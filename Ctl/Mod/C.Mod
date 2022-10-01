@@ -1340,7 +1340,7 @@ MODULE CtlC;
 	BEGIN
 		ASSERT(var.vt = WinOle.VT_DISPATCH + WinOle.VT_BYREF, 100);
 		SYSTEM.GET(var.Hi32, obj);
-		var.u.ppdispVal[0] := obj.disp
+		IF obj # NIL THEN var.u.ppdispVal[0] := obj.disp ELSE var.u.ppdispVal[0] := NIL END
 	END RetObj;
 	
 	PROCEDURE RetAny* (VAR var: CtlT.Variant);

@@ -14,6 +14,7 @@ FileError	File Error
 ReplaceWriteProtected	^0 could not be replaced^1because it is write protected
 ReplaceInUse	^0 could not be replaced^1because it is in use
 ReplaceAccessDenied	^0 could not be replaced^1because access is denied
+PreferencesDocu	Preferences Docu
 AllocatedMemory	 Allocated Memory: 
 Total	    Total: 
 Bytes	 Bytes
@@ -27,6 +28,33 @@ Failed	failed
 Document	Document
 AllFiles	All Files
 NotUnderWindows3	Feature not available under Windows 3.11
+Read File As:	Read File As:
+Use true type metric	&Use true type metric
+Visual scrolling	&Visual scrolling
+Beep	&Beep
+Server Mode	Server &Mode
+Caret	Caret
+Thick Caret	&Thick Caret
+Caret Period (in ms):	&Caret Period (in ms):
+Language:	&Language:
+Default font...	D&efault font...
+Dialog font...	Di&alog font...
+Status bar	Status bar
+No	&No
+Simple	&Simple
+Double	&Double
+Printing Page:	Printing Page:
+Printer...	Printer...
+Layout	Layout
+Standard Header	Standard Header
+Orientation	Orientation
+Portrait	Portrait
+Landscape	Landscape
+Margins	Margins
+Left:	Left:
+Right:	Right:
+Top:	Top:
+Bottom:	Bottom:
 
 HostTextConv.ImportText	Text
 HostTextConv.ImportTabText	Text (space pairs as tabs)
@@ -35,7 +63,6 @@ HostTextConv.ImportUnicode	Unicode Text
 HostTextConv.ImportHex	Data File (hex)
 HostTextConv.ImportDosText	Text (Dos encoding)
 HostBitmaps.ImportBitmap	Bitmap
-HostBitmaps.ExportBitmap	Bitmap
 
 HostTextConv.ExportText	Plain Text
 HostTextConv.ExportTabText	Plain Text (tabs as space pairs)

@@ -1,12 +1,13 @@
+Table of Contents ↑
 5 Texts
 
 Graphical user interfaces have introduced graphical elements into everyday computing. While this was a very positive step towards overcoming the old-style modal textual user interfaces, texts have by no means become obsolete. Even in reports containing many illustrations, texts serve as indispensible glue.
-In typical database applications, no graphical contents is manipulated. The data entered and retrieved are mostly textual, and reports to be printed usually are texts arranged in a tabular fashion.
+In typical database applications, no graphical contents is manipulated. The data entered and retrieved are mostly textual, and reports to be printed usually are texts arranged in a tabular fashion.
 Because of the importance of texts, this chapter demonstrates how the BlackBox Component Builder's text abstraction can be used in various ways. In several examples, we will reuse the simple database module introduced in the previous chapter.
-We will work "bottom-up" by providing examples first for writing new texts, then for reading existing text, and finally for modifying existing texts. When discussing these examples, we will meet text models/carriers and riders, mappers, and auxiliary abstractions such as fonts, attributes, rulers, and others.
+We will work "bottom-up" by providing examples first for writing new texts, then for reading existing text, and finally for modifying existing texts. When discussing these examples, we will meet text models/carriers and riders, mappers, and auxiliary abstractions such as fonts, attributes, rulers, and others.
 
 
-5.1 Writing text
+5.1 Writing text
 
 In the BlackBox Component Builder, texts use the Carrier-Rider-Mapper design pattern (see Chapter 3). They provide text models as carriers for texts, and text writers and text readers as riders on text models. Both types are defined in the Text subsystem's core module TextModels. A text writer maintains a current position and current attributes, which will be used when writing the next element into the text. The full definition of a writer looks as follows:
 
@@ -23,20 +24,15 @@ In the BlackBox Component Builder, texts use the Carrier-Rider-Mapper design pat
 Listing 5-1. Definition of TextModels.Writer
 
 The most important procedure of a writer is WriteChar, it allows to write a new character at the current position. If the character position lies within an existing text (i.e., in 0 .. text.Length() - 1), the character at this text position is inserted. (This is a difference to the BlackBox files abstraction, where old data would be overwritten by the writer in this case. With texts, writers always insert and never overwrite.) If the writer's position is at the end of the text (i.e., at text.Length()), the character is appended to the text and thus makes the text one element longer. After WriteChar, the writer's text position is increased by one. The current position can be inquired by calling the writer's Pos function, and it can be modified by calling the SetPos procedure.
-
-Since text models are capable of containing views as well as normal characters, there exists a procedure WriteView which allows to write a view, given an appropriate size (w for the width, h for the height).
-Like most geometrical distances in BlackBox, a view's width and height are specified in so-called universal units of 1/36000 millimeters. This value was chosen to eliminate rounding errors for many common screen and printer resolutions. For example, an inch, a 1/300-th of an inch, a millimeter, and a desktop publishing point can be represented in units without rounding errors. Where not specified otherwise, distances can be assumed to be represented in universal units.
-If no specific size for the view is desired, passing the value Views.undefined for the width and/or height allows the text to choose a suitable default size for the written view.
-
-How is a writer created? Like all riders, a writer is created by a factory function of its carrier. For this purpose, a text model provides the procedure NewWriter, which creates a writer and connects it to the text. A writer can return its text through the Base function. A newly created writer is positioned at the end of the text.
-
-Text elements don't have character codes only, they also have attributes. A writer's attr field contains the attributes to be used when the next character or view is written. The current attributes can be changed by calling the writer's SetAttr procedure.
-
-In terms of attributes, the text subsystem of the BlackBox Component Builder supports colors and vertical offsets. Colors are encoded as integers (Ports.Color). Module Ports predefines the constants black, grey6, grey12, grey25, grey50, grey75, white, red, green, and blue. "grey6" means a mixture of 6% white and 94% black, which is almost black. The other grey values are increasingly lighter. Vertical offsets are measured in universal units.
-
-Besides colors and vertical offset, a text element also has a font attribute. A font is a collection of glyphs. A glyph is a visual rendering of a character code. Different fonts may contain different glyphs for the same characters. For example, Helvetica looks different from Times and Frutiger. A font may not provide glyphs for all character codes that can be represented in Component Pascal. This is not surprising, since the CHAR datatype of Component Pascal conforms to the Unicode standard. Unicode is a 16-bit standard, and thus can represent over 65000 different characters. The first 256 characters are the Latin-1 characters. The first 128 characters of Latin-1 are the venerable ASCII characers.
-If a font doesn't contain a particular glyph, BlackBox's font framework either returns a glyph from some other font for the same character, or it yields a generic "missing glyph" symbol; e.g., a small empty rectangle.
-Font objects are defined in module Fonts.Font. It won't be necessary to take a closer look at this module here; it is sufficient to interpret a pointer of type Fonts.Font as the identification of a font with its particular typeface, style, weight, and size:
+Since text models are capable of containing views as well as normal characters, there exists a procedure WriteView which allows to write a view, given an appropriate size (w for the width, h for the height).
+Like most geometrical distances in BlackBox, a view's width and height are specified in so-called universal units of 1/36000 millimeters. This value was chosen to eliminate rounding errors for many common screen and printer resolutions. For example, an inch, a 1/300-th of an inch, a millimeter, and a desktop publishing point can be represented in units without rounding errors. Where not specified otherwise, distances can be assumed to be represented in universal units.
+If no specific size for the view is desired, passing the value Views.undefined for the width and/or height allows the text to choose a suitable default size for the written view.
+How is a writer created? Like all riders, a writer is created by a factory function of its carrier. For this purpose, a text model provides the procedure NewWriter, which creates a writer and connects it to the text. A writer can return its text through the Base function. A newly created writer is positioned at the end of the text.
+Text elements don't have character codes only, they also have attributes. A writer's attr field contains the attributes to be used when the next character or view is written. The current attributes can be changed by calling the writer's SetAttr procedure.
+In terms of attributes, the text subsystem of the BlackBox Component Builder supports colors and vertical offsets. Colors are encoded as integers (Ports.Color). Module Ports predefines the constants black, grey6, grey12, grey25, grey50, grey75, white, red, green, and blue. "grey6" means a mixture of 6% white and 94% black, which is almost black. The other grey values are increasingly lighter. Vertical offsets are measured in universal units.
+Besides colors and vertical offset, a text element also has a font attribute. A font is a collection of glyphs. A glyph is a visual rendering of a character code. Different fonts may contain different glyphs for the same characters. For example, Helvetica looks different from Times and Frutiger. A font may not provide glyphs for all character codes that can be represented in Component Pascal. This is not surprising, since the CHAR datatype of Component Pascal conforms to the Unicode standard. Unicode is a 16-bit standard, and thus can represent over 65000 different characters. The first 256 characters are the Latin-1 characters. The first 128 characters of Latin-1 are the venerable ASCII characers.
+If a font doesn't contain a particular glyph, BlackBox's font framework either returns a glyph from some other font for the same character, or it yields a generic "missing glyph" symbol; e.g., a small empty rectangle.
+Font objects are defined in module Fonts.Font. It won't be necessary to take a closer look at this module here; it is sufficient to interpret a pointer of type Fonts.Font as the identification of a font with its particular typeface, style, weight, and size:
 
 Typeface
 This is the font family to which a font belongs; it defines a common "look and feel" for the whole family. Examples of typefaces are Helvetica, Times, or Courier. Typeface names are represented as character arrays of type Fonts.Typeface.
@@ -79,10 +75,8 @@ We have now seen the capabilities of a text writer, including the text attribute
 Listing 5-3. Code pattern for TextModels.Writer
 
 The code pattern is not very interesting since it doesn't show how the generated text can be displayed. A text object only represents a text with its attributes. It doesn't know about how to draw this text, not even how to do text setting; i.e., how to break lines and pages such that they fit a given rectangle (view, paper size, etc.). When it is desired to make a text visible, it is necessary to provide a text view for the text object. Data objects that may be displayed in several views are generally called models. The separation of model and view is an important design pattern that was discussed in Chapter 2.
-
-Module TextModels only exports an abstract record type for text models, no concrete implementation. Instead, it exports a directory object (TextModels.dir) which provides the necessary factory function (TextModels.dir.New). This indirection pattern for object creation was motivated in Chapter 2.
-
-Working directly with text writers is inconvenient, they don't even support the writing of strings. For this reason, the following examples will use formatters when writing text. A formatter is a mapper (see Chapter 3) that contains a text writer and performs the mapping of higher-level symbols, such as the Component Pascal symbols, to a stream of characters that can be fed to the writer. In the next example, we we will use a formatter to write a text; a very simple "report". The text consists of the phone database contents, one line per entry. This first version of a phone database report is implemented in module ObxPDBRep0:
+Module TextModels only exports an abstract record type for text models, no concrete implementation. Instead, it exports a directory object (TextModels.dir) which provides the necessary factory function (TextModels.dir.New). This indirection pattern for object creation was motivated in Chapter 2.
+Working directly with text writers is inconvenient, they don't even support the writing of strings. For this reason, the following examples will use formatters when writing text. A formatter is a mapper (see Chapter 3) that contains a text writer and performs the mapping of higher-level symbols, such as the Component Pascal symbols, to a stream of characters that can be fed to the writer. In the next example, we we will use a formatter to write a text; a very simple "report". The text consists of the phone database contents, one line per entry. This first version of a phone database report is implemented in module ObxPDBRep0:
 
 MODULE ObxPDBRep0;
 
@@ -133,14 +127,11 @@ The text in the newly opened window is a fully editable text view. It can be edi
 Listing 5-6. Code pattern for TextMappers.Formatter and for open a text view
 
 This code pattern occurs in many BlackBox commands, e.g., in DevDebug.ShowLoadedModules. It is useful whenever you need to write tabular reports of varying length, possibly spanning several printed pages.
-It also clearly shows that texts embody several design patterns simultaneously: a text object is a model which can be observed by a view (Observer pattern), it is a carrier (Carrier-Rider-Mapper pattern), and it is a container (Composite pattern).
-
-An interesting aspect of the above code pattern is that the text carrier t is created first, then its contents is constructed using a formatter, and only then is a view v on the text carrier created. Finally, the view is opened in its own document window.
-In BlackBox it is important that a model can be manipulated before there exists any view for it. In fact, it is far more efficient to create a text before a view on it is opened, because screen updates and some internal housekeeping of the undo mechanism are avoided this way, which can cause a dramatic speed difference.
-
-BlackBox text models represent sequences of text elements. A text element is either a Latin-1 character (SHORTCHAR), a Unicode character (a CHAR > 0FFX) or a view (an extension of type Views.View). Text stretches may be attributed with font information, color and vertical offset. Since a text model may contain views, it is a container. In the following examples, we will see how these text facilities can be used when creating new texts. Our phone book database is used as source of the material that we want to put into texts, applying different textual representations in the various examples.
-
-The following example demonstrates how a text can be generated out of our example database. In this text, names are written in green color. The differences to module ObxPDBRep0 are marked with underlined text.
+It also clearly shows that texts embody several design patterns simultaneously: a text object is a model which can be observed by a view (Observer pattern), it is a carrier (Carrier-Rider-Mapper pattern), and it is a container (Composite pattern).
+An interesting aspect of the above code pattern is that the text carrier t is created first, then its contents is constructed using a formatter, and only then is a view v on the text carrier created. Finally, the view is opened in its own document window.
+In BlackBox it is important that a model can be manipulated before there exists any view for it. In fact, it is far more efficient to create a text before a view on it is opened, because screen updates and some internal housekeeping of the undo mechanism are avoided this way, which can cause a dramatic speed difference.
+BlackBox text models represent sequences of text elements. A text element is either a Latin-1 character (SHORTCHAR), a Unicode character (a CHAR > 0FFX) or a view (an extension of type Views.View). Text stretches may be attributed with font information, color and vertical offset. Since a text model may contain views, it is a container. In the following examples, we will see how these text facilities can be used when creating new texts. Our phone book database is used as source of the material that we want to put into texts, applying different textual representations in the various examples.
+The following example demonstrates how a text can be generated out of our example database. In this text, names are written in green color. The differences to module ObxPDBRep0 are marked with underlined text.
 
 MODULE ObxPDBRep1;
 
@@ -176,9 +167,8 @@ END ObxPDBRep1.
 Listing 5-7. Writing the phone database using green color
 
 Note that a formatter's rider contains a set of current attributes (TextModels.Writer.attr). This value includes the current color and is read-only; it can be set with the writer's SetAttr procedure.
-
-Our first text examples, ObxPDBRep0 and ObxPDBRep1, don't produce nice-looking output, because the phone numbers are not aligned below each other in a tabular fashion.
-ObxPDBRep1 remedies this defect by inserting a ruler at the beginning of the text. This ruler defines a tab stop, which causes all phone numbers  separated from their phone names by tabs  to line up nicely. The differences to module ObxPDBRep0 are marked with underlined text.
+Our first text examples, ObxPDBRep0 and ObxPDBRep1, don't produce nice-looking output, because the phone numbers are not aligned below each other in a tabular fashion.
+ObxPDBRep1 remedies this defect by inserting a ruler at the beginning of the text. This ruler defines a tab stop, which causes all phone numbers  separated from their phone names by tabs  to line up nicely. The differences to module ObxPDBRep0 are marked with underlined text.
 
 MODULE ObxPDBRep2;
 
@@ -226,16 +216,13 @@ Execution of the ObxPDBRep2.GenReport command results in a window with the impro
 Figure  5-9. Text editor window containing the tabular phone database
 
 A ruler is a view. A ruler on its own doesn't make sense. Like all controls, a ruler makes only sense in a container. Unlike many other controls, a ruler is an example of a control that can only function properly in a particular container; in this case the container must be a text model. You may copy a ruler into a form or other container, but it will just be passive and have no useful effect there. If it is embedded in a text model that is displayed in a text view, a ruler can influence the way in which the subsequent text is set. For example, a ruler can define tab stops, margins, and adjustment modes.
-
-The attributes of a ruler are valid in the ruler's scope. The scope starts with the ruler itself and ends right before the next ruler, or at the end of the text if there follows no ruler anymore. A ruler introduces a new paragraph, possibly with its own distinct set of paragraph attributes. Inserting a paragraph character (0EX) instead of a ruler also starts a new paragraph, which inherits all paragraph attributes from the preceding ruler. Paragraph characters are the normal way to start a new paragraph; rulers are only used if particular paragraph attributes should be enforced. Note that a carriage return (0DX) doesn't start a new paragraph.
-
-A text view contains an invisible default ruler that defines the text setting of the text before the first ruler in the text, or of all text if no ruler has been written to the text at all. Interactively, this default ruler, and default attributes, can be set with the menu commands Text->Make Default Ruler and Text->Make Default Attributes.
-
-A ruler has many attributes that can be set. Unlike character attributes, which can be applied to arbitrary text stretches, these attributes apply to the ruler or the whole paragraph(s) in its scope.
+The attributes of a ruler are valid in the ruler's scope. The scope starts with the ruler itself and ends right before the next ruler, or at the end of the text if there follows no ruler anymore. A ruler introduces a new paragraph, possibly with its own distinct set of paragraph attributes. Inserting a paragraph character (0EX) instead of a ruler also starts a new paragraph, which inherits all paragraph attributes from the preceding ruler. Paragraph characters are the normal way to start a new paragraph; rulers are only used if particular paragraph attributes should be enforced. Note that a carriage return (0DX) doesn't start a new paragraph.
+A text view contains an invisible default ruler that defines the text setting of the text before the first ruler in the text, or of all text if no ruler has been written to the text at all. Interactively, this default ruler, and default attributes, can be set with the menu commands Text->Make Default Ruler and Text->Make Default Attributes.
+A ruler has many attributes that can be set. Unlike character attributes, which can be applied to arbitrary text stretches, these attributes apply to the ruler or the whole paragraph(s) in its scope.
 We will discuss these attributes so that you know about ruler functionality when you need it. We won't discuss rulers in more detail though, since you can learn about the necessary details on demand if and when you need the more advanced ruler capabilities (see on-line documentation of module TextRulers).
 
 Styles
-A ruler's attributes are not directly stored in the ruler view itself. Instead, they are bundled into a separate object of type TextRulers.Attributes, which in turn is contained in an object of type TextRulers.Style.
+A ruler's attributes are not directly stored in the ruler view itself. Instead, they are bundled into a separate object of type TextRulers.Attributes, which in turn is contained in an object of type TextRulers.Style.
 A style is the model of one or several ruler views. If several views share the same model, the user can change the attributes of all the rulers simultaneously. For example, changing the left margin will affect all rulers bound to the same style. However, models cannot be shared across documents, which means that all rulers bound to the same style must be embedded in the same document.
 TextRulers.Attributes are persistent collections of ruler attributes, much in the same way as TextModels.Attributes are persistent collections of character attributes.
 
@@ -248,10 +235,10 @@ TextRulers.Attributes are persistent collections of ruler attributes, much in th
 Listing 5-10. Simplified definition of TextRulers.Attributes
 
 In the following paragraphs, we discuss the individual attributes. For these attributes, there exist auxiliary procedures in module TextRulers which make it simple to set up a text ruler in the desired way: just create a new ruler with TextRulers.dir.New(NIL), and then apply the auxiliary procedures that you need to obtain the correct attribute settings. An example was given above in the procedure WriteRuler of module ObxPDBRep2.
-These auxiliary procedures greatly simplify setting up text rulers. For example, they hide that the attributes are actually not contained in the ruler itself, but rather in attributes objects which are used by style objects which are used by the rulers. Providing such simplified access to a complex feature is called a facade in the design patterns terminology [GHJV94]. Here the mechanism is particularly simple because the facade merely consists of simple procedures, there is not even a facade object that would have to be created and managed.
+These auxiliary procedures greatly simplify setting up text rulers. For example, they hide that the attributes are actually not contained in the ruler itself, but rather in attributes objects which are used by style objects which are used by the rulers. Providing such simplified access to a complex feature is called a facade in the design patterns terminology [GHJV94]. Here the mechanism is particularly simple because the facade merely consists of simple procedures, there is not even a facade object that would have to be created and managed.
 
 Tab stops
-The tabs field of type TextRulers.TabArray contains information about tab stops. The number of tab stops is given in tabs.len, and must not be larger than TextRulers.maxTabs (which is currently 32). If the user enters more than maxTabs tabs, or more tabs than given in len, then the superfluous tabs will be treated as fixed size space characters. The fixed size used is an integer multiple of the width of a space in the used font, approximately 4 mm in total.
+The tabs field of type TextRulers.TabArray contains information about tab stops. The number of tab stops is given in tabs.len, and must not be larger than TextRulers.maxTabs (which is currently 32). If the user enters more than maxTabs tabs, or more tabs than given in len, then the superfluous tabs will be treated as fixed size space characters. The fixed size used is an integer multiple of the width of a space in the used font, approximately 4 mm in total.
 
 	Tab = RECORD 
 		stop: INTEGER;	(* stop >= 0 *)
@@ -267,7 +254,7 @@ The tabs field of type TextRulers.TabArray contains information about tab stops.
 Listing 5-11. Definition of TextRulers.Tab and TabArray
 
 In tabs.tab.stop, the tab's distance from the left border of the text view is specified (in universal units of course). The tab stops in the tabs.tab array must be sorted in ascending order, and there must be no duplicate values.
-In addition to the stop position kept in field stop, a tab stop can be modified using a set of possible options kept in field type. In particular, these options allow to center text under a tab stop or to right-align text under a tab stop (the default is left alignment):
+In addition to the stop position kept in field stop, a tab stop can be modified using a set of possible options kept in field type. In particular, these options allow to center text under a tab stop or to right-align text under a tab stop (the default is left alignment):
 
 tab type	tabs.tab[i].type
 left adjusted	{}
@@ -275,8 +262,7 @@ right adjusted	{TextRulers.rightTab}
 centered	{TextRulers.centerTab}
 
 For all of the above tab types, it can optionally be specified whether the tab itself is drawn as a vertical bar. Bar tabs are specified by including the value TextRulers.barTab in the tab type set. Since the bars occupy the whole line height, they are useful to to format simple tables.
-
-When created with TextRulers.dir.New(NIL), a ruler has no tabs.
+When created with TextRulers.dir.New(NIL), a ruler has no tabs.
 The following auxiliary procedures are provided to modify a ruler:
 
 	PROCEDURE AddTab (r: Ruler; x: INTEGER)
@@ -287,19 +273,17 @@ The following auxiliary procedures are provided to modify a ruler:
 AddTab adds a new left-adjusted normal tab. It can be changed into a right-adjusted or centered tab by calling MakeRightTab or MakeCenterTab. Independently of the adjustment mode, the tab can be turned into a bar tab by calling MakeLineTab.
 
 Margins
-Text is set within a left and a right margin. These margins can be specified as distances from the left border of the text view. The left margin must be smaller than the right margin.
+Text is set within a left and a right margin. These margins can be specified as distances from the left border of the text view. The left margin must be smaller than the right margin.
 
 	left-, right-: INTEGER	(* (left >= 0)  &  (right >= left) *)
 
 It is possible to signal to the text setter that it should ignore the right margin and use the text view for line breaking instead. In fact, this is the default behavior. It means that when the view size is changed, the text's line breaking will probably change also. Even if the right margins is ignored for text setting, it is still useful: a text view uses it as a hint for how wide the view should be when it is opened.
-Line breaking at a fixed right margin is only needed in rare circumstances, for example when this particular paragraph should be narrower than the others. If you want line breaking to be controlled by the right margin, then you have to include TextRulers.rightFixed in the opts set (see further below).
-
-Note that the Tools->Document Size... command allows to flexibly specify the width (and height) of a document's outermost view, the so-called root view. The width can be set to a fixed size, which is useful for page layout types of application.
-Usually however, the width is defined by the page setup, which derives the view's width from the currently selected paper size, reduced by the user-specified print margins. This is adequate for letters, program sources, and similar kinds of documents.
-As a third possibility, the root view's width can be bound to the window size (this is the case mentioned above, when the view uses the first ruler's right margin as a hint, whether the right margin is fixed or not). Whenever the user resizes the window, the root view is resized accordingly, such that it is kept always as large as the window allows. This is desirable in particular for on-line documentation, where the documentation should use as much screen space as granted by the user, adapting the text flow to the available width whenever the window is resized. An example for this style is the default formatting of Web pages.
-Note that these features are independent of the root view's type. They work the same way for all resizable views, such as text views, form views, and most other kinds of editor view.
-
-When created with TextRulers.dir.New(NIL), a ruler has a left margin of 0 and an implementation-specific non-fixed right margin > 0.
+Line breaking at a fixed right margin is only needed in rare circumstances, for example when this particular paragraph should be narrower than the others. If you want line breaking to be controlled by the right margin, then you have to include TextRulers.rightFixed in the opts set (see further below).
+Note that the Tools->Document Size... command allows to flexibly specify the width (and height) of a document's outermost view, the so-called root view. The width can be set to a fixed size, which is useful for page layout types of application.
+Usually however, the width is defined by the page setup, which derives the view's width from the currently selected paper size, reduced by the user-specified print margins. This is adequate for letters, program sources, and similar kinds of documents.
+As a third possibility, the root view's width can be bound to the window size (this is the case mentioned above, when the view uses the first ruler's right margin as a hint, whether the right margin is fixed or not). Whenever the user resizes the window, the root view is resized accordingly, such that it is kept always as large as the window allows. This is desirable in particular for on-line documentation, where the documentation should use as much screen space as granted by the user, adapting the text flow to the available width whenever the window is resized. An example for this style is the default formatting of Web pages.
+Note that these features are independent of the root view's type. They work the same way for all resizable views, such as text views, form views, and most other kinds of editor view.
+When created with TextRulers.dir.New(NIL), a ruler has a left margin of 0 and an implementation-specific non-fixed right margin > 0.
 The following auxiliary procedures are provided to modify a ruler:
 
 	PROCEDURE SetLeft (r: Ruler; x: INTEGER)
@@ -309,7 +293,7 @@ The following auxiliary procedures are provided to modify a ruler:
 SetLeft and SetRight set the left or right margin. SetFixedRight sets the right margin and marks it as fixed.
 
 First line indentation
-A ruler defines the first line indentation, i.e., how much the first line after the ruler is indented from the left border of the text view. Note that it is possible to define a first line indentation that is smaller than the left margin (first < left). This is the only case where a text view draws text to the left of the specified left margin.
+A ruler defines the first line indentation, i.e., how much the first line after the ruler is indented from the left border of the text view. Note that it is possible to define a first line indentation that is smaller than the left margin (first < left). This is the only case where a text view draws text to the left of the specified left margin.
 
 	first-: INTEGER;	(* first >= 0 *)
 
@@ -321,8 +305,8 @@ The following auxiliary procedure is provided to modify a ruler:
 	PROCEDURE SetFirst (r: Ruler; x: INTEGER)
 
 Ascender and descender
-When a character is drawn, its rendering depends on its font attributes, such as typeface (Helvetica or Times?), style (straight or slanted?), weight (normal or bold?) and size. When a whole string is drawn, all characters are placed on a common base line. The ascender is the largest extent to which any character of a line extends above the base line. Some characters extend below the base line, such as "g" and "y". The descender is the largest extent to which any character of a line extends below the base line (see Figure 5-12).
-A text setter should calculate base line distances in a way that one line's descender doesn't overlap the next line's ascender, in order to avoid overlapping characters. In order to avoid degenerate cases, such as empty lines or lines that only contain tiny font sizes, a ruler can specify minimal values for ascender (asc) and descender (dsc).
+When a character is drawn, its rendering depends on its font attributes, such as typeface (Helvetica or Times?), style (straight or slanted?), weight (normal or bold?) and size. When a whole string is drawn, all characters are placed on a common base line. The ascender is the largest extent to which any character of a line extends above the base line. Some characters extend below the base line, such as "g" and "y". The descender is the largest extent to which any character of a line extends below the base line (see Figure 5-12).
+A text setter should calculate base line distances in a way that one line's descender doesn't overlap the next line's ascender, in order to avoid overlapping characters. In order to avoid degenerate cases, such as empty lines or lines that only contain tiny font sizes, a ruler can specify minimal values for ascender (asc) and descender (dsc).
 
 	asc-, dsc-: INTEGER;	(* (asc >= 0)  &  (dsc >= 0) *)
 
@@ -337,8 +321,7 @@ The following auxiliary procedures are provided to modify a ruler:
 	PROCEDURE SetDsc (r: Ruler; h: INTEGER)
 
 Paragraph lead
-
-The paragraph lead defines the additional vertical space to be inserted between the first line of a paragraph and the previous paragraph's last line. Where the ruler's grid attribute (see below) is used to define a line grid, it is normally considered good style to choose a lead that is a multiple of the grid spacing, or sometimes half of the grid spacing. It allows to visually distinguish new paragraphs from mere carriage returns.
+The paragraph lead defines the additional vertical space to be inserted between the first line of a paragraph and the previous paragraph's last line. Where the ruler's grid attribute (see below) is used to define a line grid, it is normally considered good style to choose a lead that is a multiple of the grid spacing, or sometimes half of the grid spacing. It allows to visually distinguish new paragraphs from mere carriage returns.
 
 	lead-: INTEGER;	(* lead >= 0 *)
 
@@ -348,8 +331,8 @@ The following auxiliary procedure is provided to modify a ruler:
 	PROCEDURE SetLead (r: Ruler; h: INTEGER)
 
 Line grid
-If grid is zero, then lines are packed as closely as possible, so that there remains no free room between one line's descender and the next line's ascender. Different lines may have different ascenders and descenders, depending on the text and fonts that they contain. For this reason, distances between base lines need not be regular. For typographical reasons, irregular line spacing is often undesirable.
-To ensure a more regular spacing of grid lines, it is possible to switch on a line grid, by setting grid to a value larger than zero. This value defines a vertical grid, onto which all base lines are forced. If a line is too high to fit on the next grid line, it is placed one or more grid distances further below (see Figure 5-14).
+If grid is zero, then lines are packed as closely as possible, so that there remains no free room between one line's descender and the next line's ascender. Different lines may have different ascenders and descenders, depending on the text and fonts that they contain. For this reason, distances between base lines need not be regular. For typographical reasons, irregular line spacing is often undesirable.
+To ensure a more regular spacing of grid lines, it is possible to switch on a line grid, by setting grid to a value larger than zero. This value defines a vertical grid, onto which all base lines are forced. If a line is too high to fit on the next grid line, it is placed one or more grid distances further below (see Figure 5-14).
 
 	grid-: INTEGER;	(* grid >= 0 *)
 
@@ -388,7 +371,7 @@ The following auxiliary procedures are provided to modify a ruler:
 Page breaks
 A ruler can force a page break, by including the TextRulers.pageBreak option element in the opts set.
 The element TextRulers.noBreakInside is valid for the entire scope of a paragraph. As the name indicates, it forces the beginning of the paragraph to start on a new page, if this isn't the case anyway and if the page would be broken before the next paragraph.
-The element TextRulers.parJoin is similar to noBreakInside, except that it additionally forces at least the first line of the next paragraph onto the same page.
+The element TextRulers.parJoin is similar to noBreakInside, except that it additionally forces at least the first line of the next paragraph onto the same page.
 
 When created with TextRulers.dir.New(NIL), a ruler has none of the above special attributes.
 The following auxiliary proceduresare provided to modify a ruler:
@@ -398,12 +381,11 @@ The following auxiliary proceduresare provided to modify a ruler:
 	PROCEDURE SetParJoin (r: Ruler)
 
 This concludes our discussion of ruler attributes. Ruler attributes apply to the ruler, or to all the paragraphs in the ruler's scope. In contrast, character attributes apply to arbitrary stretches of characters. The BlackBox text model supports all font attributes plus color and vertical offsets.
+Rulers are views that can be inserted into a text, since texts are containers. Rulers are special in that they are known to the text system, since a text view needs to know about a ruler's paragraph attributes when setting the text. However, arbitrary other views, which are not known to the text system, may be inserted into a text. Particularly interesting effects can be achieved when these views know about texts. Fold views and link views are examples of such text-aware views.
+The following example shows how fold views can be generated. Fold views are standard objects of the BlackBox Component Builder; they are implemented in the StdFolds module, only using BlackBox and its Text subsystem. Fold views come in pairs: a left fold and a right fold. The left fold contains a hidden text. When the user clicks on one of the fold views, the text between the two views is swapped with the hidden text. Typically, fold views are used to hide a large text behind a short one; e.g., a book chapter may be hidden, while the chapter's name is visible. This is a way to achieve abstraction of document parts, by hiding details. For this reason, one state of a fold view is called its collapsed state, and the other is called its expanded state. Technically there is no reason why the hidden text should be longer than the visible one; the naming is more a reflection of the typical use of folds.
 
-Rulers are views that can be inserted into a text, since texts are containers. Rulers are special in that they are known to the text system, since a text view needs to know about a ruler's paragraph attributes when setting the text. However, arbitrary other views, which are not known to the text system, may be inserted into a text. Particularly interesting effects can be achieved when these views know about texts. Fold views and link views are examples of such text-aware views.
-
-The following example shows how fold views can be generated. Fold views are standard objects of the BlackBox Component Builder; they are implemented in the StdFolds module, only using BlackBox and its Text subsystem. Fold views come in pairs: a left fold and a right fold. The left fold contains a hidden text. When the user clicks on one of the fold views, the text between the two views is swapped with the hidden text. Typically, fold views are used to hide a large text behind a short one; e.g., a book chapter may be hidden, while the chapter's name is visible. This is a way to achieve abstraction of document parts, by hiding details. For this reason, one state of a fold view is called its collapsed state, and the other is called its expanded state. Technically there is no reason why the hidden text should be longer than the visible one; the naming is more a reflection of the typical use of folds.
-
-
+Collapsed version
+This is the expanded text version.
 
 Figure 5-15. Fold views in collapsed and expanded states
 
@@ -413,7 +395,7 @@ Figure 5-16. Structure of text folds
 
 MODULE ObxPDBRep3;
 
-	IMPORT Views, TextModels, TextMappers, TextViews, StdFolds, ObxPhoneDB;					
+	IMPORT Views, TextModels, TextMappers, TextViews, StdFolds, ObxPhoneDB;
 	PROCEDURE WriteOpenFold (VAR f: TextMappers.Formatter;
 															IN shortForm: ARRAY OF CHAR);
 		VAR fold: StdFolds.Fold; t: TextModels.Model;
@@ -461,13 +443,11 @@ END ObxPDBRep3.
 Listing 5-17. Writing the phone database using folds
 
 Procedure WriteCloseFold has two interesting properties. First, the fold is written in its expanded form. This is reasonable, since the expanded form is often more complex than the collapsed form, which thus can be used conveniently in WriteOpenFold (note the useful text directory procedure TextModels.dir.NewFromString). The collapsed version is more complex, and thus it is convenient to use the already existing text formatter. After the left fold view, the expanded text, and the right fold view have been written, the text is collapsed using the StdFolds.Flip procedure.
-This leads us to the second interesting point. Collapsing the text modifies the text model. This invalidates all riders, and consequently all formatters, that operate on the text. For example, formatter f has always been at the end of the created text, but now that the text is collapsed, its position is beyond the end of the text and thus illegal. For this reason, the correct position is set up again.
-
-This is a general observation when working with mutable carriers: whenever you modify a carrier's state (or whenever someone else may do so!) you possibly have to update some state of your riders. In this example, the text's length was modified, which made it necessary to update the formatter's position.
-
-The last example in our series of demonstrations on how to generate texts uses link views. Link views are standard objects of the BlackBox Component Builder; they are implemented in the StdLinks module, only using BlackBox and its Text subsystem. Like fold views, link views are used in pairs. Their implementation uses a special interface of the text subsystem (TextControllers.FilterPollCursorMsg, TextControllers.FilterTrackMsg) to cause the cursor to turn into a hand cursor when it lies above the text stretch between the pair of link views. This behavior is known from typical hypertext systems, such as Web browsers, when the mouse is moved over a text stretch that symbolizes a hyperlink. This use of link views is what gave them their name. However, they are much more general than simple hyperlink delimiters. A hyperlink contains a passive reference to another document or to another location in the same document. For example, a document reference may be stored as a string, such as "http://www.oberon.ch" or "BlackBox/System/Rsrc/About".
-Link views in contrast store a Component Pascal command, optionally with one or two string literals as parameters. The command is executed when the user clicks the mouse button when the mouse is between the two link views.
-The command is stored in the left link view of a pair. Typical commands are:
+This leads us to the second interesting point. Collapsing the text modifies the text model. This invalidates all riders, and consequently all formatters, that operate on the text. For example, formatter f has always been at the end of the created text, but now that the text is collapsed, its position is beyond the end of the text and thus illegal. For this reason, the correct position is set up again.
+This is a general observation when working with mutable carriers: whenever you modify a carrier's state (or whenever someone else may do so!) you possibly have to update some state of your riders. In this example, the text's length was modified, which made it necessary to update the formatter's position.
+The last example in our series of demonstrations on how to generate texts uses link views. Link views are standard objects of the BlackBox Component Builder; they are implemented in the StdLinks module, only using BlackBox and its Text subsystem. Like fold views, link views are used in pairs. Their implementation uses a special interface of the text subsystem (TextControllers.FilterPollCursorMsg, TextControllers.FilterTrackMsg) to cause the cursor to turn into a hand cursor when it lies above the text stretch between the pair of link views. This behavior is known from typical hypertext systems, such as Web browsers, when the mouse is moved over a text stretch that symbolizes a hyperlink. This use of link views is what gave them their name. However, they are much more general than simple hyperlink delimiters. A hyperlink contains a passive reference to another document or to another location in the same document. For example, a document reference may be stored as a string, such as "http://www.oberon.ch" or "BlackBox/System/Rsrc/About".
+Link views in contrast store a Component Pascal command, optionally with one or two string literals as parameters. The command is executed when the user clicks the mouse button when the mouse is between the two link views.
+The command is stored in the left link view of a pair. Typical commands are:
 
 	DevDebug.ShowLoadedModules
 
@@ -521,36 +501,32 @@ END ObxPDBRep4.
 Listing 5-18. Writing the phone database using links
 
 Note that commands are normal procedure calls; like all procedure calls from outside of a module, they can only call those procedures of the module that are exported. Thus procedure Log of the above module must be exported, otherwise the program wouldn't work.
-
-Another interesting property of link views is that they display themselves in different ways depending on whether the text view via which the user interacts with them displays or hides marks. If there are several text views on the same model, the user can independently switch marks on or off, such as inactive soft hyphens, ruler views or link views. The text subsystem provides an interface which allows views to distinguish between the two states (TextSetters.Pref). In particular, a view may decide to hide itself when no marks are shown, by setting its width to zero in this case. This is what link views do: when text marks are switched off, they are invisible, so that only the text between them is visible. Typically, this text is blue and underlined, to indicate that it represents a link. A ruler in contrast always occupies the whole width between its paragraph's left and right margin, but it sets its height to zero when the text marks are turned off. We will learn more about how containers and embedded views can cooperate to achieve such effects in Part III of this tutorial.
-
-The above example demonstrates that link views can cause arbitrary behavior when the user clicks between them. This generality is powerful, but it should be used with caution. A command in a document is a kind of "implicit import" relation between the document and the command's module, and thus constitutes a dependency. This is not fundamentally different from the dependencies that are caused by views embedded in the document, they also function correctly only when their implementing component(s) are available. Like all dependencies, those caused by links, buttons embedded in a control, editors embedded in documents, and so on also need to be tracked and updated when necessary.
+Another interesting property of link views is that they display themselves in different ways depending on whether the text view via which the user interacts with them displays or hides marks. If there are several text views on the same model, the user can independently switch marks on or off, such as inactive soft hyphens, ruler views or link views. The text subsystem provides an interface which allows views to distinguish between the two states (TextSetters.Pref). In particular, a view may decide to hide itself when no marks are shown, by setting its width to zero in this case. This is what link views do: when text marks are switched off, they are invisible, so that only the text between them is visible. Typically, this text is blue and underlined, to indicate that it represents a link. A ruler in contrast always occupies the whole width between its paragraph's left and right margin, but it sets its height to zero when the text marks are turned off. We will learn more about how containers and embedded views can cooperate to achieve such effects in Part III of this tutorial.
+The above example demonstrates that link views can cause arbitrary behavior when the user clicks between them. This generality is powerful, but it should be used with caution. A command in a document is a kind of "implicit import" relation between the document and the command's module, and thus constitutes a dependency. This is not fundamentally different from the dependencies that are caused by views embedded in the document, they also function correctly only when their implementing component(s) are available. Like all dependencies, those caused by links, buttons embedded in a control, editors embedded in documents, and so on also need to be tracked and updated when necessary.
 
 
-5.2 The Model-View-Controller pattern applied to texts
+5.2 The Model-View-Controller pattern applied to texts
 
 The next major examples demonstrate how existing text can be read. It is assumed that the text to be processed is visible, in the topmost window. On how to access texts that are stored in files, please refer to the on-line Obx examples ObxOpen0, ObxOpen1, and ObxAscii. Before starting with the specifics of text reading, we need to discuss how the topmost window's contents can be accessed from within a Component Pascal command.
-Basically, this is done by calling Controllers.FocusView(). This function returns NIL if no document is open. Otherwise it returns the topmost window's contents, which is a view.
-We have learned earlier that views, whose common base type is Views.View, are the pivotal BlackBox abstractions for interactive components, such as editors and controls. Everything revolves around views. In simple cases, such as controls, a view implementation only implements an extension to Views.View, and that's all. In more complex cases, the data that are visualized by a view are split off into a separate model. This was discussed in detail in Chapter 2.
-
-Since container implementations are among the most complex programming tasks for which the BlackBox Component Builder was designed, the framework provides some help in how a container should be constructed. The abstract design of a container is given in module Containers. This module declares extensions of the types Views.View, Models.Model and Controllers.Controller; these types constitute a mini-framework for container construction.
-Typical containers are implemented in at least four modules: one for the model, one for the view, one for the controller, and one for standard commands. For example, the text subsystem contains the modules TextModels, TextViews, TextControllers, TextCmds; plus the auxiliary modules TextMappers, TextRulers and TextSetters. The form subsystem consists of FormModels, FormViews, FormControllers, and FormCmds.
+Basically, this is done by calling Controllers.FocusView(). This function returns NIL if no document is open. Otherwise it returns the topmost window's contents, which is a view.
+We have learned earlier that views, whose common base type is Views.View, are the pivotal BlackBox abstractions for interactive components, such as editors and controls. Everything revolves around views. In simple cases, such as controls, a view implementation only implements an extension to Views.View, and that's all. In more complex cases, the data that are visualized by a view are split off into a separate model. This was discussed in detail in Chapter 2.
+Since container implementations are among the most complex programming tasks for which the BlackBox Component Builder was designed, the framework provides some help in how a container should be constructed. The abstract design of a container is given in module Containers. This module declares extensions of the types Views.View, Models.Model and Controllers.Controller; these types constitute a mini-framework for container construction.
+Typical containers are implemented in at least four modules: one for the model, one for the view, one for the controller, and one for standard commands. For example, the text subsystem contains the modules TextModels, TextViews, TextControllers, TextCmds; plus the auxiliary modules TextMappers, TextRulers and TextSetters. The form subsystem consists of FormModels, FormViews, FormControllers, and FormCmds.
 
 
 
 Figure 5-19. Variations of the generic container module decomposition
 
 We won't look at all the details of these types; but it is important to know that a container object is not only split into a model and one or several views, but that a view is further split into a view and a so-called controller. For the time being, we can regard the management of selections and carets as the main functionality that a controller encapsulates. This is why we now look at controllers, because some of the following examples will operate on the current selection.
-Once you have a controller, you can obtain its view by calling its ThisView procedure. Other procedures allow to get or set the current selection.
-There may be several views displaying the same model (many-to-one relationship), but there is exactly one controller per view (one-to-one relationship). (This holds for views derived from Containers.View; other views may or may not have a separate controller.)You can get a controller's view by calling its ThisView procedure, and you can get a container view's controller by calling its ThisController procedure.
+Once you have a controller, you can obtain its view by calling its ThisView procedure. Other procedures allow to get or set the current selection.
+There may be several views displaying the same model (many-to-one relationship), but there is exactly one controller per view (one-to-one relationship). (This holds for views derived from Containers.View; other views may or may not have a separate controller.)You can get a controller's view by calling its ThisView procedure, and you can get a container view's controller by calling its ThisController procedure.
 
 
 
 Figure 5-20. Model-View-Controller separation
 
 More specific container abstractions typically provide a suitable Focus function which yields the controller of the currently focused view, if there is one and if it has the desired type.
-
-We now know enough about the container scenario that we can tell how to access focus view, model, or controller:
+We now know enough about the container scenario that we can tell how to access focus view, model, or controller:
 
 	The following declarations are assumed:
 		VAR v: Views.View; m: Models.Model; c: Controllers.Controller;
@@ -607,7 +583,8 @@ Listing 5-22. Code pattern for TextControllers.Controller
 A menu command can use the guard TextCmds.FocusGuard to make sure that the command is only executed when a text view is focus. TextCmds.SelectionGuard additionally checks whether there exists some (non-empty) text selection.
 
 
-5.3 Reading text
+5.3 Reading text
+
 Now that we have seen how to access the focus views' controller, we can write our first command that reads the focus view's text. The command counts the number of Latin-1 characters (1 byte), Unicode characters above Latin-1 (2 byte), and embedded views.
 
 MODULE ObxCount0;
@@ -672,17 +649,13 @@ TYPE
 Listing 5-24. Definition of TextModels.Reader
 
 Given a text model text, a reader can be created by calling rd := text.NewReader(NIL). Such a newly allocated reader will be positioned at the beginning of the text; i.e., at rd.Pos() = 0. The position can be changed whenever necessary by calling rd.SetPos(pos), with pos in the range of 0..text.Length(). The reader's text model can be obtained by calling its Base procedure.
-
-Reading of the next text element is done by calling the reader's Read procedure, which increases the reader's current position unless the end of text has been reached, in which case the reader's eot field is set. After Read is called, the character code of the read element can be found in the reader's char field. If the character value is less than 100X, the character fits in the Latin-1 range (1-byte character), otherwise it's a 2-byte Unicode character. For convenience, the auxiliary reader procedure ReadChar is provided, which performs a Read and returns the contents of char.
-
-What happens if a view is read? In most cases, char is set to the reserved value TextModels.viewcode (2X). However, this is not necessarily the case. A text-aware view may choose to represent an arbitrary character code by using a special preference message (TextModels.Pref). In order to find out whether a view has been read, the field view should be tested. It returns the view just read, or NIL if it wasn't a view.
+Reading of the next text element is done by calling the reader's Read procedure, which increases the reader's current position unless the end of text has been reached, in which case the reader's eot field is set. After Read is called, the character code of the read element can be found in the reader's char field. If the character value is less than 100X, the character fits in the Latin-1 range (1-byte character), otherwise it's a 2-byte Unicode character. For convenience, the auxiliary reader procedure ReadChar is provided, which performs a Read and returns the contents of char.
+What happens if a view is read? In most cases, char is set to the reserved value TextModels.viewcode (2X). However, this is not necessarily the case. A text-aware view may choose to represent an arbitrary character code by using a special preference message (TextModels.Pref). In order to find out whether a view has been read, the field view should be tested. It returns the view just read, or NIL if it wasn't a view.
 When a view has been read, the fields w and h indicate the size of the view in universal units. Otherwise, these fields are undefined.
-It is expected that the implementation of a text model optimizes access to views. For this purpose, the auxiliary reader procedure ReadView is provided, which reads the next view after the current position, skipping as many non-view elements as necessary.
-
-After an element (character or view) has been read, its text attributes are returned in the reader's attr field. The text attributes consist of font attributes, color and vertical offset; as described earlier. For efficiency and convenience reasons, the auxiliary reader procedure ReadRun is provided, which advances the reader position until the attributes change from their current setting. Text runs that have the same attributes can be drawn on the screen with one port procedure (Ports.Frame.DrawString), which is considerably faster than drawing them character by character.
-
-Normally, text is read forward; from lower positions to higher positions. The reader procedures ReadPrev, ReadPrevView and ReadPrevRun are symmetrical to their Read, ReadView and ReadRun counterparts, but they read backwards. In particular, ReadPrevView is used by a text view's so-called text setter to find the most recent ruler view, which defines how the text must be set (The auxiliary procedure TextRulers.GetValidRuler implements this search.)
-When one of the reading procedures has been called (whether one of the forward or one of the backward reading procedures), the reader's eot field is set. If an element could be read, eot is set to FALSE. If no element could be read (reading forward at the end of the text, or reading backward at the beginning of the text), eot is set to TRUE.
+It is expected that the implementation of a text model optimizes access to views. For this purpose, the auxiliary reader procedure ReadView is provided, which reads the next view after the current position, skipping as many non-view elements as necessary.
+After an element (character or view) has been read, its text attributes are returned in the reader's attr field. The text attributes consist of font attributes, color and vertical offset; as described earlier. For efficiency and convenience reasons, the auxiliary reader procedure ReadRun is provided, which advances the reader position until the attributes change from their current setting. Text runs that have the same attributes can be drawn on the screen with one port procedure (Ports.Frame.DrawString), which is considerably faster than drawing them character by character.
+Normally, text is read forward; from lower positions to higher positions. The reader procedures ReadPrev, ReadPrevView and ReadPrevRun are symmetrical to their Read, ReadView and ReadRun counterparts, but they read backwards. In particular, ReadPrevView is used by a text view's so-called text setter to find the most recent ruler view, which defines how the text must be set (The auxiliary procedure TextRulers.GetValidRuler implements this search.)
+When one of the reading procedures has been called (whether one of the forward or one of the backward reading procedures), the reader's eot field is set. If an element could be read, eot is set to FALSE. If no element could be read (reading forward at the end of the text, or reading backward at the beginning of the text), eot is set to TRUE.
 
 Typically, the following code pattern arises when working with a text reader. condition may be something like rd.Pos() # end or ~rd.eot.
 
@@ -700,18 +673,18 @@ Typically, the following code pattern arises when working with a text reader. co
 Listing 5-25. Code pattern for TextModels.Reader
 
 The next example uses a text scanner. Scanners are reading text mappers; like formatters, they are defined in module TextMappers. Text scanners are similar to text readers, except that they operate on whole symbols rather than characters. Strings and numbers are examples of Component Pascal symbols that are supported by text scanners.
-When you compare the definition of a TextMappers.Scanner with the one of TextModels.Reader, you'll note that a scanner can also return characters (field char) and views with their sizes (fields view, w, and h); that a scanner has a position (Pos, SetPos), but that a scanner cannot read backwards. Scan corresponds to a reader's Read procedure. It skips white space (blanks, carriage returns) until it either reaches the end of the text, which is signaled by setting type to TextMappers.eot, or until it has read a symbol. The type of symbol that was read is returned in type. It may be one of the TextMappers constants
+When you compare the definition of a TextMappers.Scanner with the one of TextModels.Reader, you'll note that a scanner can also return characters (field char) and views with their sizes (fields view, w, and h); that a scanner has a position (Pos, SetPos), but that a scanner cannot read backwards. Scan corresponds to a reader's Read procedure. It skips white space (blanks, carriage returns) until it either reaches the end of the text, which is signaled by setting type to TextMappers.eot, or until it has read a symbol. The type of symbol that was read is returned in type. It may be one of the TextMappers constants
 
 	char, string, int, real, bool, set, view, tab, line, para, eot, invalid. 
 
 By default, views and control characters are treated as white space and thus ignored. Using an option set (opts, SetOpts) it is possible to treat them as valid symbols, too. The set element TextMappers.returnViews indicates that views should be recognized, while TextMappers.returnCtrlChars indicates that the three control characters for tabulators (tab), carriage returns (line) and paragraphs (para) should be recognized.
-When a symbol starts like a Component Pascal string or identifier, the scanner attempts to read a string. When successful, type is set to string; which may also be a short string, i.e., only containing Latin-1 characters. The option TextMappers.returnQualIdents lets the scanner recognize complete qualified identifiers as single symbols; e.g., the string  ThisMod.ThatObj  . The length of the string is returned in len.
-If it is possible to interpret the symbol as an integer or real number, type is set accordingly, as are the fields int or real. Integer numbers are recognized in different number bases, the base that was recognized is returned in base (10 for decimal numbers).
-Special characters such as  !@#$  are interpreted as type = TextMappers.char, which may also be a short character, i.e., a Latin-1 character.
-By default, Boolean values and sets are not interpreted, except if the option elements TextMappers.interpretBool or TextMappers.interpretSets are set. Sets use the normal Component Pascal syntax, while Booleans are represented as $TRUE and $FALSE.
-The scanner field start is the position of the first character of the most recently read symbol. The fields lines and paras count the number of carriage return and paragraph characters since the last SetPos (see below).
-The scanner's Skip procedure is an auxiliary procedure that advances the scanner position until all white space characters  as specified in the opts set  are skipped and the first character of the symbol has been read. This character is returned in Skip's ch parameter.
-Since there may be an arbitrary number of specialized text mappers, in addition to the ones provided by TextMappers, the text model cannot create text mapper objects, like it creates text readers and writers. Instead, scanners (and formatters likewise) are connected to their texts explicitly, by calling their ConnectTo procedures. They may be called repeatedly to connect the same scanner to different models.
+When a symbol starts like a Component Pascal string or identifier, the scanner attempts to read a string. When successful, type is set to string; which may also be a short string, i.e., only containing Latin-1 characters. The option TextMappers.returnQualIdents lets the scanner recognize complete qualified identifiers as single symbols; e.g., the string  ThisMod.ThatObj. The length of the string is returned in len.
+If it is possible to interpret the symbol as an integer or real number, type is set accordingly, as are the fields int or real. Integer numbers are recognized in different number bases, the base that was recognized is returned in base (10 for decimal numbers).
+Special characters such as  !@#$  are interpreted as type = TextMappers.char, which may also be a short character, i.e., a Latin-1 character.
+By default, Boolean values and sets are not interpreted, except if the option elements TextMappers.interpretBool or TextMappers.interpretSets are set. Sets use the normal Component Pascal syntax, while Booleans are represented as $TRUE and $FALSE.
+The scanner field start is the position of the first character of the most recently read symbol. The fields lines and paras count the number of carriage return and paragraph characters since the last SetPos (see below).
+The scanner's Skip procedure is an auxiliary procedure that advances the scanner position until all white space characters  as specified in the opts set  are skipped and the first character of the symbol has been read. This character is returned in Skip's ch parameter.
+Since there may be an arbitrary number of specialized text mappers, in addition to the ones provided by TextMappers, the text model cannot create text mapper objects, like it creates text readers and writers. Instead, scanners (and formatters likewise) are connected to their texts explicitly, by calling their ConnectTo procedures. They may be called repeatedly to connect the same scanner to different models.
 
 	Scanner = RECORD
 		rider-: TextModels.Reader;
@@ -798,10 +771,10 @@ The most typical code pattern for a scanner looks similar to the code pattern fo
 Listing 5-28. Code pattern for TextMappers.Scanner
 
 
-5.4 Modifying text
+5.4 Modifying text
 
 In the previous sections, we have seen how new texts can be created using writers or formatters, and how existing texts can be read using readers or scanners. Many text commands first read a text stretch, perform some computation on it, and then replace it by the result of the computation. Examples are commands that set the font of a selection, set the color of a selection, or turn all small letters into capital letters.
-The following example command reads the text selection and checks whether it is a string. If so, it interprets the string as a name and looks the name up in our example phone database. Then it replaces the name by the phone number.
+The following example command reads the text selection and checks whether it is a string. If so, it interprets the string as a name and looks the name up in our example phone database. Then it replaces the name by the phone number.
 
 MODULE ObxLookup0;
 
@@ -836,14 +809,11 @@ END ObxLookup0.
 Listing 5-29. Replacing a phone name by a phone number
 
 The basic idea of the above command is that an auxiliary text object is used which acts as a buffer. The text selection is scanned, the scanned string is used as key to make a lookup in the phone database, the returned phone number is written into the buffer text, the original name is deleted from the text, and then the buffer contents is moved to where the name was. As a final step, the newly inserted text stretch is selected.
-Note that the text model's Delete procedure shortens the text, while the Insert procedure makes the text longer. In particular, Insert doesn't overwrite existing text. Insert moves text, i.e., it removes them at the source and inserts them at the destination.
-
-One way to make the above command more useful would be to accept a caret as input, instead of a selection. Then you could write a name and hit a keyboard shortcut for the command. The command then reads backwards from the caret position, until it finds the beginning of the name, and then substitutes the appropriate phone number for the name. This would be a simple way to implement keyboard macros.
-
-Buffer texts, as used above, are particularly useful in helping to avoid screen flicker: since a buffer text is not displayed, it can be built up piecemeal, without causing any screen updates. When the buffer has been completed, its contents can be moved over to the visible destination text. This only causes one single screen update, which is fast and creates minimal flicker.
-
-Moving text stretches from one text model to another one may be optimized if both text models have the same implementation. This is not necessarily the case, since different implementations of type TextModels.Model may coexist with each other. Two calls to TextModels.dir.New() may well return two text models that have different implementations.
-For this reason, module TextModels exports the procedure Clone, which returns an empty text model of exactly the same type as its parameter. In fact, the standard text implementation even performs some further optimizations when a text model is cloned from another one, rather than allocated via TextModels.dir.New().
+Note that the text model's Delete procedure shortens the text, while the Insert procedure makes the text longer. In particular, Insert doesn't overwrite existing text. Insert moves text, i.e., it removes them at the source and inserts them at the destination.
+One way to make the above command more useful would be to accept a caret as input, instead of a selection. Then you could write a name and hit a keyboard shortcut for the command. The command then reads backwards from the caret position, until it finds the beginning of the name, and then substitutes the appropriate phone number for the name. This would be a simple way to implement keyboard macros.
+Buffer texts, as used above, are particularly useful in helping to avoid screen flicker: since a buffer text is not displayed, it can be built up piecemeal, without causing any screen updates. When the buffer has been completed, its contents can be moved over to the visible destination text. This only causes one single screen update, which is fast and creates minimal flicker.
+Moving text stretches from one text model to another one may be optimized if both text models have the same implementation. This is not necessarily the case, since different implementations of type TextModels.Model may coexist with each other. Two calls to TextModels.dir.New() may well return two text models that have different implementations.
+For this reason, module TextModels exports the procedure Clone, which returns an empty text model of exactly the same type as its parameter. In fact, the standard text implementation even performs some further optimizations when a text model is cloned from another one, rather than allocated via TextModels.dir.New().
 
 We can now give a (slightly simplified) definition of TextModels.Model:
 
@@ -879,14 +849,12 @@ i.e., it overwrites some part of the destination text by some part of the source
 SetAttr allows to set the text attributes of a whole text stretch.
 
 
-5.5 Text scripts
+5.5 Text scripts
 
 When you have successfully applied the command ObxLookup0.Do to a text stretch, you can try out something that may surprise you: you can reverse ("undo") the operation by executing the Edit->Undo command! With Edit->Redo you can reverse the operation's reversal.
-This capability is surprising because we have only implemented the plain Do procedure, but no code for undoing or redoing it. How come that the framework is able to undo/redo the operation anyway?
-
-It is possible because the text model procedures which modify their model's state, such as Model.Delete and Model.Insert, are implemented in a particular way. They don't execute the modification directly. Instead, they create special operation objects and register them in the framework. The framework then can call the operation's appropriate procedure for performing the actual do/undo/redo functionality. This mechanism has been described in Chapter 3.
-
-The following example shows how a sequence of text-modifying procedures is bracketed by BeginScript and EndScript to make the whole sequence undoable. BeginScript returns a script object, it gets the name of the compound operation as input.
+This capability is surprising because we have only implemented the plain Do procedure, but no code for undoing or redoing it. How come that the framework is able to undo/redo the operation anyway?
+It is possible because the text model procedures which modify their model's state, such as Model.Delete and Model.Insert, are implemented in a particular way. They don't execute the modification directly. Instead, they create special operation objects and register them in the framework. The framework then can call the operation's appropriate procedure for performing the actual do/undo/redo functionality. This mechanism has been described in Chapter 3.
+The following example shows how a sequence of text-modifying procedures is bracketed by BeginScript and EndScript to make the whole sequence undoable. BeginScript returns a script object, it gets the name of the compound operation as input.
 
 MODULE ObxLookup1;
 
@@ -924,8 +892,7 @@ END ObxLookup1.
 Listing 5-31. Example of a script (compound operation)
 
 In Models.BeginScript, the name of the compound operation is given. It is mapped by the string mapping facility of BlackBox, because this name may be displayed to the user (in the undo/redo menu item).
-
-In modules ObxLookup0 and ObxLookup1 use the following statement sequence to replace the name with the number:
+In modules ObxLookup0 and ObxLookup1 use the following statement sequence to replace the name with the number:
 
 	c.text.Delete(from, to);
 	c.text.Insert(from, buf, 0, buf.Length());
@@ -947,12 +914,11 @@ Note that InsertCopy cannot be expressed in terms of Replace:
 The reason is that Replace, like Insert, deletes the source text. InsertCopy on the other hand is a pure copying operation which doesn't modify the source text (unless source and destination texts are identical and the destination position lies within the source text range).
 
 
-5.6 Summary
+5.6 Summary
 
 We now conclude the discussion of the BlackBox Component Builder's Text subsystem. The goal of this tutorial was to give an overview over a relatively complex extension subsystem; to show the use of the previous part's design patterns; and to show the typical Text code patterns.
-The treatment of the text subsystem cannot be complete, there are still many details for which the reference documentation of the various modules must be consulted. However, the general scope and typical applications should have become clearer. While we started with as little theory as possible and used simple examples only, the basic structure of a complex container subsystem will have become clearer by now.
-
-Before we give a list of further on-line examples that you may want to study, here is a list of all standard modules of the Text subsystem (lowest module in the hierarchy first), with the most important types that they export:
+The treatment of the text subsystem cannot be complete, there are still many details for which the reference documentation of the various modules must be consulted. However, the general scope and typical applications should have become clearer. While we started with as little theory as possible and used simple examples only, the basic structure of a complex container subsystem will have become clearer by now.
+Before we give a list of further on-line examples that you may want to study, here is a list of all standard modules of the Text subsystem (lowest module in the hierarchy first), with the most important types that they export:
 
 	module / type	description
 
@@ -1005,3 +971,6 @@ Table 5-32. Table of Text system modules and most important types
 	ObxAscii	traditional text file I/O
 
 Table 5-33. Additional Obx on-line examples of Text subsystem
+
+
+Table of Contents ↑	Next section →

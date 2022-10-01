@@ -415,8 +415,3 @@ MODULE DevSelectors;
 BEGIN
 	InitMod
 END DevSelectors.
-
-
-	"Insert Left"	"*F5"	"DevSelectors.DepositLeft; StdCmds.PasteView"	"StdCmds.PasteViewGuard"
-	"Insert Middle"	"*F6"	"DevSelectors.DepositMiddle; StdCmds.PasteView"	"StdCmds.PasteViewGuard"
-	"Insert Right"	"*F7"	"DevSelectors.DepositRight; StdCmds.PasteView"	"StdCmds.PasteViewGuard"

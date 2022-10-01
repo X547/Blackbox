@@ -21,8 +21,6 @@ MODULE StdDebug;
 		heap = 1; source = 2; module = 3; modules = 4;	(* RefView types *)
 		
 	TYPE
-		Name = Kernel.Name;
-
 		ArrayPtr = POINTER TO RECORD
 			last, t, first: INTEGER;	(* gc header *)
 			len: ARRAY 16 OF INTEGER	(* dynamic array length table *)
@@ -37,7 +35,7 @@ MODULE StdDebug;
 			adr: INTEGER;
 			desc: Kernel.Type;
 			ptr: ArrayPtr;
-			name: Name
+			name: Kernel.Utf8Name
 		END;
 		
 		Action = POINTER TO RECORD (Services.Action)
@@ -49,11 +47,16 @@ MODULE StdDebug;
 			next: Cluster
 		END;
 		
+		FoldContext = RECORD
+			prevText: TextModels.Model;
+			prevPos: INTEGER
+		END;
+		
 	
 	VAR
 		out: TextMappers.Formatter;
 		path: ARRAY 4 OF Ports.Point;
-		empty: Name;
+		empty: Kernel.Name;
 
 
 	PROCEDURE NewRuler (): TextRulers.Ruler;
@@ -79,22 +82,35 @@ MODULE StdDebug;
 		Views.OpenAux(v, title)
 	END OpenViewer;
 	
-	PROCEDURE OpenFold (hidden: ARRAY OF CHAR);
-		VAR fold: StdFolds.Fold; t: TextModels.Model; w: TextMappers.Formatter;
+	PROCEDURE OpenFold (OUT fc: FoldContext);
 	BEGIN
-		Dialog.MapString(hidden, hidden);
-		t := TextModels.dir.New();
-		w.ConnectTo(t); w.WriteString(hidden);
-		fold := StdFolds.dir.New(StdFolds.expanded, "", t);
-		out.WriteView(fold)
+		fc.prevText := out.rider.Base();
+		fc.prevPos := out.Pos();
+		out.ConnectTo(TextModels.dir.New())
 	END OpenFold;
-	
-	PROCEDURE CloseFold (collaps: BOOLEAN);
-		VAR fold: StdFolds.Fold; m: TextModels.Model;
+
+	PROCEDURE CloseFold (IN fc: FoldContext; collapsed: BOOLEAN; IN hidden: ARRAY OF CHAR);
+		VAR fold: StdFolds.Fold; t: TextModels.Model; w: TextMappers.Formatter; hiddenx: ARRAY 32 OF CHAR;
 	BEGIN
-		fold := StdFolds.dir.New(StdFolds.expanded, "", NIL);
-		out.WriteView(fold);
-		IF collaps THEN fold.Flip(); m := out.rider.Base(); out.SetPos(m.Length()) END
+		Dialog.MapString(hidden, hiddenx);
+		(* avoid expensive fold.Flip operation *)
+		IF collapsed THEN
+			fold := StdFolds.dir.New(StdFolds.collapsed, "", out.rider.Base());
+			out.ConnectTo(fc.prevText);
+			out.WriteView(fold);
+			out.WriteString(hiddenx)
+		ELSE
+			t := TextModels.dir.New();
+			w.ConnectTo(t); w.WriteString(hiddenx);
+			fold := StdFolds.dir.New(StdFolds.expanded, "", t);
+			t := out.rider.Base();
+			out.ConnectTo(fc.prevText);
+			out.WriteView(fold);
+			fc.prevText.Insert(out.Pos(), t, 0, t.Length());
+			out.SetPos(out.rider.Base().Length())
+		END;
+		fold := StdFolds.dir.New(collapsed, "", NIL);
+		out.WriteView(fold)
 	END CloseFold;
 	
 	PROCEDURE WriteHex (n: INTEGER);
@@ -108,18 +124,18 @@ MODULE StdDebug;
 	BEGIN
 		mode := beg;
 		IF base = 2 THEN SYSTEM.GET(adr, ch); val := ORD(ch) ELSE SYSTEM.GET(adr, sc); val := ORD(sc) END;
-		IF zterm & (val = 0) THEN out.WriteSString('""')
+		IF zterm & (val = 0) THEN out.WriteString('""')
 		ELSE
 			REPEAT
 				IF (val >= ORD(" ")) & (val < 7FH) OR (val > 0A0H) & (val < 100H) OR unicode & (val >= 100H) THEN
 					IF mode # char THEN
-						IF mode = code THEN out.WriteSString(", ") END;
+						IF mode = code THEN out.WriteString(", ") END;
 						out.WriteChar(22X); mode := char
 					END;
 					out.WriteChar(CHR(val))
 				ELSE
 					IF mode = char THEN out.WriteChar(22X) END;
-					IF mode # beg THEN out.WriteSString(", ") END;
+					IF mode # beg THEN out.WriteString(", ") END;
 					mode := code; Strings.IntToStringForm(val, Strings.hexadecimal, 1, "0", FALSE, str);
 					IF str[0] > "9" THEN out.WriteChar("0") END;
 					out.WriteString(str); out.WriteChar("X")
@@ -171,51 +187,51 @@ MODULE StdDebug;
 	END SizeOf;
 
 	PROCEDURE WriteName (t: Kernel.Type; ptr: ArrayPtr);
-		VAR name: Kernel.Name; f: SHORTCHAR;
+		VAR modName, name: Kernel.Name; f: SHORTCHAR;
 	BEGIN
 		f := FormOf(t);
 		CASE f OF
 		| 0X: OutString("#Dev:Unknown")
-		| 1X: out.WriteSString("BOOLEAN")
-		| 2X: out.WriteSString("SHORTCHAR")
-		| 3X: out.WriteSString("CHAR")
-		| 4X: out.WriteSString("BYTE")
-		| 5X: out.WriteSString("SHORTINT")
-		| 6X: out.WriteSString("INTEGER")
-		| 7X: out.WriteSString("SHORTREAL")
-		| 8X: out.WriteSString("REAL")
-		| 9X: out.WriteSString("SET")
-		| 0AX: out.WriteSString("LONGINT")
-		| 0BX: out.WriteSString("ANYREC")
-		| 0CX: out.WriteSString("ANYPTR")
-		| 0DX: out.WriteSString("POINTER")
-		| 0EX: out.WriteSString("PROCEDURE")
-		| 0FX: out.WriteSString("STRING")
+		| 1X: out.WriteString("BOOLEAN")
+		| 2X: out.WriteString("SHORTCHAR")
+		| 3X: out.WriteString("CHAR")
+		| 4X: out.WriteString("BYTE")
+		| 5X: out.WriteString("SHORTINT")
+		| 6X: out.WriteString("INTEGER")
+		| 7X: out.WriteString("SHORTREAL")
+		| 8X: out.WriteString("REAL")
+		| 9X: out.WriteString("SET")
+		| 0AX: out.WriteString("LONGINT")
+		| 0BX: out.WriteString("ANYREC")
+		| 0CX: out.WriteString("ANYPTR")
+		| 0DX: out.WriteString("POINTER")
+		| 0EX: out.WriteString("PROCEDURE")
+		| 0FX: out.WriteString("STRING")
 		| 10X..13X:
 			Kernel.GetTypeName(t, name);
 			IF name = "!" THEN
-				IF f = 11X THEN out.WriteSString("RECORD")
-				ELSIF f = 12X THEN out.WriteSString("ARRAY")
+				IF f = 11X THEN out.WriteString("RECORD")
+				ELSIF f = 12X THEN out.WriteString("ARRAY")
 				ELSE OutString("#Dev:Unknown")
 				END
 			ELSIF (t.id DIV 256 # 0) & (t.mod.refcnt >= 0) THEN
-				out.WriteSString(t.mod.name); out.WriteChar("."); out.WriteSString(name)
+				Kernel.GetModName(t.mod, modName); out.WriteString(modName); out.WriteChar("."); out.WriteString(name)
 			ELSIF f = 11X THEN
-				out.WriteSString(t.mod.name); out.WriteSString(".RECORD") 
+				Kernel.GetModName(t.mod, modName); out.WriteString(modName); out.WriteString(".RECORD") 
 			ELSIF f = 12X THEN
-				out.WriteSString("ARRAY "); out.WriteInt(LenOf(t, ptr)); t := t.base[0];
+				out.WriteString("ARRAY "); out.WriteInt(LenOf(t, ptr)); t := t.base[0];
 				WHILE (FormOf(t) = 12X) & ((t.id DIV 256 = 0) OR (t.mod.refcnt < 0)) DO
-					out.WriteSString(", "); out.WriteInt(LenOf(t, ptr)); t := t.base[0]
+					out.WriteString(", "); out.WriteInt(LenOf(t, ptr)); t := t.base[0]
 				END;
-				out.WriteSString(" OF "); WriteName(t, ptr)
+				out.WriteString(" OF "); WriteName(t, ptr)
 			ELSIF f = 13X THEN
-				out.WriteSString("POINTER")
+				out.WriteString("POINTER")
 			ELSE
-				out.WriteSString("PROCEDURE")
+				out.WriteString("PROCEDURE")
 			END
-		| 20X: out.WriteSString("COM.IUnknown")
-		| 21X: out.WriteSString("COM.GUID")
-		| 22X: out.WriteSString("COM.RESULT")
+		| 20X: out.WriteString("COM.IUnknown")
+		| 21X: out.WriteString("COM.GUID")
+		| 22X: out.WriteString("COM.RESULT")
 		ELSE OutString("#Dev:UnknownFormat"); out.WriteInt(ORD(f))
 		END
 	END WriteName;
@@ -250,14 +266,15 @@ MODULE StdDebug;
 	END WriteGuid;
 	
 	PROCEDURE^ ShowVar (ad, ind: INTEGER; f, c: SHORTCHAR; desc: Kernel.Type; ptr: ArrayPtr;
-											back: RefView; VAR name, sel: Name);
+											back: RefView; VAR name, sel: Kernel.Name);
 	
-	PROCEDURE ShowRecord (a, ind: INTEGER; desc: Kernel.Type; back: RefView; VAR sel: Name);
+	PROCEDURE ShowRecord (a, ind: INTEGER; desc: Kernel.Type; back: RefView; VAR sel: Kernel.Name);
 		VAR dir: Kernel.Directory; obj: Kernel.Object; name: Kernel.Name; i, j, n: INTEGER; base: Kernel.Type;
+			fc: FoldContext;
 	BEGIN
 		WriteName(desc, NIL); out.WriteTab;
 		IF desc.mod.refcnt >= 0 THEN
-			OpenFold("#Dev:Fields");
+			OpenFold(fc);
 			n := desc.id DIV 16 MOD 16; j := 0;
 			WHILE j <= n DO
 				base := desc.base[j];
@@ -272,15 +289,17 @@ MODULE StdDebug;
 				END;
 				INC(j)
 			END;
-			out.WriteSString("   "); CloseFold((ind > 1) OR (sel # ""))
+			out.WriteString("   ");
+			CloseFold(fc, (ind > 1) OR (sel # ""), "#Dev:Fields")
 		ELSE
 			OutString("#Dev:Unloaded")
 		END
 	END ShowRecord;
 	
-	PROCEDURE ShowArray (a, ind: INTEGER; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; VAR sel: Name);
+	PROCEDURE ShowArray (a, ind: INTEGER; desc: Kernel.Type; ptr: ArrayPtr; back: RefView; VAR sel: Kernel.Name);
 		VAR f: SHORTCHAR; i, n, m, size, len: INTEGER; name: Kernel.Name; eltyp, t: Kernel.Type;
 			vi: SHORTINT; vs: BYTE; str: Dialog.String; high: BOOLEAN;
+			fc: FoldContext;
 	BEGIN
 		WriteName(desc, ptr); out.WriteTab;
 		len := LenOf(desc, ptr); eltyp := desc.base[0]; f := FormOf(eltyp); size := SizeOf(eltyp, ptr);
@@ -301,21 +320,23 @@ MODULE StdDebug;
 			INC(m, 2);
 			IF m > len THEN m := len END;
 			IF high OR (m > n) THEN
-				out.WriteSString("   "); OpenFold("...");
+				out.WriteString("   ");
+				OpenFold(fc);
 				out.WriteLn;
 				IF high & (n = 32) THEN
 					WriteString(a, m, size, TRUE, TRUE);
 					out.WriteLn; out.WriteLn
 				END;
 				WriteString(a, m, size, FALSE, FALSE);
-				IF m < len THEN out.WriteSString(", ..., 0X") END;
-				out.WriteSString("   "); CloseFold(TRUE)
+				IF m < len THEN out.WriteString(", ..., 0X") END;
+				out.WriteString("   ");
+				CloseFold(fc, TRUE, "...")
 			END
 		ELSE
 			t := eltyp;
 			WHILE FormOf(t) = 12X DO t := t.base[0] END;
 			IF FormOf(t) # 0X THEN
-				OpenFold("#Dev:Elements");
+				OpenFold(fc);
 				i := 0;
 				WHILE i < len DO
 					Strings.IntToString(i, str);
@@ -323,38 +344,39 @@ MODULE StdDebug;
 					ShowVar(a, ind, f, 1X, eltyp, ptr, back, name, sel);
 					INC(i); INC(a, size)
 				END;
-				out.WriteSString("   "); CloseFold(TRUE)
+				out.WriteString("   ");
+				CloseFold(fc, TRUE, "#Dev:Elements")
 			END
 		END
 	END ShowArray;
 	
 	PROCEDURE ShowProcVar (a: INTEGER);
-		VAR vli, n, ref: INTEGER; m: Kernel.Module; name: Kernel.Name;
+		VAR vli, n, ref: INTEGER; m: Kernel.Module; modName, name: Kernel.Name; res: INTEGER; nn: Kernel.Utf8Name;
 	BEGIN
 		SYSTEM.GET(a, vli);
 		Kernel.SearchProcVar(vli, m, vli);
 		IF m = NIL THEN
-			IF vli = 0 THEN out.WriteSString("NIL")
+			IF vli = 0 THEN out.WriteString("NIL")
 			ELSE WriteHex(vli)
 			END
 		ELSE
 			IF m.refcnt >= 0 THEN
-				out.WriteSString(m.name); ref := m.refs;
-				REPEAT Kernel.GetRefProc(ref, n, name) UNTIL (n = 0) OR (vli < n);
-				IF vli < n THEN out.WriteChar("."); out.WriteSString(name) END
+				Kernel.GetModName(m, modName); out.WriteString(modName); ref := m.refs;
+				REPEAT Kernel.GetRefProc(ref, n, nn) UNTIL (n = 0) OR (vli < n);
+				IF vli < n THEN out.WriteChar("."); Strings.Utf8ToString(nn, name, res); out.WriteString(name) END
 			ELSE
 				OutString("#Dev:ProcInUnloadedMod");
-				out.WriteSString(m.name); out.WriteSString(" !!!")
+				Kernel.GetModName(m, modName); out.WriteString(modName); out.WriteString(" !!!")
 			END
 		END
 	END ShowProcVar;
 
-	PROCEDURE ShowPointer (a: INTEGER; f: SHORTCHAR; desc: Kernel.Type; back: RefView; VAR sel: Name);
+	PROCEDURE ShowPointer (a: INTEGER; f: SHORTCHAR; desc: Kernel.Type; back: RefView; VAR sel: Kernel.Name);
 		VAR adr, x: INTEGER; ptr: ArrayPtr; c: Cluster; btyp: Kernel.Type;
 	BEGIN
 		SYSTEM.GET(a, adr);
 		IF f = 13X THEN btyp := desc.base[0] ELSE btyp := NIL END;
-		IF adr = 0 THEN out.WriteSString("NIL")
+		IF adr = 0 THEN out.WriteString("NIL")
 		ELSIF f = 20X THEN
 			out.WriteChar("["); WriteHex(adr); out.WriteChar("]");
 			out.WriteChar(" "); c := SYSTEM.VAL(Cluster, Kernel.Root());
@@ -385,7 +407,7 @@ MODULE StdDebug;
 	END ShowPointer;
 	
 	PROCEDURE ShowSelector (ref: RefView);
-		VAR b: RefView; n: SHORTINT; a, a0: TextModels.Attributes;
+		VAR b: RefView; n: SHORTINT; a, a0: TextModels.Attributes; res: INTEGER; nn: Kernel.Name;
 	BEGIN
 		b := ref.back; n := 1;
 		IF b # NIL THEN
@@ -394,7 +416,7 @@ MODULE StdDebug;
 			IF n > 1 THEN out.WriteChar("(") END;
 			out.WriteChar(".")
 		END;
-		out.WriteSString(ref.name);
+		Strings.Utf8ToString(ref.name, nn, res); out.WriteString(nn);
 		IF ref.type = heap THEN out.WriteChar("^") END;
 		IF n > 1 THEN
 			out.WriteChar(")");
@@ -405,12 +427,12 @@ MODULE StdDebug;
 	END ShowSelector;
 	
 	PROCEDURE ShowVar (ad, ind: INTEGER; f, c: SHORTCHAR; desc: Kernel.Type; ptr: ArrayPtr; back: RefView;
-											VAR name, sel: Name);
-		VAR i, j, vli, a: INTEGER; tsel: Name; a0: TextModels.Attributes;
+											VAR name, sel: Kernel.Name);
+		VAR i, j, vli, a: INTEGER; tsel: Kernel.Name; a0: TextModels.Attributes;
 			vc: SHORTCHAR; vsi: BYTE; vi: SHORTINT; vr: SHORTREAL; vlr: REAL; vs: SET;
 	BEGIN
 		out.WriteLn; out.WriteTab; i := 0;
-		WHILE i < ind DO out.WriteSString("  "); INC(i) END;
+		WHILE i < ind DO out.WriteString("  "); INC(i) END;
 		a := ad; i := 0; j := 0;
 		IF sel # "" THEN
 			WHILE sel[i] # 0X DO tsel[i] := sel[i]; INC(i) END;
@@ -424,10 +446,10 @@ MODULE StdDebug;
 			out.rider.SetAttr(TextModels.NewStyle(a0, {Fonts.italic}))
 		END;
 		IF name[0] # "[" THEN out.WriteChar(".") END;
-		out.WriteSString(name);
+		out.WriteString(name);
 		out.rider.SetAttr(a0); out.WriteTab;
 		IF (c = 3X) & (a >= 0) & (a < 65536) THEN 
-			out.WriteTab; out.WriteSString("NIL VARPAR")
+			out.WriteTab; out.WriteString("NIL VARPAR")
 		ELSIF f = 11X THEN
 			Kernel.GetTypeName(desc, name);
 			IF (c = 3X) & (name[0] # "!") THEN SYSTEM.GET(ad + 4, desc) END;	(* dynamic type *)
@@ -445,8 +467,8 @@ MODULE StdDebug;
 			CASE f OF
 			| 0X: (* SYSTEM.GET(a, vli); WriteHex(vli) *)
 			| 1X: SYSTEM.GET(a, vc); 
-				IF vc = 0X THEN out.WriteSString("FALSE")
-				ELSIF vc = 1X THEN out.WriteSString("TRUE")
+				IF vc = 0X THEN out.WriteString("FALSE")
+				ELSIF vc = 1X THEN out.WriteString("TRUE")
 				ELSE OutString("#Dev:Undefined"); out.WriteInt(ORD(vc))
 				END
 			| 2X: WriteString(a, 1, 1, FALSE, FALSE)
@@ -475,8 +497,8 @@ MODULE StdDebug;
 	
 
 	PROCEDURE ShowStack;
-		VAR ref, end, i, j, x, a, b, c: INTEGER; m, f: SHORTCHAR; mod: Kernel.Module; name, sel: Kernel.Name;
-			d: Kernel.Type;
+		VAR ref, end, i, j, x, a, b, c: INTEGER; m, f: SHORTCHAR; mod: Kernel.Module; modName, name, sel: Kernel.Name;
+			d: Kernel.Type; res: INTEGER; nn: Kernel.Utf8Name;
 	BEGIN
 		a := Kernel.pc; b := Kernel.fp; c := 100;
 		REPEAT
@@ -485,37 +507,37 @@ MODULE StdDebug;
 			IF mod # NIL THEN
 				DEC(a, mod.code);
 				IF mod.refcnt >= 0 THEN
-					out.WriteChar(" "); out.WriteSString(mod.name); ref := mod.refs;
-					REPEAT Kernel.GetRefProc(ref, end, name) UNTIL (end = 0) OR (a < end);
+				Kernel.GetModName(mod, modName); out.WriteChar(" "); out.WriteString(modName); ref := mod.refs;
+					REPEAT Kernel.GetRefProc(ref, end, nn) UNTIL (end = 0) OR (a < end);
 					IF a < end THEN
-						out.WriteChar("."); out.WriteSString(name);
+						Strings.Utf8ToString(nn, name, res); out.WriteChar("."); out.WriteString(name);
 						sel := mod.name$; i := 0;
 						WHILE sel[i] # 0X DO INC(i) END;
 						sel[i] := "."; INC(i); j := 0;
 						WHILE name[j] # 0X DO sel[i] := name[j]; INC(i); INC(j) END;
 						sel[i] := ":"; sel[i+1] := 0X;
-						out.WriteSString("   ["); WriteHex(a);
-						out.WriteSString("] ");
+						out.WriteString("   ["); WriteHex(a);
+						out.WriteString("] ");
 						i := Kernel.SourcePos(mod, 0);
 						IF name # "$$" THEN
-							Kernel.GetRefVar(ref, m, f, d, x, name);
+							Kernel.GetRefVar(ref, m, f, d, x, nn); Kernel.Utf8ToString(nn, name, res);
 							WHILE m # 0X DO
 								IF name[0] # "@" THEN ShowVar(b + x, 0, f, m, d, NIL, NIL, name, sel) END;
-								Kernel.GetRefVar(ref, m, f, d, x, name)
+								Kernel.GetRefVar(ref, m, f, d, x, nn); Kernel.Utf8ToString(nn, name, res)
 							END
 						END;
 						out.WriteLn
-					ELSE out.WriteSString(".???"); out.WriteLn
+					ELSE out.WriteString(".???"); out.WriteLn
 					END
 				ELSE
-					out.WriteChar("("); out.WriteSString(mod.name);
-					out.WriteSString(")   (pc="); WriteHex(a);
-					out.WriteSString(",  fp="); WriteHex(b); out.WriteChar(")");
+					Kernel.GetModName(mod, modName); out.WriteChar("("); out.WriteString(modName);
+					out.WriteString(")   (pc="); WriteHex(a);
+					out.WriteString(",  fp="); WriteHex(b); out.WriteChar(")");
 					out.WriteLn
 				END
 			ELSE
-				out.WriteSString("<system>   (pc="); WriteHex(a);
-				out.WriteSString(",  fp="); WriteHex(b); out.WriteChar(")");
+				out.WriteString("<system>   (pc="); WriteHex(a);
+				out.WriteString(",  fp="); WriteHex(b); out.WriteChar(")");
 				out.WriteLn
 			END;
 			IF (b >= Kernel.fp) & (b < Kernel.stack) THEN
@@ -535,16 +557,18 @@ MODULE StdDebug;
 	END Do;
 
 	PROCEDURE GetTrapMsg(OUT msg: ARRAY OF CHAR);
-		VAR ref, end, a: INTEGER; mod: Kernel.Module; name: Kernel.Name; head, tail, errstr: ARRAY 32 OF CHAR;
+		VAR ref, end, a: INTEGER; mod: Kernel.Module; modName, name: Kernel.Name; res: INTEGER; nn: Kernel.Utf8Name; 
+			head, tail, errstr: ARRAY 32 OF CHAR;
 			key: ARRAY 128 OF CHAR;
 	BEGIN
 		a := Kernel.pc; mod := Kernel.modList;
 		WHILE (mod # NIL) & ((a < mod.code) OR (a >= mod.code + mod.csize)) DO mod := mod.next END;
 		IF mod # NIL THEN
 			DEC(a, mod.code); ref := mod.refs;
-			REPEAT Kernel.GetRefProc(ref, end, name) UNTIL (end = 0) OR (a < end);
+			REPEAT Kernel.GetRefProc(ref, end, nn) UNTIL (end = 0) OR (a < end);
+			Kernel.Utf8ToString(nn, name, res);
 			IF a < end THEN
-				Kernel.SplitName (mod.name$, head, tail);
+				Kernel.GetModName(mod, modName); Kernel.SplitName(modName, head, tail);
 				IF head = "" THEN head := "System" END;
 				Strings.IntToString(Kernel.err, errstr);
 				key := tail + "." + name + "." + errstr;
@@ -561,53 +585,53 @@ MODULE StdDebug;
 		out.ConnectTo(TextModels.dir.New());
 		a0 := out.rider.attr;
 		out.rider.SetAttr(TextModels.NewWeight(a0, Fonts.bold));
-		IF Kernel.err = 129 THEN out.WriteSString("invalid WITH")
-		ELSIF Kernel.err = 130 THEN out.WriteSString("invalid CASE")
-		ELSIF Kernel.err = 131 THEN out.WriteSString("function without RETURN")
-		ELSIF Kernel.err = 132 THEN out.WriteSString("type guard")
-		ELSIF Kernel.err = 133 THEN out.WriteSString("implied type guard")
-		ELSIF Kernel.err = 134 THEN out.WriteSString("value out of range")
-		ELSIF Kernel.err = 135 THEN out.WriteSString("index out of range")
-		ELSIF Kernel.err = 136 THEN out.WriteSString("string too long")
-		ELSIF Kernel.err = 137 THEN out.WriteSString("stack overflow")
-		ELSIF Kernel.err = 138 THEN out.WriteSString("integer overflow")
-		ELSIF Kernel.err = 139 THEN out.WriteSString("division by zero")
-		ELSIF Kernel.err = 140 THEN out.WriteSString("infinite real result")
-		ELSIF Kernel.err = 141 THEN out.WriteSString("real underflow")
-		ELSIF Kernel.err = 142 THEN out.WriteSString("real overflow")
-		ELSIF Kernel.err = 143 THEN out.WriteSString("undefined real result")
-		ELSIF Kernel.err = 144 THEN out.WriteSString("not a number")
-		ELSIF Kernel.err = 200 THEN out.WriteSString("keyboard interrupt")
+		IF Kernel.err = 129 THEN out.WriteString("invalid WITH")
+		ELSIF Kernel.err = 130 THEN out.WriteString("invalid CASE")
+		ELSIF Kernel.err = 131 THEN out.WriteString("function without RETURN")
+		ELSIF Kernel.err = 132 THEN out.WriteString("type guard")
+		ELSIF Kernel.err = 133 THEN out.WriteString("implied type guard")
+		ELSIF Kernel.err = 134 THEN out.WriteString("value out of range")
+		ELSIF Kernel.err = 135 THEN out.WriteString("index out of range")
+		ELSIF Kernel.err = 136 THEN out.WriteString("string too long")
+		ELSIF Kernel.err = 137 THEN out.WriteString("stack overflow")
+		ELSIF Kernel.err = 138 THEN out.WriteString("integer overflow")
+		ELSIF Kernel.err = 139 THEN out.WriteString("division by zero")
+		ELSIF Kernel.err = 140 THEN out.WriteString("infinite real result")
+		ELSIF Kernel.err = 141 THEN out.WriteString("real underflow")
+		ELSIF Kernel.err = 142 THEN out.WriteString("real overflow")
+		ELSIF Kernel.err = 143 THEN out.WriteString("undefined real result")
+		ELSIF Kernel.err = 144 THEN out.WriteString("not a number")
+		ELSIF Kernel.err = 200 THEN out.WriteString("keyboard interrupt")
 		ELSIF Kernel.err = 201 THEN
-			out.WriteSString("NIL dereference")
+			out.WriteString("NIL dereference")
 		ELSIF Kernel.err = 202 THEN
-			out.WriteSString("illegal instruction: ");
+			out.WriteString("illegal instruction: ");
 			out.WriteIntForm(Kernel.val, TextMappers.hexadecimal, 5, "0", TextMappers.showBase)
 		ELSIF Kernel.err = 203 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteSString("NIL dereference (read)")
-			ELSE out.WriteSString("illegal memory read (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL dereference (read)")
+			ELSE out.WriteString("illegal memory read (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
 			END
 		ELSIF Kernel.err = 204 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteSString("NIL dereference (write)")
-			ELSE out.WriteSString("illegal memory write (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL dereference (write)")
+			ELSE out.WriteString("illegal memory write (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
 			END
 		ELSIF Kernel.err = 205 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteSString("NIL procedure call")
-			ELSE out.WriteSString("illegal execution (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL procedure call")
+			ELSE out.WriteString("illegal execution (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
 			END
-		ELSIF Kernel.err = 257 THEN out.WriteSString("out of memory")
-		ELSIF Kernel.err = 10001H THEN out.WriteSString("bus error")
-		ELSIF Kernel.err = 10002H THEN out.WriteSString("address error")
-		ELSIF Kernel.err = 10007H THEN out.WriteSString("fpu error")
+		ELSIF Kernel.err = 257 THEN out.WriteString("out of memory")
+		ELSIF Kernel.err = 10001H THEN out.WriteString("bus error")
+		ELSIF Kernel.err = 10002H THEN out.WriteString("address error")
+		ELSIF Kernel.err = 10007H THEN out.WriteString("fpu error")
 		ELSIF Kernel.err < 0 THEN
-			out.WriteSString("Exception "); out.WriteIntForm(-Kernel.err, TextMappers.hexadecimal, 3, "0", TextMappers.showBase)
+			out.WriteString("Exception "); out.WriteIntForm(-Kernel.err, TextMappers.hexadecimal, 3, "0", TextMappers.showBase)
 		ELSE
-			out.WriteSString("TRAP "); out.WriteInt(Kernel.err);
-			IF Kernel.err = 126 THEN out.WriteSString("  (not yet implemented)")
-			ELSIF Kernel.err = 125 THEN out.WriteSString("  (call of obsolete procedure)")
-			ELSIF Kernel.err >= 100 THEN out.WriteSString("  (invariant violated)")
-			ELSIF Kernel.err >= 60 THEN out.WriteSString("  (postcondition violated)")
-			ELSIF Kernel.err >= 20 THEN out.WriteSString("  (precondition violated)")
+			out.WriteString("TRAP "); out.WriteInt(Kernel.err);
+			IF Kernel.err = 126 THEN out.WriteString("  (not yet implemented)")
+			ELSIF Kernel.err = 125 THEN out.WriteString("  (call of obsolete procedure)")
+			ELSIF Kernel.err >= 100 THEN out.WriteString("  (invariant violated)")
+			ELSIF Kernel.err >= 60 THEN out.WriteString("  (postcondition violated)")
+			ELSIF Kernel.err >= 20 THEN out.WriteString("  (precondition violated)")
 			END
 		END;
 		GetTrapMsg(msg);

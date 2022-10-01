@@ -6,11 +6,9 @@
 DevAnalyzer	source code analyzer
 DevBrowser	symbol file browser
 DevCmds	miscellaneous commands
-DevComInterfaceGen 	generate Automation
-		interfaces
+DevComInterfaceGen 	generate Automation interfaces
 DevCommanders	command interpreters
-DevCompiler	Component Pascal
-	compiler
+DevCompiler	Component Pascal compiler
 DevDebug	symbolic debugger
 DevDependencies 	display module graph
 DevHeapSpy	visual heap display

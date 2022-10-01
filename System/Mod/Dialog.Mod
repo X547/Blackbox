@@ -11,7 +11,7 @@ MODULE Dialog;
 
 **)
 
-	IMPORT SYSTEM, Kernel, Files;
+	IMPORT SYSTEM, Kernel, Files, Log;
 
 	CONST
 		pressed* = 1; released* = 2; changed* = 3; included* = 5; excluded* = 6; set* = 7;	(** notify ops **)
@@ -36,6 +36,8 @@ MODULE Dialog;
 		windows98* = 16;
 		windowsXP* = 17;
 		windowsVista* = 18;
+		windows7* = 19;
+		windows8* = 10;
 		macOS* = 21;
 		macOSX* = 22;
 		linux* = 30;
@@ -44,6 +46,11 @@ MODULE Dialog;
 		firstPos* = 0;
 		lastPos* = -1;
 
+		logDuplicateKeys = FALSE; (* log duplicate keys in Strings resources *)
+		logMissingSimpleKeys = FALSE; (* log missing keys not containing "."  in Strings resources *)
+		logAllMissingKeys = FALSE; (* log all missing keys in Strings resources *)
+		logMissingFile = logMissingSimpleKeys OR logAllMissingKeys; (* log missing Strings file *)
+		
 	TYPE
 		String* = ARRAY stringLen OF CHAR;
 
@@ -133,6 +140,8 @@ MODULE Dialog;
 		CallHook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
 		NotifyHook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
 		LanguageHook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
+		WineHook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
+		ExtCallHook* = POINTER TO ABSTRACT RECORD (Kernel.Hook) END;
 
 	VAR
 		metricSystem*: BOOLEAN;
@@ -141,10 +150,13 @@ MODULE Dialog;
 		commandLinePars*: String;
 		version*: INTEGER;
 		appName*: ARRAY 32 OF CHAR;
+		appVersion*: ARRAY 32 OF CHAR;
 		language-: Language;
 		user*: ARRAY 32 OF CHAR;
 		caretPeriod*: INTEGER;
 		thickCaret*: BOOLEAN;
+		beep*: BOOLEAN;
+		serverMode*: BOOLEAN;
 
 		tabList: StringTab;
 		langNotifiers: LangNotifier;
@@ -155,6 +167,8 @@ MODULE Dialog;
 		callHook: CallHook;
 		notifyHook: NotifyHook;
 		languageHook: LanguageHook;
+		wineHook: WineHook;
+		extCallHook: ExtCallHook;
 
 	PROCEDURE (h: GetHook) GetOK* (IN str, p0, p1, p2: ARRAY OF CHAR; form: SET;
 															OUT res: INTEGER), NEW, ABSTRACT;
@@ -180,6 +194,10 @@ MODULE Dialog;
 
 	PROCEDURE (h: CallHook) Call* (IN proc, errorMsg: ARRAY OF CHAR; VAR res: INTEGER), NEW, ABSTRACT;
 
+	PROCEDURE (h: ExtCallHook) RunExternal* (IN exeName: ARRAY OF CHAR), NEW, ABSTRACT;
+
+	PROCEDURE (h: ExtCallHook) OpenExternal* (IN fileName: ARRAY OF CHAR), NEW, ABSTRACT;
+
 	PROCEDURE SetCallHook* (h: CallHook);
 	BEGIN
 		callHook := h
@@ -200,6 +218,39 @@ MODULE Dialog;
 	BEGIN
 		languageHook := h
 	END SetLanguageHook;
+
+	PROCEDURE (h: WineHook) IsWine* (): BOOLEAN, NEW, ABSTRACT;
+	
+	PROCEDURE SetWineHook*(h: WineHook);
+	BEGIN
+		wineHook := h
+	END SetWineHook;
+
+	PROCEDURE IsWine* (): BOOLEAN;
+	BEGIN
+		RETURN (wineHook # NIL) & wineHook.IsWine()
+	END IsWine;
+
+	PROCEDURE IsWindows* (): BOOLEAN;
+	BEGIN
+		CASE platform OF
+		  windows32s..windows7, windows8: RETURN TRUE
+		ELSE RETURN FALSE
+		END
+	END IsWindows;
+
+	PROCEDURE IsMac* (): BOOLEAN;
+	BEGIN
+		CASE platform OF
+		  macOS, macOSX: RETURN TRUE
+		ELSE RETURN FALSE
+		END
+	END IsMac;
+
+	PROCEDURE IsLinux* (): BOOLEAN;
+	BEGIN
+		RETURN platform = linux
+	END IsLinux;
 
 	PROCEDURE ReadStringFile (subsys: Files.Name; f: Files.File; VAR tab: StringTab);
 		VAR i, j, h, n, s, x, len, next, down, end: INTEGER; in, in1: Files.Reader;
@@ -231,6 +282,16 @@ MODULE Dialog;
 			ReadInt(end); end := end + in.Pos()
 		END ReadHead;
 	
+	PROCEDURE CheckDuplicateKeys;
+		VAR i: INTEGER;
+	BEGIN
+		FOR i := 0 TO n - 2 DO
+			IF tab.key[i]^ = tab.key[i + 1]^ THEN
+				Log.String('key not unique: "#' + subsys + ":" + tab.key[i] + '"'); Log.Ln
+			END
+		END
+	END CheckDuplicateKeys;
+	
 	BEGIN
 		tab := NIL;
 		IF f # NIL THEN	(* read text file *)
@@ -259,6 +320,8 @@ MODULE Dialog;
 							ELSIF (s = 1) & (ch = TAB) THEN
 								tab.data[j] := 0X; INC(j);
 								s := 2	(* start of right part *)
+							ELSIF (s = 2) & (ch = TAB) THEN
+								tab.data[j] := TAB; INC(j);
 							ELSIF (s = 2) & (ch = CR) THEN
 								tab.data[j] := 0X; INC(j);
 								INC(n); i := j; s := 0	(* end of line *)
@@ -284,10 +347,10 @@ MODULE Dialog;
 					NEW(tab.key, n); NEW(tab.str, n); i := 0; j := 0;
 					WHILE j < n DO
 						tab.key[j] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[i]));
-						WHILE tab.data[i] >= " " DO INC(i) END;
+						WHILE tab.data[i] # 0X DO INC(i) END;
 						INC(i);
 						tab.str[j] := SYSTEM.VAL(StringPtr, SYSTEM.ADR(tab.data[i]));
-						WHILE tab.data[i] >= " " DO INC(i) END;
+						WHILE tab.data[i] # 0X DO INC(i) END;
 						INC(i); INC(j)
 					END;
 					(* sort keys (shellsort) *)
@@ -299,7 +362,8 @@ MODULE Dialog;
 							END;
 							tab.key[j] := p; tab.str[j] := q; INC(i)
 						END
-					UNTIL h = 1
+					UNTIL h = 1;
+					IF logDuplicateKeys THEN CheckDuplicateKeys END
 				END
 			END
 		END
@@ -380,7 +444,7 @@ MODULE Dialog;
 	END LoadStringTab;
 
 	PROCEDURE SearchString (VAR in: ARRAY OF CHAR; OUT out: ARRAY OF CHAR);
-		VAR i, j, k, len: INTEGER; ch: CHAR; subsys: Files.Name; tab: StringTab;
+		VAR i, j, k, len: INTEGER; ch: CHAR; subsys: Files.Name; tab: StringTab; hasDot: BOOLEAN;
 	BEGIN
 		out := "";
 		IF in[0] = "#" THEN
@@ -410,7 +474,14 @@ MODULE Dialog;
 						out[k] := tab.str[j][k]; INC(k)
 					END;
 					out[k] := 0X
+				ELSIF logAllMissingKeys THEN Log.String('key not found: "#' + subsys + ":" + in + '"'); Log.Ln
+				ELSIF logMissingSimpleKeys THEN hasDot := FALSE;
+					FOR i := 0 TO LEN(in$) - 1 DO
+						IF in[i] = "." THEN hasDot := TRUE END
+					END;
+					IF ~hasDot THEN Log.String('key not found: "#' + subsys + ":" + in + '"'); Log.Ln END
 				END
+			ELSIF logMissingFile THEN Log.String('resource file not found: "#' + subsys + ":" + in + '"'); Log.Ln
 			END
 		END
 	END SearchString;
@@ -470,11 +541,10 @@ MODULE Dialog;
 		IF (l.scnt > 32) & (l.scnt > 2 * l.len) THEN Compact(l) END
 	END SetLen;
 
-	PROCEDURE GetItem (VAR l: StrList; index: INTEGER; VAR item: String);
+	PROCEDURE GetItem (IN l: StrList; index: INTEGER; VAR item: String);
 		VAR i, j, k: INTEGER; b: Buf; ch: CHAR;
 	BEGIN
-		IF l.items = NIL THEN Init(l) END;
-		IF (index >= 0) & (index < l.len) THEN
+		IF (l.items # NIL) & (index >= 0) & (index < l.len) THEN
 			i := l.items[index]; j := i MOD bufLen; i := i DIV bufLen;
 			b := l.strings; WHILE i # 0 DO b := b.next; DEC(i) END;
 			k := 0;
@@ -533,10 +603,9 @@ MODULE Dialog;
 		l.len := l.l.len
 	END SetLen;
 
-	PROCEDURE (VAR l: List) GetItem* (index: INTEGER; OUT item: String), NEW;
+	PROCEDURE (IN l: List) GetItem* (index: INTEGER; OUT item: String), NEW;
 	BEGIN
-		GetItem(l.l, index, item);
-		l.len := l.l.len
+		GetItem(l.l, index, item)
 	END GetItem;
 
 	PROCEDURE (VAR l: List) SetItem* (index: INTEGER; IN item: ARRAY OF CHAR), NEW;
@@ -573,10 +642,9 @@ MODULE Dialog;
 		s.len := s.l.len
 	END SetLen;
 
-	PROCEDURE (VAR s: Selection) GetItem* (index: INTEGER; OUT item: String), NEW;
+	PROCEDURE (IN s: Selection) GetItem* (index: INTEGER; OUT item: String), NEW;
 	BEGIN
-		GetItem(s.l, index, item);
-		s.len := s.l.len
+		GetItem(s.l, index, item)
 	END GetItem;
 
 	PROCEDURE (VAR s: Selection) SetItem* (index: INTEGER; IN item: ARRAY OF CHAR), NEW;
@@ -593,10 +661,11 @@ MODULE Dialog;
 		IF s.l.len > s.len THEN s.SetLen(s.l.len) END
 	END SetResources;
 
-	PROCEDURE (VAR s: Selection) In* (index: INTEGER): BOOLEAN, NEW;
+	PROCEDURE (IN s: Selection) In* (index: INTEGER): BOOLEAN, NEW;
 	BEGIN
-		IF s.l.items = NIL THEN Init(s.l); s.len := s.l.len END;
-		IF s.sel # NIL THEN RETURN (index MOD 32) IN (s.sel[index DIV 32]) ELSE RETURN FALSE END
+		IF (s.l.items # NIL) & (s.sel # NIL) THEN RETURN (index MOD 32) IN (s.sel[index DIV 32])
+		ELSE RETURN FALSE
+		END
 	END In;
 
 	PROCEDURE (VAR s: Selection) Excl* (from, to: INTEGER), NEW;
@@ -625,10 +694,9 @@ MODULE Dialog;
 		c.len := c.l.len
 	END SetLen;
 
-	PROCEDURE (VAR c: Combo) GetItem* (index: INTEGER; OUT item: String), NEW;
+	PROCEDURE (IN c: Combo) GetItem* (index: INTEGER; OUT item: String), NEW;
 	BEGIN
-		GetItem(c.l, index, item);
-		c.len := c.l.len
+		GetItem(c.l, index, item)
 	END GetItem;
 
 	PROCEDURE (VAR c: Combo) SetItem* (index: INTEGER; IN item: ARRAY OF CHAR), NEW;
@@ -697,7 +765,7 @@ MODULE Dialog;
 		tn.viewAsFolder := isFolder
 	END ViewAsFolder;
 
-	PROCEDURE (VAR t: Tree) NofNodes* (): INTEGER, NEW;
+	PROCEDURE (IN t: Tree) NofNodes* (): INTEGER, NEW;
 	BEGIN
 		IF t.firstRoot = NIL THEN
 			RETURN 0
@@ -706,7 +774,7 @@ MODULE Dialog;
 		END
 	END NofNodes;
 
-	PROCEDURE (VAR t: Tree) NofRoots* (): INTEGER, NEW;
+	PROCEDURE (IN t: Tree) NofRoots* (): INTEGER, NEW;
 	BEGIN
 		IF t.firstRoot = NIL THEN
 			RETURN 0
@@ -715,25 +783,25 @@ MODULE Dialog;
 		END
 	END NofRoots;
 
-	PROCEDURE (VAR t: Tree) Parent* (node: TreeNode): TreeNode, NEW;
+	PROCEDURE (IN t: Tree) Parent* (node: TreeNode): TreeNode, NEW;
 	BEGIN
 		ASSERT(node # NIL, 20); ASSERT(node.tree = SYSTEM.ADR(t), 21);
 		RETURN node.parent
 	END Parent;
 
-	PROCEDURE (VAR t: Tree) Next* (node: TreeNode): TreeNode, NEW;
+	PROCEDURE (IN t: Tree) Next* (node: TreeNode): TreeNode, NEW;
 	BEGIN
 		ASSERT(node # NIL, 20); ASSERT(node.tree = SYSTEM.ADR(t), 21);
 		RETURN node.next
 	END Next;
 
-	PROCEDURE (VAR t: Tree) Prev* (node: TreeNode): TreeNode, NEW;
+	PROCEDURE (IN t: Tree) Prev* (node: TreeNode): TreeNode, NEW;
 	BEGIN
 		ASSERT(node # NIL, 20); ASSERT(node.tree = SYSTEM.ADR(t), 21);
 		RETURN node.prev
 	END Prev;
 
-	PROCEDURE (VAR t: Tree) Child* (node: TreeNode; pos: INTEGER): TreeNode, NEW;
+	PROCEDURE (IN t: Tree) Child* (node: TreeNode; pos: INTEGER): TreeNode, NEW;
 		VAR cur: TreeNode;
 	BEGIN
 		ASSERT(pos >= lastPos, 20); ASSERT((node = NIL) OR (node.tree = SYSTEM.ADR(t)), 21);
@@ -747,7 +815,7 @@ MODULE Dialog;
 		RETURN cur
 	END Child;
 
-	PROCEDURE (VAR t: Tree) Selected* (): TreeNode, NEW;
+	PROCEDURE (IN t: Tree) Selected* (): TreeNode, NEW;
 	BEGIN
 		RETURN t.selected
 	END Selected;
@@ -829,7 +897,7 @@ MODULE Dialog;
 		RETURN new
 	END NewChild;
 
-	PROCEDURE (VAR t: Tree) CountChildren (node: TreeNode): INTEGER, NEW;
+	PROCEDURE (IN t: Tree) CountChildren (node: TreeNode): INTEGER, NEW;
 		VAR tot, nofc, i: INTEGER;
 	BEGIN
 		tot := 0;
@@ -842,7 +910,7 @@ MODULE Dialog;
 		RETURN tot
 	END CountChildren;
 
-	PROCEDURE Exclude (IN t: Tree; node: TreeNode);
+	PROCEDURE Exclude (VAR t: Tree; node: TreeNode);
 		VAR c: TreeNode;
 	BEGIN
 		ASSERT(node # NIL, 20); ASSERT(node.tree = SYSTEM.ADR(t), 100);
@@ -1137,7 +1205,7 @@ MODULE Dialog;
 
 	PROCEDURE Beep*;
 	BEGIN
-		Kernel.Beep
+		IF beep THEN Kernel.Beep END
 	END Beep;
 
 	PROCEDURE (n: LangNotifier) Notify-(), NEW, ABSTRACT;
@@ -1205,6 +1273,24 @@ MODULE Dialog;
 		SetLanguage(lang, nonPersistent)
 	END ResetLanguage;
 
+	PROCEDURE SetExtCallHook* (h: ExtCallHook);
+	BEGIN
+		extCallHook := h
+	END SetExtCallHook;
+
+	PROCEDURE RunExternal*(IN exeName: ARRAY OF CHAR);
+	BEGIN
+		ASSERT(extCallHook # NIL, 100);
+		extCallHook.RunExternal(exeName)
+	END RunExternal;
+
+	PROCEDURE OpenExternal*(IN fileName: ARRAY OF CHAR);
+	BEGIN
+		ASSERT(extCallHook # NIL, 100);
+		extCallHook.OpenExternal(fileName)
+	END OpenExternal;
+
 BEGIN
-	appName := "BlackBox"; showsStatus := FALSE; caretPeriod := 500; thickCaret := FALSE; user := ""
+	appName := "BlackBox"; showsStatus := FALSE; caretPeriod := 500; thickCaret := FALSE; user := "";
+	beep := TRUE; serverMode := FALSE
 END Dialog.

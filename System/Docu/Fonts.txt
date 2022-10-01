@@ -159,7 +159,6 @@ style is subset of {italic, underline, strikeout}	22
 0 <= weight <= 1000	23
 
 Post
-f.fingerprint = fingerprint
 f.typeface = typeface  &  f.size = size  &  f.style = style  &  f.weight = weight
 
 PROCEDURE (f: Font) GetBounds (OUT asc, dsc, w: INTEGER)

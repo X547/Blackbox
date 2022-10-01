@@ -12,14 +12,14 @@ MODULE StdFolds;
 **)
 
 	IMPORT
-		Domains := Stores, Ports, Stores, Containers, Models, Views, Controllers, Fonts,
+		Ports, Stores, Containers, Models, Views, Controllers, Fonts,
 		Properties,Controls,
 		TextModels, TextViews, TextControllers, TextSetters,
 		Dialog, Services;
 
 	CONST
 		expanded* = FALSE; collapsed* = TRUE;
-		minVersion = 0; currentVersion = 0;
+		minVersion = 0; currentVersion = 1;
 
 		collapseFoldKey = "#Std:Collapse Fold";
 		expandFoldKey = "#Std:Expand Fold";
@@ -45,12 +45,12 @@ MODULE StdFolds;
 
 		StdDirectory = POINTER TO RECORD (Directory) END;
 
-		FlipOp = POINTER TO RECORD (Domains.Operation)
+		FlipOp = POINTER TO RECORD (Stores.Operation)
 			text: TextModels.Model; (* containing text *)
 			leftpos, rightpos: INTEGER (* position of left and right Fold *)
 		END;
 		
-		SetLabelOp = POINTER TO RECORD (Domains.Operation)
+		SetLabelOp = POINTER TO RECORD (Stores.Operation)
 			text: TextModels.Model; (* containing text *)
 			pos: INTEGER; (* position of fold in text *)
 			oldlabel: Label
@@ -64,14 +64,11 @@ MODULE StdFolds;
 
 		foldData*: RECORD
 			nested*: BOOLEAN;
-			all*: BOOLEAN;
-			findLabel*: Label;
+			useFilter*: BOOLEAN;
+			filter*: Label;
 			newLabel*: Label
 		END;
 
-		iconFont: Fonts.Typeface;
-		leftExp, rightExp, leftColl, rightColl: ARRAY 8 OF SHORTCHAR;
-		coloredBackg: BOOLEAN;
 		action: Action;
 		fingerprint: INTEGER;	(* for the property inspector *)
 
@@ -128,28 +125,17 @@ MODULE StdFolds;
 		END
 	END MatchingFold;
 
-	PROCEDURE GetIcon (fold: Fold; VAR icon: ARRAY OF SHORTCHAR);
-	BEGIN
-		IF fold.leftSide THEN
-			IF fold.collapsed THEN icon := leftColl$ ELSE icon := leftExp$ END
-		ELSE
-			 IF fold.collapsed THEN icon := rightColl$ ELSE icon := rightExp$ END
-		END
-	END GetIcon;
-
 	PROCEDURE CalcSize (f: Fold; VAR w, h: INTEGER);
-		VAR icon: ARRAY 8 OF SHORTCHAR; c: Models.Context; a: TextModels.Attributes; font: Fonts.Font;
+		VAR c: Models.Context; font: Fonts.Font;
 			asc, dsc, fw: INTEGER;
 	BEGIN
-		GetIcon(f, icon);
 		c := f.context;
 		IF (c # NIL) & (c IS TextModels.Context) THEN
-			a := c(TextModels.Context).Attr();
-			font := Fonts.dir.This(iconFont, a.font.size, {}, Fonts.normal)
+			font := c(TextModels.Context).Attr().font
 		ELSE font := Fonts.dir.Default()
 		END;
-		w := font.SStringWidth(icon);
 		font.GetBounds(asc, dsc, fw);
+		w := asc * 29 DIV 20;
 		h := asc + dsc
 	END CalcSize;
 
@@ -257,7 +243,7 @@ MODULE StdFolds;
 
 	PROCEDURE (fold: Fold) FlipNested*, NEW;
 		VAR text: TextModels.Model; rd: TextModels.Reader; l, r: Fold; level: INTEGER;
-			op: Domains.Operation;
+			op: Stores.Operation;
 	BEGIN
 		ASSERT(fold # NIL, 20);
 		GetPair(fold, l, r);
@@ -336,58 +322,113 @@ MODULE StdFolds;
 		END
 	END Track;
 
-		PROCEDURE (fold: Fold) HandleCtrlMsg* (f: Views.Frame; VAR msg: Views.CtrlMessage;
-																							VAR focus: Views.View);
-			VAR hit: BOOLEAN; pos: INTEGER; l, r: Fold;
-				context: TextModels.Context; text: TextModels.Model;
-		BEGIN
-			WITH msg: Controllers.TrackMsg DO
-				IF fold.context IS TextModels.Context THEN
-					Track(fold, f, msg.x, msg.y, msg.modifiers, hit);
-					IF hit THEN
-						IF Controllers.modify IN msg.modifiers THEN
-							fold.FlipNested
-						ELSE
-							fold.Flip;
-							context := fold.context(TextModels.Context);
-							text := context.ThisModel();
-							IF TextViews.FocusText() = text THEN
-								GetPair(fold, l, r);
-								pos := context.Pos();
-								IF fold = l THEN
-									TextControllers.SetCaret(text, pos + 1)
-								ELSE
-									TextControllers.SetCaret(text, pos)
-								END;
-								TextViews.ShowRange(text, pos, pos + 1, TRUE)
-							END
+	PROCEDURE (fold: Fold) HandleCtrlMsg* (f: Views.Frame; VAR msg: Views.CtrlMessage;
+																						VAR focus: Views.View);
+		VAR hit: BOOLEAN; pos: INTEGER; l, r: Fold;
+			context: TextModels.Context; text: TextModels.Model;
+	BEGIN
+		WITH msg: Controllers.TrackMsg DO
+			IF fold.context IS TextModels.Context THEN
+				Track(fold, f, msg.x, msg.y, msg.modifiers, hit);
+				IF hit THEN
+					IF Controllers.modify IN msg.modifiers THEN
+						fold.FlipNested
+					ELSE
+						fold.Flip;
+						context := fold.context(TextModels.Context);
+						text := context.ThisModel();
+						IF TextViews.FocusText() = text THEN
+							GetPair(fold, l, r);
+							pos := context.Pos();
+							IF fold = l THEN
+								TextControllers.SetCaret(text, pos + 1)
+							ELSE
+								TextControllers.SetCaret(text, pos)
+							END;
+							TextViews.ShowRange(text, pos, pos + 1, TRUE)
 						END
 					END
 				END
-			| msg: Controllers.PollCursorMsg DO
-				msg.cursor := Ports.refCursor
-			ELSE
 			END
-		END HandleCtrlMsg;
+		| msg: Controllers.PollCursorMsg DO
+			msg.cursor := Ports.refCursor
+		ELSE
+		END
+	END HandleCtrlMsg;
+
+	PROCEDURE GetIconPath (fold: Fold; f: Views.Frame; w, h_dummy, asc: INTEGER; 
+											VAR path: ARRAY OF Ports.Point);
+		VAR i, xoff, w2, w4: INTEGER;
+	BEGIN
+		(* use device coordinates for symmetric arrow rendering*)
+		w := w DIV f.unit;
+		asc := asc DIV f.unit;
+		w2 := w * 10 DIV 18;
+		IF ~ODD(w2) THEN DEC(w2) END ;
+		w4 := w2 DIV 2;
+		xoff := (w - w2 - w4) DIV 2;
+		IF xoff < 1 THEN xoff := 1 END ;
+		WHILE xoff + w2 + w4 > w DO DEC(w2, 2); DEC(w4) END ; 
+		(* left side icon *)
+		path[0].x := xoff; path[0].y := asc; (* lower left *)
+		path[1].x := path[0].x; path[1].y := path[0].y - w2; (* upper left *)
+		path[2].x := path[1].x + w2; path[2].y := path[1].y; (* upper middle *)
+		path[3].x := path[2].x + w4; path[3].y := path[2].y + w4; (* right arrow *)
+		path[4].x := path[2].x - 1; path[4].y := path[0].y; (* lower middle, x offset -1 needed for symmetric filling *)
+		IF ~fold.leftSide THEN (* mirror *)
+			FOR i := 0 TO LEN(path) - 1 DO path[i].x := w - path[i].x END
+		END ;
+		(* convert to universal coordinates *)
+		FOR i := 0 TO LEN(path) - 1 DO path[i].x := path[i].x * f.unit; path[i].y := path[i].y * f.unit; END
+	END GetIconPath;
+
+	PROCEDURE DrawMarkers(fold: Fold; f: Views.Frame; IN path: ARRAY OF Ports.Point);
+		VAR w2, height, thickness, margin, len, left, top: INTEGER;
+	BEGIN
+		(* scale size and thickness of +/- markers, thickness / height = 1 / 7*)
+		w2 := ABS(path[2].x - path[1].x); (* universal coordinates *)
+		height := (path[0].y - path[1].y); (* universal coordinates *)
+		thickness := height DIV f.unit DIV 7; (* device coordinates *)
+		IF thickness < 1 THEN thickness := 1
+		(* ELSIF ~ODD(thickness) THEN (* alternative for perfect symmetry but scales in larger increments *)
+			DEC(thickness) *)
+		END ;
+		thickness := thickness * f.unit; (* universal coordinates *)
+		margin := height DIV f.unit DIV 4; (* device coordinates *)
+		IF margin < 1 THEN margin := 1 END; (* for small fonts *)
+		margin := margin * f.unit; (* universal coordinates *)
+		len := w2 - margin * 2; (* universal coordinates *)
+		IF ((len DIV f.unit) MOD 2 = 1) & ((thickness DIV f.unit) MOD 2 = 0) THEN
+			INC(len,  f.unit) (* avoid cross assymetry *)
+		END;
+		IF len < 1 THEN len := 1 END ; (* avoid TRAP in DrawRect for very small sizes *)
+		(* draw - *)
+		IF fold.leftSide THEN left := path[0].x + margin ELSE left := path[2].x + margin END ;
+		top := path[1].y + (height - thickness) DIV 2;
+		f.DrawRect(left, top, left + len, top + thickness, Ports.fill, Ports.white);
+		IF fold.collapsed THEN (* draw | *)
+			left := left + (len - thickness) DIV 2;
+			top := path[1].y + margin;
+			f.DrawRect(left, top, left + thickness, top + len, Ports.fill, Ports.white);
+		END
+	END DrawMarkers;
 
 	PROCEDURE (fold: Fold) Restore* (f: Views.Frame; l, t, r, b: INTEGER);
 		VAR a: TextModels.Attributes; color: Ports.Color; c: Models.Context; font: Fonts.Font;
-			icon: ARRAY 8 OF SHORTCHAR; w, h: INTEGER; asc, dsc, fw: INTEGER;
+			w, h: INTEGER; asc, dsc, fw: INTEGER; path: ARRAY 5 OF Ports.Point;
 	BEGIN
-		GetIcon(fold, icon); c := fold.context;
+		CalcSize(fold, w, h); (* important side effect: initializes Log window for drawing folds! *)
+		c := fold.context;
 		IF (c # NIL) & (c IS TextModels.Context) THEN
 			a := fold.context(TextModels.Context).Attr();
-			font := Fonts.dir.This(iconFont, a.font.size, {}, Fonts.normal);
+			font := a.font;
 			color := a.color
 		ELSE font := Fonts.dir.Default(); color := Ports.black
 		END;
-		IF coloredBackg THEN
-			fold.context.GetSize(w, h);
-			f.DrawRect(f.l, f.dot, f.r, h-f.dot, Ports.fill, Ports.grey50);
-			color := Ports.white
-		END;
 		font.GetBounds(asc, dsc, fw);
-		f.DrawSString(0, asc, color, icon, font)
+		GetIconPath(fold, f, w, h, asc, path);
+		f.DrawPath(path, LEN(path), Ports.fill, color, Ports.closedPoly);
+		DrawMarkers(fold, f, path)
 	END Restore;
 
 	PROCEDURE (fold: Fold) CopyFromSimpleView- (source: Views.View);
@@ -414,7 +455,9 @@ MODULE StdFolds;
 		IF rd.cancelled THEN RETURN END;
 		rd.ReadXInt(xint);fold.leftSide := xint = 0;
 		rd.ReadXInt(xint); fold.collapsed := xint = 0;
-		rd.ReadXString(fold.label);
+		IF version >= 1 THEN  rd.ReadString(fold.label)
+		ELSE rd.ReadXString(fold.label)
+		END;
 		rd.ReadStore(store);
 		IF store # NIL THEN fold.hidden := store(TextModels.Model); Stores.Join(fold.hidden, fold)
 		ELSE fold.hidden := NIL
@@ -422,23 +465,33 @@ MODULE StdFolds;
 		fold.leftSide := store # NIL
 	END Internalize;
 
+	PROCEDURE HasWideChars (IN s: ARRAY OF CHAR): BOOLEAN;
+		VAR i: INTEGER; ch: CHAR;
+	BEGIN i := 0; ch := s[0];
+		WHILE (ch # 0X) & (ch <= 0FFX) DO INC(i); ch := s[i] END;
+		RETURN ch # 0X
+	END HasWideChars;
+
 	PROCEDURE (fold: Fold) Externalize- (VAR wr: Stores.Writer);
-		VAR xint: INTEGER;
+		VAR xint, version: INTEGER;
 	BEGIN
 		fold.Externalize^(wr);
-		wr.WriteVersion(currentVersion);
+		IF HasWideChars(fold.label) THEN version := 1 ELSE version := 0 END;
+		wr.WriteVersion(version);
 		IF fold.hidden # NIL THEN xint := 0 ELSE xint := 1 END;
 		wr.WriteXInt(xint);
 		IF fold.collapsed THEN xint := 0 ELSE xint := 1 END;
 		wr.WriteXInt(xint);
-		wr.WriteXString(fold.label);
+		IF version >= 1 THEN wr.WriteString(fold.label)
+		ELSE wr.WriteXString(fold.label)
+		END;
 		wr.WriteStore(fold.hidden)
 	END Externalize;
 
 	(* --------------------- expanding and collapsing in focus text ------------------------ *)
 
 	PROCEDURE ExpandFolds* (text: TextModels.Model; nested: BOOLEAN; IN label: ARRAY OF CHAR);
-		VAR op: Domains.Operation; fold, l, r: Fold; rd: TextModels.Reader;
+		VAR op: Stores.Operation; fold, l, r: Fold; rd: TextModels.Reader;
 	BEGIN
 		ASSERT(text # NIL, 20);
 		Models.BeginModification(Models.clean, text);
@@ -464,7 +517,7 @@ MODULE StdFolds;
 	END ExpandFolds;
 
 	PROCEDURE CollapseFolds* (text: TextModels.Model; nested: BOOLEAN; IN label: ARRAY OF CHAR);
-		VAR op: Domains.Operation; fold, r, l: Fold; rd: TextModels.Reader;
+		VAR op: Stores.Operation; fold, r, l: Fold; rd: TextModels.Reader;
 	BEGIN
 		ASSERT(text # NIL, 20);
 		Models.BeginModification(Models.clean, text);
@@ -522,10 +575,10 @@ MODULE StdFolds;
 
 	(* ---------------------- foldData dialogbox --------------------------- *)
 
-	PROCEDURE FindLabelGuard* (VAR par: Dialog.Par);
+	PROCEDURE FilterGuard* (VAR par: Dialog.Par);
 	BEGIN
-		par.disabled := (TextViews.Focus() = NIL) OR foldData.all
-	END FindLabelGuard;
+		par.disabled := (TextViews.Focus() = NIL) OR ~foldData.useFilter
+	END FilterGuard;
 		
 	PROCEDURE SetLabelGuard* ( VAR p : Dialog.Par );
 		VAR v: Views.View;
@@ -539,12 +592,12 @@ MODULE StdFolds;
 	PROCEDURE ExpandLabel*;
 		VAR text: TextModels.Model;
 	BEGIN
-		IF foldData.all & (foldData.findLabel # "") THEN
-			foldData.findLabel := ""; Dialog.Update(foldData)
+		IF ~foldData.useFilter & (foldData.filter # "") THEN
+			foldData.filter := ""; Dialog.Update(foldData)
 		END;
 		text := TextViews.FocusText();
 		IF text # NIL THEN
-			IF ~foldData.all THEN ExpandFolds(text, foldData.nested, foldData.findLabel)
+			IF foldData.useFilter THEN ExpandFolds(text, foldData.nested, foldData.filter)
 			ELSE ExpandFolds(text, foldData.nested, "")
 			END
 		END
@@ -553,12 +606,12 @@ MODULE StdFolds;
 	PROCEDURE CollapseLabel*;
 		VAR text: TextModels.Model;
 	BEGIN
-		IF foldData.all & (foldData.findLabel # "") THEN
-			foldData.findLabel := ""; Dialog.Update(foldData)
+		IF ~foldData.useFilter & (foldData.filter # "") THEN
+			foldData.filter := ""; Dialog.Update(foldData)
 		END;
 		text := TextViews.FocusText();
 		IF text # NIL THEN
-			IF ~foldData.all THEN CollapseFolds(text, foldData.nested, foldData.findLabel)
+			IF foldData.useFilter THEN CollapseFolds(text, foldData.nested, foldData.filter)
 			ELSE CollapseFolds(text, foldData.nested, "")
 			END
 		END
@@ -581,7 +634,7 @@ MODULE StdFolds;
 			END;
 			r := c.text.NewReader(NIL); r.SetPos(pos);
 			REPEAT r.ReadView(v)
-			UNTIL r.eot OR ((v IS Fold) & v(Fold).leftSide) & (foldData.all OR (v(Fold).label$ = foldData.findLabel$));
+			UNTIL r.eot OR ((v IS Fold) & v(Fold).leftSide) & (~foldData.useFilter OR (v(Fold).label$ = foldData.filter$));
 			IF r.eot THEN
 				c.SetCaret(0); Dialog.Beep
 			ELSE
@@ -670,7 +723,7 @@ MODULE StdFolds;
 	END InsertionAttr;
 
 	PROCEDURE Insert* (text: TextModels.Model; label: Label; beg, end: INTEGER; collapsed: BOOLEAN);
-		VAR w: TextModels.Writer; fold: Fold; insop: Domains.Operation; a: TextModels.Attributes;
+		VAR w: TextModels.Writer; fold: Fold; insop: Stores.Operation; a: TextModels.Attributes;
 	BEGIN
 		ASSERT(text # NIL, 20);
 		ASSERT((beg >= 0) & (end <= text.Length()) & (beg <= end), 21);
@@ -717,46 +770,6 @@ MODULE StdFolds;
 		END
 	END Create;
 
-	PROCEDURE InitIcons;
-		VAR font: Fonts.Font;
-
-		PROCEDURE DefaultAppearance;
-		BEGIN
-			font := Fonts.dir.Default(); iconFont := font.typeface$;
-			leftExp := ">"; rightExp := "<";
-			leftColl := "=>"; rightColl := "<=";
-			coloredBackg := TRUE
-		END DefaultAppearance;
-
-	BEGIN
-		IF Dialog.platform = Dialog.linux THEN (* Linux *)
-			DefaultAppearance; 
-			coloredBackg := FALSE
-		ELSIF Dialog.platform DIV 10 = 1 THEN (* Windows *)
-			iconFont := "Wingdings";
-			font := Fonts.dir.This(iconFont, 10*Fonts.point (*arbitrary*), {}, Fonts.normal);
-			IF font.IsAlien() THEN DefaultAppearance
-			ELSE
-				leftExp[0] := SHORT(CHR(240)); leftExp[1] := 0X;
-				rightExp[0] := SHORT(CHR(239)); rightExp[1] := 0X;
-				leftColl[0] := SHORT(CHR(232)); leftColl[1] := 0X;
-				rightColl[0] := SHORT(CHR(231)); rightColl[1] := 0X;
-				coloredBackg := FALSE
-			END
-		ELSIF Dialog.platform DIV 10 = 2 THEN (* Mac *)
-			iconFont := "Chicago";
-			font := Fonts.dir.This(iconFont, 10*Fonts.point (*arbitrary*), {}, Fonts.normal);
-			IF font.IsAlien() THEN DefaultAppearance
-			ELSE
-				leftExp := ">"; rightExp := "<";
-				leftColl := "»"; rightColl := "«";
-				coloredBackg := TRUE
-			END
-		ELSE
-			DefaultAppearance
-		END
-	END InitIcons;
-
 	PROCEDURE (d: StdDirectory) New (collapsed: BOOLEAN; label: Label;
 																hiddenText: TextModels.Model): Fold;
 		VAR fold: Fold;
@@ -776,9 +789,8 @@ MODULE StdFolds;
 	PROCEDURE InitMod;
 		VAR d: StdDirectory;
 	BEGIN
-		foldData.all := TRUE; foldData.nested := FALSE; foldData.findLabel := ""; foldData.newLabel := "";
+		foldData.useFilter := FALSE; foldData.nested := FALSE; foldData.filter := ""; foldData.newLabel := "";
 		NEW(d); dir := d; stdDir := d;
-		InitIcons;
 		NEW(action); Services.DoLater(action, Services.now);
 	END InitMod;
 

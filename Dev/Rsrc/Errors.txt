@@ -238,6 +238,7 @@ Oberon microsystems  28. 2. 2003
 254	debug position not found
 255	debug position
 260	illegal LONGINT operation
+261	unsupported mode or size of second argument of SYSTEM.VAL
 265	unsupported string operation
 270	interface pointer reference counting restriction violated
 

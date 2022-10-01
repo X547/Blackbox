@@ -31,15 +31,11 @@ MODULE HostCmds;
 	PROCEDURE Open*;
 	(** open an existing document or view **)
 		VAR loc: Files.Locator; name: Files.Name; v: Views.View;
-			s: Stores.Store; done: BOOLEAN; w: Windows.Window; conv: Converters.Converter;
+			s: Stores.Store; w: Windows.Window; conv: Converters.Converter;
 	BEGIN
 		HostDialog.GetIntSpec(loc, name, conv);
 		IF loc # NIL THEN
-			w := Windows.dir.First();
-			WHILE (w # NIL) & ((w.loc = NIL) OR (w.name = "") OR (w.loc.res = 77) OR
-											~Files.dir.SameFile(loc, name, w.loc, w.name) OR (w.conv # conv)) DO
-				w := Windows.dir.Next(w)
-			END;
+			w := Windows.GetBySpec(loc, name, conv, {});
 			IF w # NIL THEN s := w.doc
 			ELSE
 				Converters.Import(loc, name, conv, s);

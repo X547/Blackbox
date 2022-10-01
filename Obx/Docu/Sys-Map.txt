@@ -71,7 +71,7 @@ CommObxStreamsServer		implements a simple server using CommStreams
 CommObxStreamsClient		implements a simple client using CommStreams
 docu	sources
 
-Examples used in the On-Line Tutorial
+Examples used in the Tutorial
 ObxSample, ObxPhoneDB, ObxPhoneUI, ObxPhoneUI1, ObxControlShifter, ObxLabelLister,
 ObxPDBRep0, ObxPDBRep1, ObxPDBRep2, ObxPDBRep3, ObxPDBRep 4,
 ObxCount0, ObxCount1, ObxLookup0, ObxLookup1,

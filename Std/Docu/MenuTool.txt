@@ -1,4 +1,4 @@
-StdMenuTool
+StdMenuTool
 
 DEFINITION StdMenuTool;
 

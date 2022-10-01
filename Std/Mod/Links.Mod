@@ -19,8 +19,8 @@ MODULE StdLinks;
 	CONST
 		kind* = 0; cmd* = 1; close* = 2;	(* constants for Prop.valid *)
 		always* = 0; ifShiftDown* = 1; never* = 2;	(* constants for close attrubute *)
-		minLinkVersion = 0; maxLinkVersion = 1;
-		minTargVersion = 0; maxTargVersion = 0;
+		minLinkVersion = 0; maxLinkVersion = 2;
+		minTargVersion = 0; maxTargVersion = 1;
 
 	TYPE
 		Directory* = POINTER TO ABSTRACT RECORD END;
@@ -57,7 +57,7 @@ MODULE StdLinks;
 		dir-, stdDir-: Directory;
 		par-: Link;
 		iconFont: Fonts.Typeface;
-		linkLeft, linkRight, targetLeft, targetRight: ARRAY 8 OF SHORTCHAR;
+		linkLeft, linkRight, targetLeft, targetRight: ARRAY 3 OF CHAR;
 		coloredBackg: BOOLEAN;
 		
 		cleaner: TrapCleaner;
@@ -357,8 +357,8 @@ MODULE StdLinks;
 		VAR  left, right: Target;
 	BEGIN GetTargetPair(targ, left, right);
 		IF left # NIL THEN
-			IF left.ident # NIL THEN Reveal(left, right, left.ident^, "#SdtLinks:Reveal Target Ident")
-			ELSE Reveal(left, right, "", "#SdtLinks:Reveal Target Ident")
+			IF left.ident # NIL THEN Reveal(left, right, left.ident^, "#StdLinks:Reveal Target Ident")
+			ELSE Reveal(left, right, "", "#StdLinks:Reveal Target Ident")
 			END
 		END
 	END RevealTarget;
@@ -463,7 +463,7 @@ MODULE StdLinks;
 	END CopyFromSimpleView;
 
 	PROCEDURE (v: Link) Internalize- (VAR rd: Stores.Reader);
-		VAR len: INTEGER; version: INTEGER; pos: INTEGER;
+		VAR len, version, pos: INTEGER;
 	BEGIN
 		v.Internalize^(rd);
 		IF rd.cancelled THEN RETURN END;
@@ -472,11 +472,12 @@ MODULE StdLinks;
 		rd.ReadBool(v.leftSide);
 		rd.ReadInt(len);
 		IF len = 0 THEN v.cmd := NIL
-		ELSE NEW(v.cmd, len); rd.ReadXString(v.cmd^)
+		ELSE NEW(v.cmd, len);
+			IF version <= 1 THEN rd.ReadXString(v.cmd^) ELSE rd.ReadString(v.cmd^) END
 		END;
 		v.leftSide := v.cmd # NIL;
 		IF v.leftSide THEN
-			IF version = 1 THEN
+			IF version >= 1 THEN
 				rd.ReadInt(v.close)
 			ELSE
 				Strings.Find(v.cmd, "StdLinks.ShowTarget", 0, pos);
@@ -487,14 +488,29 @@ MODULE StdLinks;
 		END
 	END Internalize;
 
+	PROCEDURE HasWideChars (IN s: ARRAY OF CHAR): BOOLEAN;
+		VAR i: INTEGER; ch: CHAR;
+	BEGIN i := 0; ch := s[0];
+		WHILE (ch # 0X) & (ch <= 0FFX) DO INC(i); ch := s[i] END;
+		RETURN ch # 0X
+	END HasWideChars;
+
+	(* version history for left side Link:
+		0: 'cmd' stored as ASCII, standard closing behavior only
+		1: like 0 but 'close' attribute added for non-standard closing behavior
+		2. like 1 but 'cmd' stored as Unicode *)
 	PROCEDURE (v: Link) Externalize- (VAR wr: Stores.Writer);
 		VAR pos, version: INTEGER;
 	BEGIN
 		v.Externalize^(wr);
 		IF v.leftSide THEN
-			Strings.Find(v.cmd, "StdLinks.ShowTarget", 0, pos);
-			IF (pos = 0) & (v.close = never) OR (v.close = ifShiftDown) THEN version := 0
-			ELSE version := 1
+			IF HasWideChars(v.cmd) THEN
+				version := 2
+			ELSE
+				Strings.Find(v.cmd, "StdLinks.ShowTarget", 0, pos);
+				IF (pos = 0) & (v.close = never) OR (v.close = ifShiftDown) THEN version := 0
+				ELSE version := 1
+				END
 			END
 		ELSE
 			version := 0
@@ -502,13 +518,14 @@ MODULE StdLinks;
 		wr.WriteVersion(version);
 		wr.WriteBool(v.cmd # NIL);
 		IF v.cmd = NIL THEN wr.WriteInt(0)
-		ELSE wr.WriteInt(LEN(v.cmd^)); wr.WriteXString(v.cmd^)
+		ELSE wr.WriteInt(LEN(v.cmd^));
+			IF version <= 1 THEN wr.WriteXString(v.cmd^) ELSE wr.WriteString(v.cmd^) END
 		END;
-		IF version = 1 THEN wr.WriteInt(v.close) END
+		IF version >= 1 THEN wr.WriteInt(v.close) END
 	END Externalize;
 
 	PROCEDURE (t: Target) Internalize- (VAR rd: Stores.Reader);
-		VAR len: INTEGER; version: INTEGER;
+		VAR len, version: INTEGER;
 	BEGIN
 		t.Internalize^(rd);
 		IF rd.cancelled THEN RETURN END;
@@ -517,22 +534,29 @@ MODULE StdLinks;
 		rd.ReadBool(t.leftSide);
 		rd.ReadInt(len);
 		IF len = 0 THEN t.ident := NIL
-		ELSE NEW(t.ident, len); rd.ReadXString(t.ident^)
+		ELSE NEW(t.ident, len);
+			IF version = 0 THEN rd.ReadXString(t.ident^) ELSE rd.ReadString(t.ident^) END
 		END;
 		t.leftSide := t.ident # NIL
 	END Internalize;
 
+	(* version history for left side Target:
+		0: 'ident' stored as ASCII
+		1: like 0 but 'ident' stored as Unicode *)
 	PROCEDURE (t: Target) Externalize- (VAR wr: Stores.Writer);
+		VAR version: INTEGER;
 	BEGIN
 		t.Externalize^(wr);
-		wr.WriteVersion(maxTargVersion);
+		IF  t.leftSide & HasWideChars(t.ident) THEN version := 1 ELSE version := 0 END;
+		wr.WriteVersion(version);
 		wr.WriteBool(t.ident # NIL);
 		IF t.ident = NIL THEN wr.WriteInt(0)
-		ELSE wr.WriteInt(LEN(t.ident^)); wr.WriteXString(t.ident^)
+		ELSE wr.WriteInt(LEN(t.ident^));
+			IF version = 0 THEN wr.WriteXString(t.ident^) ELSE wr.WriteString(t.ident^) END
 		END
 	END Externalize;
 
-	PROCEDURE RestoreView (v: Views.View; f: Views.Frame; icon: ARRAY OF SHORTCHAR);
+	PROCEDURE RestoreView (v: Views.View; f: Views.Frame; icon: ARRAY OF CHAR);
 		VAR c: Models.Context; a: TextModels.Attributes; font: Fonts.Font; color: Ports.Color;
 			asc, dsc, w: INTEGER;
 	BEGIN
@@ -546,7 +570,7 @@ MODULE StdLinks;
 		IF coloredBackg THEN
 		f.DrawRect(f.l, f.t, f.r, f.b, Ports.fill, Ports.grey25) END;
 		font.GetBounds(asc, dsc, w);
-		f.DrawSString(1*Ports.mm DIV 2, asc, color, icon, font)
+		f.DrawString(1*Ports.mm DIV 2, asc, color, icon, font)
 	END RestoreView;
 
 	PROCEDURE (v: Link) Restore* (f: Views.Frame; l, t, r, b: INTEGER);
@@ -563,7 +587,7 @@ MODULE StdLinks;
 		END
 	END Restore;
 
-	PROCEDURE SizePref (v: Views.View; icon: ARRAY OF SHORTCHAR; VAR msg: Properties.SizePref);
+	PROCEDURE SizePref (v: Views.View; icon: ARRAY OF CHAR; VAR msg: Properties.SizePref);
 		VAR c: Models.Context; a: TextModels.Attributes; font: Fonts.Font;
 			asc, dsc, w: INTEGER;
 	BEGIN
@@ -574,7 +598,7 @@ MODULE StdLinks;
 		ELSE
 			font := Fonts.dir.Default()
 		END;
-		msg.w := font.SStringWidth(icon) + 1*Ports.mm;
+		msg.w := font.StringWidth(icon) + 1*Ports.mm;
 		font.GetBounds(asc, dsc, w);
 		msg.h := asc + dsc
 	END SizePref;
@@ -870,26 +894,23 @@ MODULE StdLinks;
 
 		PROCEDURE DefaultAppearance;
 		BEGIN font := Fonts.dir.Default(); iconFont := font.typeface;
-			linkLeft := "Link"; linkRight := "~";
-			targetLeft := "Targ"; targetRight :=  "~";
+			linkLeft := "=>"; linkRight := "<=";
+			targetLeft := ">>"; targetRight :=  "<<";
 			coloredBackg := TRUE
 		END DefaultAppearance;
 
 	BEGIN
 		NEW(d); dir := d; stdDir := d;
-		IF Dialog.platform DIV 10 = 1 THEN (* Windows *)
+		IF Dialog.IsWindows() & ~ Dialog.IsWine() THEN
 			iconFont := "Wingdings";
 			font := Fonts.dir.This(iconFont, 10*Fonts.point (*arbitrary*), {}, Fonts.normal);
 			IF font.IsAlien() THEN DefaultAppearance
 			ELSE
-				linkLeft[0] := SHORT(CHR(246)); linkLeft[1] := 0X;
-				linkRight[0] := SHORT(CHR(245)); linkRight[1] := 0X;
-				targetLeft[0] := SHORT(CHR(164)); targetLeft[1] := 0X;
-				targetRight[0] := SHORT(CHR(161)); targetRight[1] := 0X;
+				(* high byte F0 required for Russian Windows versions *)
+				linkLeft := 0F0F6X; linkRight := 0F0F5X; (* "" "" *)
+				targetLeft := 0F0A4X; targetRight := 0F0A1X; (* "" "" *)
 				coloredBackg := FALSE
 			END
-		ELSIF Dialog.platform DIV 10 = 2 THEN (* Mac *)
-			DefaultAppearance
 		ELSE
 			DefaultAppearance
 		END;

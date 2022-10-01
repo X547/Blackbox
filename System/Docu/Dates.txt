@@ -15,16 +15,19 @@ DEFINITION Dates;
 			hour, minute, second: INTEGER
 		END;
 
+	PROCEDURE DateToString (IN d: Date; format: INTEGER; OUT str: ARRAY OF CHAR);
+	PROCEDURE Day (IN d: Date): INTEGER;
+	PROCEDURE DayOfWeek (IN d: Date): INTEGER;
+	PROCEDURE DayToDate (n: INTEGER; OUT d: Date);
+	PROCEDURE GetDate (OUT d: Date);
+	PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date);
+	PROCEDURE GetTime (OUT t: Time);
+	PROCEDURE GetUTCBias (OUT bias: INTEGER);
+	PROCEDURE GetUTCDate (OUT d: Date);
+	PROCEDURE GetUTCTime (OUT t: Time);
+	PROCEDURE TimeToString (IN t: Time; OUT str: ARRAY OF CHAR);
 	PROCEDURE ValidDate (IN d: Date): BOOLEAN;
 	PROCEDURE ValidTime (IN t: Time): BOOLEAN;
-	PROCEDURE GetDate (OUT d: Date);
-	PROCEDURE GetTime (OUT t: Time);
-	PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date);
-	PROCEDURE DayOfWeek (IN d: Date): INTEGER;
-	PROCEDURE Day (IN d: Date): INTEGER;
-	PROCEDURE DayToDate (n: INTEGER; OUT d: Date);
-	PROCEDURE DateToString (IN d: Date; format: INTEGER; OUT str: ARRAY OF CHAR);
-	PROCEDURE TimeToString (IN t: Time; OUT str: ARRAY OF CHAR);
 
 END Dates.
 
@@ -59,53 +62,6 @@ minute: INTEGER	0 <= minute <= 59
 second: INTEGER	0 <= second <= 59
 
 
-PROCEDURE  ValidDate (IN d: Date): BOOLEAN
-Test whether d is a valid date according to the Julian (before 1582) or Gregorian (after 1582) calendar. Dates between 10/5/1582 and 10/14/1582 did not exist and are not valid.
-
-PROCEDURE  ValidTime (IN t: Time): BOOLEAN
-Test whether time t is valid.
-
-PROCEUDRE GetDate (OUT d: Date)
-Get the current date.
-
-PROCEDURE GetTime (OUT t: Time)
-Get the current time.
-
-PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date)
-Get the Easter date of year.
-
-Pre
-(year > 1582)  &  (year < 2300)	20
-
-PROCEDURE DayOfWeek (IN d: Date): INTEGER
-Return the weekday of date d.
-
-Pre
-ValidDate(d)	(not explicitly checked)
-
-Post
-result IN {monday .. sunday}
-
-PROCEDURE  Day (d: Date): INTEGER;
-For date d, return the number of days since 1/1/1. Day(1/1/1) = 1. 
-The difference between two dates in days can be computed with Day(d2) - Day(d1).
-
-Pre
-ValidDate(d)	(not explicitly checked)
-
-Post
-(result > 0)  &  (result < 3652062)
-
-PROCEDURE  DayToDate (n: INTEGER; OUT d: Date);
-Convert the number of days since 1/1/1 into a date.
-DayToDate(Day(d1), d2) => d1=d2
-
-Pre
-(n > 0)  &  (n < 3652062)	(not explicitly checked)
-
-Post
-ValidDate(d) & Day(d) = n
-
 PROCEDURE  DateToString (IN d: Date; format: INTEGER; OUT s: ARRAY OF CHAR);
 Convert the date d into string s. The format of the conversion is specified through the operation system, usually depending on country and language.
 
@@ -120,8 +76,66 @@ Pre
 ValidDate(d)	(not explicitly checked)
 format IN {short, abbreviated, long, plainAbbreviated, longAbbreviated}	20
 
+PROCEDURE  Day (d: Date): INTEGER;
+For date d, return the number of days since 1/1/1. Day(1/1/1) = 1. 
+The difference between two dates in days can be computed with Day(d2) - Day(d1).
+
+Pre
+ValidDate(d)	(not explicitly checked)
+
+Post
+(result > 0)  &  (result < 3652062)
+
+PROCEDURE DayOfWeek (IN d: Date): INTEGER
+Return the weekday of date d.
+
+Pre
+ValidDate(d)	(not explicitly checked)
+
+Post
+result IN {monday .. sunday}
+
+PROCEDURE  DayToDate (n: INTEGER; OUT d: Date);
+Convert the number of days since 1/1/1 into a date.
+DayToDate(Day(d1), d2) => d1=d2
+
+Pre
+(n > 0)  &  (n < 3652062)	(not explicitly checked)
+
+Post
+ValidDate(d) & Day(d) = n
+
+PROCEUDRE GetDate (OUT d: Date)
+Get the current date.
+
+PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date)
+Get the Easter date of year.
+
+Pre
+(year > 1582)  &  (year < 2300)	20
+
+PROCEDURE GetTime (OUT t: Time)
+Get the current time.
+
+PROCEDURE GetUTCBias (OUT bias: INTEGER);
+Returns the current bias, in minutes, for local time translation on this computer. The bias is the difference, in minutes, between Coordinated Universal Time (UTC) and local time. All translations between UTC and local time are based on the following formula: UTC = local time + bias
+
+UTC = Coordinated Universal Time, also known as Greenwich Mean time (GMT).
+
+PROCEDURE GetUTCDate (OUT d: Date);
+Get the UTC date.
+
+PROCEDURE GetUTCTime (OUT t: Time);
+Get the UTC time.
+
 PROCEDURE TimeToString (IN t: Time; OUT s: ARRAY OF CHAR);
 Convert the time t into string s. The format of the conversion is specified through the operating system.
 
 Pre
 ValidTime(t)	(not explicitly checked)
+
+PROCEDURE  ValidDate (IN d: Date): BOOLEAN
+Test whether d is a valid date according to the Julian (before 1582) or Gregorian (after 1582) calendar. Dates between 10/5/1582 and 10/14/1582 did not exist and are not valid.
+
+PROCEDURE  ValidTime (IN t: Time): BOOLEAN
+Test whether time t is valid.

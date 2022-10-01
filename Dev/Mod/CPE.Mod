@@ -242,7 +242,7 @@ MODULE DevCPE;
 				actIdx := 0; pc := 0
 			END
 		END;
-		actual^[actIdx] := SHORT(CHR(x MOD 256)); INC(actIdx); INC(pc)
+		actual[actIdx] := SHORT(CHR(x MOD 256)); INC(actIdx); INC(pc)
 	END GenByte;
 	
 	PROCEDURE GenShort* (x: INTEGER);
@@ -325,7 +325,7 @@ MODULE DevCPE;
 		DevCPM.ObjWBytes(zero, (-p) MOD n)
 	END Align;
 	
-	PROCEDURE OutName (VAR name: ARRAY OF SHORTCHAR);
+	PROCEDURE OutName (IN name: ARRAY OF SHORTCHAR);
 		VAR ch: SHORTCHAR; i: SHORTINT;
 	BEGIN i := 0;
 		REPEAT ch := name[i]; DevCPM.ObjW(ch); INC(i) UNTIL ch = 0X
@@ -393,7 +393,7 @@ MODULE DevCPE;
 	END FindPtrs;
 	
 
-	PROCEDURE OutRefName* (VAR name: ARRAY OF SHORTCHAR);
+	PROCEDURE OutRefName* (IN name: ARRAY OF SHORTCHAR);
 	BEGIN
 		DevCPM.ObjW(0FCX); DevCPM.ObjWNum(pc); OutName(name)
 	END OutRefName;
@@ -428,7 +428,7 @@ MODULE DevCPE;
 					ELSE DevCPM.ObjW(SHORT(CHR(f)))
 					END;
 					IF obj.mnolev = 0 THEN DevCPM.ObjWNum(obj.adr + dsize) ELSE DevCPM.ObjWNum(obj.adr) END;
-					OutName(obj.name^)
+					OutName(obj.name)
 				END
 			END ;
 			OutRefs(obj.right)
@@ -473,7 +473,7 @@ MODULE DevCPE;
 		WHILE a # NIL DO c := a; a := c.nlink; c.nlink := b; b := c END;
 		DevCPM.ObjW(0X);	(* names[0] = 0X *)
 		WHILE b # NIL DO
-			OutName(b.name^);
+			OutName(b.name);
 			b := b.nlink
 		END;
 	END OutNames;
@@ -538,7 +538,7 @@ MODULE DevCPE;
 				x := b.intval; b.intval := b.intval2; GetLongWords(b, hi, low); b.intval := x;
 				IF bigEndian THEN Out4(hi); Out4(low) ELSE Out4(low); Out4(hi) END
 			ELSIF Guid IN b.setval THEN
-				OutGuid(b.ext^)
+				OutGuid(b.ext)
 			END;
 			b := b.link
 		END
@@ -675,7 +675,6 @@ MODULE DevCPE;
 	
 	PROCEDURE OutDesc (desc: DevCPT.Struct);
 		VAR m: DevCPT.Object; i, nofptr, flddir, size: INTEGER; t, xb: DevCPT.Struct; form, lev, attr: BYTE;
-			name: DevCPT.Name;
 	BEGIN
 		ASSERT(~desc.untagged);
 		IF desc.comp = Record THEN
@@ -895,8 +894,8 @@ MODULE DevCPE;
 				IF obj.mode = Var THEN DevCPM.ObjW(SHORT(CHR(mVar)))
 				ELSE DevCPM.ObjW(SHORT(CHR(mProc)))
 				END;
-				IF obj.entry # NIL THEN OutName(obj.entry^)
-				ELSE OutName(obj.name^);
+				IF obj.entry # NIL THEN OutName(obj.entry)
+				ELSE OutName(obj.name);
 				END;
 				DevCPT.FPrintObj(obj); DevCPM.ObjWNum(obj.fprint); OutLink(obj.links);
 				obj := obj.nlink
@@ -966,7 +965,7 @@ MODULE DevCPE;
 		i := 1;
 		WHILE i < DevCPT.nofGmod DO
 			m := DevCPT.GlbMod[i];
-			IF m.library = NIL THEN OutName(m.name^) END;
+			IF m.library = NIL THEN OutName(m.name) END;
 			INC(i)
 		END;
 		Align(16); headSize := DevCPM.ObjLen();
@@ -976,9 +975,9 @@ MODULE DevCPE;
 	END OutHeader;
 
 	PROCEDURE OutCode*;
-		VAR i, j, refSize, expPos, ptrPos, impPos, namePos, procPos,
+		VAR i, refSize, expPos, ptrPos, impPos, namePos, procPos,
 			con8Pos, con16Pos, con32Pos, con64Pos, modPos, codePos: INTEGER;
-			m, obj, dlist: DevCPT.Object;
+			obj, dlist: DevCPT.Object;
 	BEGIN
 	(* Ref *)
 		DevCPM.ObjW(0X); (* end mark *)

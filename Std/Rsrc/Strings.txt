@@ -1,4 +1,86 @@
 STRINGS
+Adapted	Adapted
+All tabs in Layout Mode	All tabs in Layout Mode
+All tabs in Mask Mode	All tabs in Mask Mode
+alternate	alternate
+Always	Always
+Apply	Apply
+&Apply	&Apply
+Automatic	Automatic
+Browse	&Browse
+Close	&Close
+Close:	Close:
+Collapse	Collapse
+Comment	Comment
+Create Collapsed Fold	Create Collapsed Fold
+Create Expanded Fold	Create Expanded Fold
+Data Editable	Data Editable
+Date	Date
+Decode	&Decode
+Decode All	Decode &All
+DecodeDialog	Decode
+Delete	&Delete
+Expand	Expand
+Find First	Find First
+Find Next	Find Next
+Fix:	Fix:
+Fixed	Fixed
+Font...	&Font...
+Foot gap	Foot gap
+Head gap	Head gap
+Height	Height
+Height:	&Height:
+Horizontal Scrollbar	Horizontal Scrollbar
+Keep proportions	&Keep proportions
+Label:	Label:
+Layout Editable	Layout Editable
+Left Foot	Left Foot
+Left Head	Left Head
+Link:	Link:
+Move	Move
+Nested	Nested
+Never	Never
+New Tab	&New Tab
+No Selection	No Selection
+Notifier	Notifier
+Page Height	Page Height
+Page Width	Page Width
+Rename	&Rename
+Reset	&Reset
+Right Foot	Right Foot
+Right Head	Right Head
+Save position	Save position
+Select Cell	Select Cell
+Select Column	Select Column
+Selection Style:	Selection Style:
+Select Row	Select Row
+Select Row & Column	Select Row & Column
+Seq. Nr.	Seq. Nr.
+Set	Set
+Set Label	Set Label
+Show 3d border	Show 3d border
+Show Foot	Show Foot
+Size:	&Size:
+Start with new page number 	Start with new page number 
+Tabs	Tabs
+Type:	Type:
+Use Filter:	Use Filter:
+Use Name:	&Use Name:
+Vertical Scrollbar	Vertical Scrollbar
+View Height	View Height
+View Width	View Width
+Width	Width
+Width:	&Width:
+Window Height	Window Height
+Window Width	Window Width
+cm	cm
+comment	comment
+date and time	date and time
+fingerprint	fingerprint
+inch	inch
+new	new
+seq nr.	seq nr.
+
 bad characters	bad characters in code!
 checksum error	checksum error!
 incompatible version	Code has been created with an incompatible version of Coder!
@@ -11,6 +93,7 @@ no tag	No Coder Tag found!
 Install all?	Install all the coded files? This operation might overwrite old versions!
 Install individual?	Install some of the coded files individually?
 Info	Info
+Set Comment	Set Comment
 StdETHConv.ImportETHDoc	ETH V4 Oberon
 StdClocks.StdViewDesc	StdClocks view
 StdLogos.ViewDesc	StdLogos view

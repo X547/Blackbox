@@ -11,7 +11,8 @@ MODULE DevInspector;
 
 **)
 
-	IMPORT Kernel, Services, Stores, Views, Controllers, Properties, Containers, Dialog, Controls;
+	IMPORT Kernel, Services, Stores, Views, Controllers, Properties, Containers, Dialog, Controls,
+		TextModels, Files, Models, StdDialog, TextViews, TextControllers, Strings;
 	
 	CONST
 		multiView = TRUE;
@@ -46,6 +47,7 @@ MODULE DevInspector;
 		END;
 		IF v # NIL THEN
 			Services.GetTypeName(v, t); Kernel.SplitName(t, subs, cntr);
+			IF subs = "" THEN subs := "System" END;
 			Dialog.MapString("#" + subs + ":" + cntr, s);
 			IF s = cntr THEN Dialog.MapString("#Dev:" + t, s) END
 		END
@@ -174,6 +176,7 @@ MODULE DevInspector;
 		VAR l, k, subs, cntr: Dialog.String; si: ARRAY 2 OF CHAR;
 	BEGIN
 		Kernel.SplitName(control, subs, cntr);
+		IF subs = "" THEN subs := "System" END;
 		si[0] := CHR(i + ORD("0")); si[1] := 0X;
 		k := cntr + "." + type + si;
 		Dialog.MapString("#" + subs + ":" + k, l);
@@ -246,6 +249,213 @@ MODULE DevInspector;
 	BEGIN
 		IF op = Dialog.changed THEN INCL(inspect.valid, idx) END
 	END Notifier;
+	
+	PROCEDURE SearchIdent(t: TextModels.Model; startPos: INTEGER; ident: ARRAY OF CHAR; exp: BOOLEAN;
+											VAR beg, end: INTEGER);
+		VAR r: TextModels.Reader; found: BOOLEAN; ch: CHAR; len, i: INTEGER;
+	BEGIN
+		end := 0;
+		IF ident # "" THEN
+			r := t.NewReader(NIL); found := FALSE;
+			beg := startPos; r.SetPos(startPos); r.ReadChar(ch);
+			WHILE ~r.eot & ~found DO
+				(* search legal start symbol *)
+				WHILE ~r.eot & ~Strings.IsIdentStart(ch) DO
+					INC(beg); r.ReadChar(ch)
+				END;
+				i := 0; len := LEN(ident$);
+				WHILE ~r.eot & (i # len) & (ch = ident[i]) DO
+					r.ReadChar(ch); INC(i)
+				END;
+				found := (i = len) & ~Strings.IsIdent(ch);
+				IF ~r.eot & ~found THEN	(* skip rest of identifier *)
+					beg := r.Pos() - 1;
+					WHILE ~r.eot & Strings.IsIdent(ch) DO
+						INC(beg); r.ReadChar(ch)
+					END
+				END;
+				IF found THEN
+					end := r.Pos() - 1;
+					IF exp THEN (* check for export mark *)
+						WHILE ~r.eot & (ch <= ' ') DO
+							r.ReadChar(ch);
+						END;
+						IF r.eot OR ((ch # '*') & (ch # '-')) THEN found := FALSE; beg := r.Pos() - 1; end := 0 END
+					END
+				ELSE
+					end := 0
+				END
+			END
+		END
+	END SearchIdent;
+
+	PROCEDURE OpenModule(module: ARRAY OF CHAR): TextModels.Model;
+		VAR loc: Files.Locator; name: Files.Name;
+			v: Views.View; m: Models.Model;
+	BEGIN
+		StdDialog.GetSubLoc(module, "Mod", loc, name);
+		Kernel.MakeFileName(name, "");
+		v := Views.OldView(loc, name);
+		IF v # NIL THEN
+			Views.Open(v, loc, name, NIL);
+			m := v.ThisModel();
+			IF (m # NIL) & (m IS TextModels.Model) THEN
+				RETURN m(TextModels.Model);
+			ELSE
+				Dialog.ShowParamMsg("#Dev:NoTextFileFound", "'" + name + "'", "", "")
+			END
+		ELSIF module = "" THEN Dialog.ShowMsg("#Dev:NoModNameFound")
+		ELSE Dialog.ShowParamMsg("#Dev:SourcefileNotFound", "'" + module + "'", "", "")
+		END;
+		RETURN NIL
+	END OpenModule;
+
+	PROCEDURE StartPos(t: TextModels.Model): INTEGER;
+		VAR varPos, procPos, beg, end: INTEGER;
+	BEGIN
+		SearchIdent(t, 0, "VAR", FALSE, beg, end);
+		IF end > 0 THEN varPos :=beg ELSE varPos := t.Length() END;
+		SearchIdent(t, 0, "PROCEDURE", FALSE, beg, end);
+		IF end > 0 THEN procPos :=beg ELSE procPos := t.Length() END;
+		(* note that guards and notifiers can also be procedure variables *)
+		RETURN MIN(varPos, procPos)
+	END StartPos;
+
+	PROCEDURE SearchSource(qualident: ARRAY OF CHAR);
+		VAR i, j, pos, beg, end, lastBeg, lastEnd: INTEGER; ch: CHAR; module, ident: ARRAY 256 OF CHAR;
+			t: TextModels.Model; found: BOOLEAN;
+	BEGIN
+		i := 0; ch := qualident[0];
+		WHILE (ch # 0X) & (ch # '.') DO
+			module[i] := ch; INC(i); ch := qualident[i]
+		END;
+		module[i] := 0X;
+		t := OpenModule(module$);
+		IF t # NIL THEN
+			found := TRUE; pos := StartPos(t); lastEnd := 0; ident := "";
+			WHILE found & (ch = '.') DO
+				j := 0; INC(i); ch := qualident[i];
+				WHILE Strings.IsIdent(ch) DO
+					ident[j] := ch; INC(i); INC(j); ch := qualident[i]
+				END;
+				ident[j] := 0X;
+				SearchIdent(t, pos, ident$, TRUE, beg, end);
+				found := end > 0;
+				IF found THEN lastBeg := beg; lastEnd := end; pos := end + 1
+				ELSIF ident # "" THEN
+					Dialog.ShowParamMsg("#Dev:NotFound", "'" + ident + "'", "", "")
+				END
+			END;
+			IF lastEnd > 0 THEN
+				TextViews.ShowRange(t, lastBeg, lastEnd, TextViews.any);
+				TextControllers.SetSelection(t, lastBeg, lastEnd)
+			END
+		END
+	END SearchSource;
+
+	PROCEDURE SearchKey(v: Views.View; loc: Files.Locator; name: Files.Name; key: ARRAY OF CHAR; 
+										OUT found: BOOLEAN);
+		VAR m: Models.Model; t: TextModels.Model; R: TextModels.Reader; ch: CHAR; i, len, beg: INTEGER;
+	BEGIN
+		found := FALSE; m := v.ThisModel(); len := LEN(key$);
+		IF (m # NIL) & (m IS TextModels.Model) THEN
+			t := m(TextModels.Model);
+			R := t.NewReader(NIL); R.ReadChar(ch);
+			WHILE ~R.eot & ~found DO
+				i := 0; beg := R.Pos() - 1;
+				WHILE (~R.eot) & (i < len) & (ch = key[i]) DO INC(i); R.ReadChar(ch) END;
+				IF ~R.eot & (i = len) & (ch = TextModels.tab) THEN (* found *)
+					Views.Open(v, loc, name, NIL);
+					TextViews.ShowRange(t, beg, R.Pos() - 1, TextViews.any); (* works only if v is open *)
+					TextControllers.SetSelection(t, beg, R.Pos() - 1); (* works only if v is open *)
+					found := TRUE
+				ELSE (* skip rest of line *)
+					WHILE ~R.eot & (ch # TextModels.line) DO R.ReadChar(ch) END;
+					R.ReadChar(ch)
+				END
+			END
+		END
+	END SearchKey;
+
+	PROCEDURE OpenStrings(subsys: Files.Name; key, language: ARRAY OF CHAR; 
+								OUT v: Views.View; OUT loc: Files.Locator; OUT name: Files.Name; OUT found: BOOLEAN);
+	BEGIN
+		name := "Strings"; v := NIL; found := FALSE;
+		loc := Files.dir.This(subsys).This("Rsrc");
+		IF language # "" THEN loc := loc.This(language) END ;
+		v := Views.OldView(loc, name);
+		IF v # NIL THEN
+			IF key # "" THEN SearchKey(v, loc, name, key, found)
+			ELSE found := TRUE; Views.Open(v, loc, name, NIL)
+			END
+		END
+	END OpenStrings;
+
+	PROCEDURE SearchStrings(key: ARRAY OF CHAR);
+		VAR subsys: Files.Name; i: INTEGER; ch: CHAR;
+			 v: Views.View; loc: Files.Locator; name: Files.Name; found: BOOLEAN;
+	BEGIN
+		ASSERT(key[0] = "#", 20); ASSERT(key[1] # 0X, 21); ASSERT(key[1] # ":", 22);
+		i := 0; ch := key[1];
+		WHILE (ch # 0X) & (ch # ":") DO subsys[i] := ch; INC(i); ch := key[i + 1] END;
+		subsys[i] := 0X;
+		IF ch = ":" THEN Strings.Extract(key, i + 2, LEN(key$), key)
+		ELSE key := ""
+		END;
+		IF (Dialog.language # "en") & (Dialog.language # "") THEN
+			OpenStrings(subsys, key, Dialog.language, v, loc, name, found);
+			IF ~found THEN OpenStrings(subsys, key, "", v, loc, name, found) END
+		ELSE
+			OpenStrings(subsys, key, "", v, loc, name, found)
+		END ;
+		IF v = NIL THEN
+			Dialog.ShowParamMsg("#Dev:ResourceNotFound", "'" + name + "'", "'" + subsys + "'", "")
+		ELSIF ~found THEN
+			Views.Open(v, loc, name, NIL); Dialog.ShowParamMsg("#Dev:NotFound", "'" + key + "'", "", "")
+		END
+	END SearchStrings;
+
+	PROCEDURE LinkSourceGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF inspect.link = "" THEN par.disabled := TRUE END
+	END LinkSourceGuard;
+
+	PROCEDURE LinkSource*;
+	BEGIN
+		SearchSource(inspect.link)
+	END LinkSource;
+
+	PROCEDURE LabelSourceGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF (inspect.label[0] # "#") OR (inspect.label[1] = 0X) OR (inspect.label[1] = ":") THEN
+			par.disabled := TRUE
+		END
+	END LabelSourceGuard;
+
+	PROCEDURE LabelSource*;
+	BEGIN
+		SearchStrings(inspect.label)
+	END LabelSource;
+
+	PROCEDURE GuardSourceGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF inspect.guard = "" THEN par.disabled := TRUE END
+	END GuardSourceGuard;
+
+	PROCEDURE GuardSource*;
+	BEGIN
+		SearchSource(inspect.guard)
+	END GuardSource;
+
+	PROCEDURE NotifierSourceGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF inspect.notifier = "" THEN par.disabled := TRUE END
+	END NotifierSourceGuard;
+
+	PROCEDURE NotifierSource*;
+	BEGIN
+		SearchSource(inspect.notifier)
+	END NotifierSource;
 
 BEGIN
 	NEW(action); Services.DoLater(action, Services.now)
@@ -256,6 +466,6 @@ END DevInspector.
 
  DevCompiler.Compile
 
- " DevInspector.InitDialog; OpenAuxDialog('#Dev:inspect', 'Inspect') "
+ " DevInspector.InitDialog; StdCmds.OpenAuxDialog('Dev/Rsrc/Inspect', '#Dev:Inspect') "
 
- " Unload('DevInspector'); DevInspector.InitDialog; OpenAuxDialog('DevInspector.inspect', 'Inspect') "
+ " DevDebug.Unload; DevInspector.InitDialog; StdCmds.OpenAuxDialog('Dev/Rsrc/Inspect', '#Dev:Inspect') "

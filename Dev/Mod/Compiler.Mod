@@ -13,11 +13,11 @@ MODULE DevCompiler;
 **)
 
 	IMPORT Kernel,
-		Files, Views, Dialog, Controls,
+		Files, Strings, Views, Dialog, Controls,
 		TextModels, TextMappers, TextViews, TextControllers,
 		StdLog, StdDialog,
 		DevMarkers, DevCommanders, DevSelectors,
-		DevCPM, DevCPT, DevCPB, DevCPP, DevCPE, DevCPV := DevCPV486;
+		DevCPM, DevCPT, DevCPB, DevCPP, DevCPE, DevCPV := DevCPV486, DevCPS;
 
 	CONST
 		(* compiler options: *)
@@ -26,7 +26,15 @@ MODULE DevCompiler;
 		defopt = {checks, assert, obj, ref, allref, srcpos, signatures};
 
 		(* additional scanner types *)
-		import = 100; module = 101; semicolon = 102; becomes = 103; comEnd = 104;
+		module = 101; comEnd = 104;
+
+		(*symbol values*)
+		comma = 20; rbrak = 24; lbrak = 41; becomes = 44; ident = 48; semicolon = 49;
+		import = 74; moduleSym = 75; eof = 76;
+
+	TYPE
+		String = POINTER TO ARRAY OF CHAR;
+		NameNode = POINTER TO RECORD next: NameNode; name: String END;
 
 	VAR
 		sourceR: TextModels.Reader;
@@ -180,7 +188,7 @@ MODULE DevCompiler;
 
 	PROCEDURE CompileText* (text: TextModels.Model; beg: INTEGER; OUT error: BOOLEAN);
 	BEGIN
-		ASSERT(text # NIL, 20); ASSERT((beg >= 0) & (beg < text.Length()), 21);
+		ASSERT(text # NIL, 20); ASSERT((beg >= 0) & (beg <= text.Length()), 21);
 		Open;
 		Do(text, StdLog.text, beg, defopt, error);
 		IF error THEN DevMarkers.ShowFirstError(text, TextViews.focusOnly) END;
@@ -188,7 +196,8 @@ MODULE DevCompiler;
 	END CompileText;
 
 	PROCEDURE CompileAndUnload*;
-		VAR t: TextModels.Model; error: BOOLEAN; mod: Kernel.Module; n: ARRAY 256 OF CHAR;
+		VAR t: TextModels.Model; error: BOOLEAN; mod: Kernel.Module; 
+			n: ARRAY LEN(DevCPT.Name) OF CHAR; res: INTEGER;
 	BEGIN
 		Open;
 		t := TextViews.FocusText();
@@ -196,10 +205,11 @@ MODULE DevCompiler;
 			Do(t, StdLog.text, 0, defopt, error);
 			IF error THEN DevMarkers.ShowFirstError(t, TextViews.focusOnly)
 			ELSE
-				mod := Kernel.ThisLoadedMod(DevCPT.SelfName);
+				Strings.Utf8ToString(DevCPT.SelfName, n, res);
+				mod := Kernel.ThisLoadedMod(n);
 				IF mod # NIL THEN
 					Kernel.UnloadMod(mod);
-					n := DevCPT.SelfName$;
+					Strings.Utf8ToString(DevCPT.SelfName, n, res);
 					IF mod.refcnt < 0 THEN
 						Dialog.MapParamString("#Dev:Unloaded", n, "", "", str);
 						StdLog.String(str); StdLog.Ln;
@@ -342,6 +352,236 @@ MODULE DevCompiler;
 		END;
 		Close
 	END CompileThis;
+
+	PROCEDURE ContainsName(list: NameNode; IN name: ARRAY OF CHAR): BOOLEAN;
+	BEGIN
+		WHILE (list # NIL) & (list.name^ # name) DO list := list.next END;
+		RETURN list # NIL
+	END ContainsName;
+	
+	PROCEDURE NewName(IN name: ARRAY OF CHAR): NameNode;
+		VAR n: NameNode;
+	BEGIN NEW(n); NEW(n.name, LEN(name$) + 1); n.name^ := name$; RETURN n
+	END NewName;
+	
+	PROCEDURE AppendName(VAR list: NameNode; IN name: ARRAY OF CHAR);
+		VAR n, last: NameNode;
+	BEGIN
+		n := NewName(name);
+		IF list = NIL THEN list := n
+		ELSE last := list; WHILE last.next # NIL DO last := last.next END; last.next := n
+		END
+	END AppendName;
+
+	PROCEDURE CheckSym(VAR sym: BYTE; expected: SHORTINT);
+	BEGIN
+		IF sym = expected THEN DevCPS.Get(sym) ELSE DevCPM.err(expected) END
+	END CheckSym;
+
+	PROCEDURE SplitName(name: ARRAY OF CHAR; VAR head, tail: ARRAY OF CHAR);
+		VAR i, j: INTEGER; ch, lch: CHAR;
+	BEGIN
+		ASSERT(name # "");
+		i := 0; ch := name[0];
+		REPEAT
+			head[i] := ch; lch := ch; INC(i); ch := name[i]
+		UNTIL (ch = 0X) OR Strings.IsUpper(ch) & ~Strings.IsUpper(lch);
+		head[i] := 0X; j := 0;
+		WHILE ch # 0X DO tail[j] := ch; INC(i); INC(j); ch := name[i] END;
+		tail[j] := 0X;
+		IF tail = "" THEN tail := head$; head := "System" END
+	END SplitName;
+
+	PROCEDURE MakeFile(subList, importPath: NameNode; VAR fileList: NameNode;
+										loc: Files.Locator; IN sub, file: ARRAY OF CHAR);
+		VAR v: Views.View; source: TextModels.Model; sym: BYTE;
+			fileName, impName: Files.Name; importList: NameNode;
+			impNameUtf8: DevCPT.Name; res: INTEGER; p: NameNode;
+
+		PROCEDURE ProcessFile;
+			VAR import: NameNode; impSub, impFile: Files.Name;
+		BEGIN
+			p := NewName(fileName); p.next := importPath; importPath := p; (* push *)
+			import := importList;
+			WHILE import # NIL DO
+				SplitName(import.name, impSub, impFile);
+				IF ContainsName(subList, impSub) & ~ContainsName(fileList, import.name) THEN
+					MakeFile(subList, importPath, fileList, Files.dir.This(impSub + "/Mod"), impSub, impFile)
+				END;
+				import := import.next
+			END;
+			IF ~ContainsName(fileList, fileName) THEN
+				AppendName(fileList, fileName)
+			END;
+		END ProcessFile;
+		
+		PROCEDURE Terminate;
+		BEGIN
+			DevCPM.InsertMarks(source); Views.Open(v, loc, file$, NIL);
+			DevMarkers.ShowFirstError(source, TextViews.any); DevCPM.Close;
+			HALT(128) (* silent halt *)
+		END Terminate;
+
+	BEGIN
+		IF sub # "System" THEN fileName := sub + file ELSE fileName := file$ END;
+		v := Views.OldView(loc, file$);
+		IF v # NIL THEN
+			WITH v: TextViews.View DO
+				source := v.ThisModel();
+				DevCPM.Init(source.NewReader(NIL), StdLog.text); DevCPS.Init;
+				DevCPS.Get(sym);
+				IF sym = moduleSym THEN DevCPS.Get(sym);
+					IF sym = ident THEN
+						DevCPS.Get(sym);
+						IF sym = lbrak THEN
+							REPEAT DevCPS.Get(sym) UNTIL (sym = rbrak) OR (sym = eof);
+							CheckSym(sym, rbrak)
+						END;
+						CheckSym(sym, semicolon);
+						p := NewName(fileName); p.next := importPath; importPath := p; (* push *)
+						importList := NIL;  (* compiler cannot be invoked recursively; therefore we use an auxiliary list *)
+						IF sym = import THEN DevCPS.Get(sym);
+							LOOP
+								IF sym = ident THEN
+									impNameUtf8 := DevCPS.name$; DevCPS.Get(sym);
+									IF sym = becomes THEN DevCPS.Get(sym);
+										IF sym = ident THEN impNameUtf8 := DevCPS.name$; DevCPS.Get(sym);
+										ELSE DevCPM.err(ident)
+										END
+									END;
+									Strings.Utf8ToString(impNameUtf8, impName, res); ASSERT(res = 0);
+									IF ContainsName(importPath, impName) THEN
+										DevCPM.err(154)
+									ELSIF (impName # "SYSTEM") & (impName # "COM") THEN
+										AppendName(importList, impName)
+									END
+								ELSE DevCPM.err(ident)
+								END;
+								IF sym = comma THEN DevCPS.Get(sym)
+								ELSIF sym = ident THEN DevCPM.err(comma)
+								ELSE EXIT
+								END
+							END; (* LOOP *)
+							CheckSym(sym, semicolon)
+						END
+					ELSE DevCPM.err(ident)
+					END;
+					IF DevCPM.noerr THEN ProcessFile; importPath := importPath.next (* pop *) ELSE Terminate END
+				(* ELSE ignore non module texts *)
+				END
+			(* ELSE ignore non text files *)
+			END
+		ELSE Dialog.ShowParamMsg("#Dev:SourcefileNotFound", fileName, "", "");
+			AppendName(fileList, fileName); (* report missing module only once *)
+		END
+	END MakeFile;
+
+	PROCEDURE MakeSubsystem(subList: NameNode; VAR fileList: NameNode;
+												IN sub: ARRAY OF CHAR);
+		VAR loc: Files.Locator; files: Files.FileInfo; importPath: NameNode;
+	BEGIN
+		loc := Files.dir.This(sub + "/Mod");
+		files := Files.dir.FileList(loc);
+		WHILE files # NIL DO
+			IF files.type = Files.docType THEN
+				files.name[LEN(files.name$) -4] := 0X; (* strip off extension, note: file name may differ from module name *)
+				importPath := NIL; MakeFile(subList, importPath, fileList, loc, sub, files.name)
+			(* ELSE ignore e.g. temporary files *)
+			END;
+			files := files.next
+		END
+	END MakeSubsystem;
+
+	PROCEDURE AppendSubs(VAR subList: NameNode; IN excl: ARRAY OF CHAR);
+		VAR dirs: Files.LocInfo; i, pos: INTEGER;
+	BEGIN
+		dirs := Files.dir.LocList(Files.dir.This(""));
+		WHILE dirs # NIL DO (* check first if this directory name is a possible subsystem *)
+			IF Strings.IsIdentStart(dirs.name[0]) THEN i := 1;
+				WHILE Strings.IsIdent(dirs.name[i]) DO INC(i) END;
+				IF dirs.name[i] = 0X THEN
+					Strings.Find(excl, ":" + dirs.name + ":", 0, pos);
+					IF pos < 0 THEN AppendName(subList, dirs.name) END
+				END
+			END;
+			dirs := dirs.next
+		END
+	END AppendSubs;
+
+	(* uses the compiler for analyzing module headers; terminates command in case of syntax error *)
+	PROCEDURE MakeSubsystems(OUT subList: NameNode; OUT fileList: NameNode);
+		CONST
+			noneSubs = ":Code:Docu:Sym:";
+			baseSubs = ":Com:Comm:Ctl:Dev:Form:Host:Obx:Ole:Sql:Std:System:Text:Win:Xhtml:";
+		VAR par: DevCommanders.Par; beg, end: INTEGER; s: TextMappers.Scanner;
+			sub: NameNode;
+	BEGIN
+		par := DevCommanders.par; subList := NIL; fileList := NIL;
+		IF par # NIL THEN
+			DevCommanders.par := NIL;
+			s.ConnectTo(par.text); beg := par.beg; end := par.end;
+			s.SetPos(beg); s.Scan;
+			WHILE (s.start < end)
+			& ((s.type = TextMappers.string) OR (s.type = TextMappers.char) & ((s.char = "+") OR (s.char = "*")))  DO
+				IF s.type = TextMappers.string THEN AppendName(subList, s.string)
+				ELSIF s.char = "+" THEN AppendSubs(subList, baseSubs + noneSubs)
+				ELSIF s.char = "*" THEN AppendSubs(subList, noneSubs)
+				END;
+				s.Scan;
+			END;
+			sub := subList;
+			WHILE sub # NIL DO
+				MakeSubsystem(subList, fileList, sub.name);
+				sub := sub.next
+			END;
+			DevCPM.Close
+		ELSE Dialog.ShowMsg("#Dev:NoTextViewFound")
+		END
+	END MakeSubsystems;
+
+	PROCEDURE MakeList*;
+		VAR subList: NameNode (* in textual order *); fileList: NameNode; (* in compile order *)
+			t: TextModels.Model; f: TextMappers.Formatter; v: TextViews.View;
+			file: NameNode; title: Views.Title; sub: NameNode; pos: INTEGER;
+	BEGIN
+		MakeSubsystems(subList, fileList);
+		t := TextModels.dir.New();
+		f.ConnectTo(t);
+		file := fileList;
+		WHILE file # NIL DO f.WriteString(file.name); f.WriteLn; file := file.next END;
+		v := TextViews.dir.New(t);
+		Dialog.MapString("#Dev:MakeList", title);
+		sub := subList;
+		WHILE (sub # NIL) & (LEN(title + " " + sub.name) < LEN(title)) DO
+			title := title + " " + sub.name; sub := sub.next
+		END;
+		IF sub # NIL THEN pos := MIN(LEN(Views.Title) - 4, LEN(title$));
+			title[pos] := "."; title[pos + 1] := "."; title[pos + 2] := "."; title[pos + 3] := 0X
+		END;
+		Views.OpenAux(v, title$)
+	END MakeList;
+
+	PROCEDURE CompileSubs*;
+		VAR subList: NameNode (* in textual order *); fileList: NameNode; (* in compile order *)
+			file: NameNode; loc: Files.Locator; name: Files.Name;
+			v: Views.View; t: TextModels.Model; error: BOOLEAN;
+	BEGIN
+		MakeSubsystems(subList, fileList);
+		file := fileList;
+		WHILE file # NIL DO
+			StdDialog.GetSubLoc(file.name, "Mod", loc, name);
+			v := Views.OldView(loc, name);
+			IF (v # NIL) & (v IS TextViews.View) THEN
+				t := v(TextViews.View).ThisModel();
+				Do(t, StdLog.text, 0, defopt, error);
+				IF error THEN Views.Open(v, loc, name, NIL);
+					DevMarkers.ShowFirstError(t, TextViews.any);
+					RETURN
+				END
+			END;
+			file := file.next
+		END
+	END CompileSubs;
 
 	PROCEDURE Init;
 		VAR loc: Files.Locator; f: Files.File;

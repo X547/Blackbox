@@ -40,7 +40,7 @@ DEFINITION CtlT;
 		OutObject = POINTER TO ABSTRACT RECORD (Object)
 			source: Object;
 			(obj: OutObject) GetIID (OUT iid: GUID), NEW, ABSTRACT;
-			(obj: OutObject) Invoke (id, n: INTEGER; VAR par: ParList; VAR ret: Variant), NEW, ABSTRACT
+			(obj: OutObject) Invoke (id, n: INTEGER; VAR [nil] par: ParList; VAR [nil] ret: Variant), NEW, ABSTRACT
 		END;
 
 		ByteT = POINTER TO RECORD (Any) val: BYTE END;
@@ -210,7 +210,7 @@ source: Object;
 The connected source object.
 
 PROCEDURE (obj: OutObject) GetIID (OUT iid: GUID)
-PROCEDURE (obj: OutObject) Invoke (id, n: INTEGER; VAR par: ParList; VAR ret: Variant)
+PROCEDURE (obj: OutObject) Invoke (id, n: INTEGER; VAR [nil] par: ParList; VAR [nil] ret: Variant),
 NEW, ABSTRACT
 Implemented in the automation interface module, used internally.
 

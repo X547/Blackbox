@@ -52,6 +52,7 @@ DEFINITION Ports;
 			(rd: Rider) SetCursor (cursor: INTEGER), NEW, ABSTRACT;
 			(rd: Rider) Input (OUT x, y: INTEGER; OUT modifiers: SET;
 																		OUT isDown: BOOLEAN), NEW, ABSTRACT;
+			(rd: Rider) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font), NEW, ABSTRACT;
 			(rd: Rider) DrawString (x, y: INTEGER; col: Color; IN s: ARRAY OF CHAR;
 																		font: Fonts.Font), NEW, ABSTRACT;
 			(rd: Rider) DrawSString (x, y: INTEGER; col: Color; IN s: ARRAY OF SHORTCHAR;
@@ -83,6 +84,7 @@ DEFINITION Ports;
 			(f: Frame) Scroll (dx, dy: INTEGER), NEW;
 			(f: Frame) SetCursor (cursor: INTEGER), NEW;
 			(f: Frame) Input (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: BOOLEAN), NEW;
+			(f: Frame) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font), NEW;
 			(f: Frame) DrawString (x, y: INTEGER; col: Color; IN s: ARRAY OF CHAR;
 												font: Fonts.Font), NEW;
 			(f: Frame) DrawSString (x, y: INTEGER; col: Color; IN s: ARRAY OF SHORTCHAR;
@@ -351,6 +353,14 @@ PROCEDURE (rd: Rider) Input (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: 
 NEW, ABSTRACT
 Polls the current mouse location and tells whether the mouse button is currently pressed. All coordinates are in pixels. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, and possibly additional platform-specific modifiers.
 
+PROCEDURE (rd: Rider) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font) 
+NEW, ABSTRACT;
+Draws a space character of width w. 
+The horizontal position is specified by x, the vertical baseline by y, the color by col, and the font attributes by font. All coordinates are in pixels. This method allows for drawing spaces decorated with underline or strike out.
+
+Pre
+font # NIL
+
 PROCEDURE (rd: Rider) DrawString (x, y: INTEGER; col: Color; IN s: ARRAY OF CHAR;
 																	font: Fonts.Font)
 NEW, ABSTRACT
@@ -547,6 +557,14 @@ PROCEDURE (f: Frame) Input (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: B
 NEW
 Polls the current mouse location and tells whether the mouse button is currently pressed.
 Input is used in polling loops during mouse tracking. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, and possibly additional platform-specific modifiers.
+
+PROCEDURE (f: Frame) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font)
+NEW;
+Draws a space character of width w. 
+The horizontal position is specified by x, the vertical baseline by y, the color by col and the font attributes by font. This method allows for drawing spaces decorated with underline or strike out.
+
+Pre
+font # NIL
 
 PROCEDURE (f: Frame) DrawString (x, y: INTEGER; col: Color; IN s: ARRAY OF CHAR;
 																	font: Fonts.Font)

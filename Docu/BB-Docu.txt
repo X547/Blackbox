@@ -1,8 +1,8 @@
-Documentation Conventions
+Documentation Conventions
 
 
 Documentation has two major purposes: to communicate how a program's service can be used interactively (user manual) and how the program's service can be used programmatically (developer manual). In BlackBox, services are arranged in subsystems. A subsystem typically consists of several possibly cooperating modules. In the general case, we need three kinds of documentation texts: a user manual, one module interface description per module, and an overview over how the modules may interact with each other, i.e., an introduction to the overall architecture of the subsystem (developer manual).
-A subsystem is represented on the disk as a directory, e.g., directory Text. In this directory, there is a nested directory called Docu, e.g. Text/Docu. This documentation directory may contain the following text documents:
+A subsystem is represented on the disk as a directory, e.g., directory Text. In this directory, there is a nested directory called Docu, e.g. Text/Docu. This documentation directory may contain the following text documents:
 • a user manual called User-Man
 • a hypertext map to the documentation, called Sys-Map
 • a programmer's introduction called Dev-Man

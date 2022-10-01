@@ -23,7 +23,12 @@ DEFINITION Printing;
 			title: Views.Title
 		END;
 
+		ExpandHook = PROCEDURE (IN s: ARRAY OF CHAR; printView: Views.View; 
+			IN date: Dates.Date; IN time: Dates.Time; IN title: Views.Title; pno: INTEGER; printing: BOOLEAN;
+			OUT sx: ARRAY OF CHAR);
+
 	VAR par: Par;
+		expandHook-: ExpandHook;
 
 	PROCEDURE NewPar (IN page: PageInfo; IN header, footer: Banner; copies: INTEGER): Par;
 	PROCEDURE NewDefaultPar (title: Views.Title): Par;
@@ -31,6 +36,7 @@ DEFINITION Printing;
 	PROCEDURE Current (): INTEGER;
 	PROCEDURE PrintBanner (f: Views.Frame; IN p: PageInfo; IN b: Banner; IN date: Dates.Date;
 											IN time: Dates.Time; x0, x1, y: INTEGER);
+	PROCEDURE SetExpandHook (p: ExpandHook);
 
 END Printing.
 
@@ -91,8 +97,16 @@ title: Views.Title
 Title of the document.
 
 
+TYPE ExpandHook
+The procedure type for the custom tag expansions hook. A custom tag expander maps an input string s to an expanded output string sx where custom specific tags are replaced by an actual value with appropriate formatting.
+
+
 VAR par: Par
 This variable is set during printing of the document and may be changed by a printed view. However, this variable should not be used to determine whether the document is printed or displayed (-> Views.IsPrinterFrame).
+
+
+VAR expandHook: ExpandHook;
+The most recently installed custom tag expander or NIL if none has been installed.
 
 
 PROCEDURE NewPar (IN page: PageInfo; IN header, footer: Banner; copies: INTEGER): Par
@@ -157,3 +171,10 @@ par # NIL =>
 PROCEDURE PrintBanner (f: Views.Frame; IN p: PageInfo; IN b: Banner;
 												IN date: Dates.Date; IN time: Dates.Time; x0, x1, y: INTEGER)
 Used internally.
+
+
+PROCEDURE SetExpandHook* (p: ExpandHook);
+Sets procedure p as custom tag expander. Custom tags are tags that modify or extend the set of standard tags as defined for Banner.left/right. The result of the custom tag expansion is the input for standard tag expansion.
+
+Post
+Printing.expandHook = p

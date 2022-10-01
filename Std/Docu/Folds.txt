@@ -4,7 +4,7 @@ DEFINITION StdFolds;
 
 	IMPORT TextModels, Views, Dialog;
 
-	CONST expanded = FALSE; collapsed = TRUE;
+	CONST collapsed = TRUE; expanded = FALSE;
 
 	TYPE
 		Label = ARRAY 32 OF CHAR;
@@ -25,8 +25,8 @@ DEFINITION StdFolds;
 
 	VAR
 		foldData: RECORD 
-			nested, all: BOOLEAN;
-			findLabel, newLabel: Label
+			nested, useFilter: BOOLEAN;
+			filter, newLabel: Label
 		END;
 		dir-, stdDir-: Directory;
 
@@ -61,20 +61,20 @@ Folds can be nested, but the stretch between one pair of folds must not partiall
 	PROCEDURE Enter (id: INTEGER; name: TextMappers.String; value: REAL);
 	enter a new value into the list
 
-Instead of clicking manually through a deep hierarchy of folds, you can hold down the modifier key while clicking at the fold. This expands or collapses a fold and all nested folds.
+Instead of clicking manually through a deep hierarchy of folds, you can hold down the ctrl key while clicking at the fold. This expands or collapses a fold and all nested folds.
 
-The following menu entries operate on folds. Create Fold in menu Tools inserts a new pair of folds in the focus text. The current text selection in the focus text will be bracketed by the newly inserted folds. Expand All in menu Tools expands all folds in the focus text. Similarly, Collapse All collapses all folds in the focus text.
+The following menu entries operate on folds. Create Fold in menu Tools inserts a new pair of folds in the focus text. The current text selection in the focus text will be bracketed by the newly inserted folds, which are in expanded state. Expand All in menu Tools expands all folds in the focus text. Similarly, Collapse All collapses all folds in the focus text.
 
 Fold... in menu Tools opens a property inspector that lets you manipulate the folds in the focus text. The inspector looks like this:
 
 
-Find First searches in the focus text for the first occurence of a fold. If All is checked then the the very first fold in the text is selected. If All is not checked then Find First searches for a fold which has a label equal to the search criteria specified in the Find field. Find Next finds the next fold using the same criteria as Find First.
+Create Expanded Fold creates an expanded fold in the same way as Create Fold in menu Tools. Create Collapsed Fold creates a collapsed fold.
 
-Collapse collapses all folds in the focus text which comply to the search critera specified by All and Find. If Nested is checked the folds are searched for contained folds and these are also collapsed.
+Find First searches in the focus text for the first occurence of a fold. If Use Filter is not checked then the very first fold in the text is selected. If Use Filter is checked then Find First searches for a fold which has a label equal to the filter criteria specified in the Use Filter: field. Find Next finds the next fold using the same criteria as Find First.
 
-Expand expands folds using All, Find and Nested in the same way as Collapse.
+Collapse collapses all folds in the focus text which comply to the search critera specified by Use Filter. If Nested is checked the folds are searched for contained folds and these are also collapsed. Expand expands folds using Use Filter and Nested in the same way as Collapse.
 
-When a fold is found or when a fold in the focus text is selected by the user its label is displayd in the field next to the Set Label button. The label can be changed by typing a new label into the field and clicking on Set Label.
+When a fold is found or when a fold in the focus text is selected by the user its label is displayd in the field Label:. The label can be changed by typing a new label into the field and clicking on Set Label.
 
 To describe the pre- and postconditions of procedures exported from StdFolds, we use the following pseudo-procedures.
 
@@ -90,9 +90,9 @@ Typical menu commands (typically in the Tools menu, some commands may be omitted
 
 MENU
 	"Create Fold"	""	"StdFolds.Create(1)"	"StdFolds.CreateGuard"
-	"Expand All"	""	"StdFolds.Expand"	""
-	"Collapse All"	""	"StdFolds.Collapse"	""
-	"Fold..."	""	"StdCmds.OpenToolDialog('Std/Rsrc/Folds', 'Zoom')"	""
+	"Expand All"	""	"StdFolds.Expand"	"TextCmds.FocusGuard"
+	"Collapse All"	""	"StdFolds.Collapse"	"TextCmds.FocusGuard"
+	"Fold..."	""	"StdCmds.OpenToolDialog('Std/Rsrc/Folds', 'Folds')"	""
 END
 
 
@@ -276,8 +276,8 @@ The following variables and procedures are only used for the property inspector 
 
 VAR 
 	foldData: RECORD 
-		nested, all: BOOLEAN;
-		findLabel, newLabel: Label
+		nested, useFilter: BOOLEAN;
+		filter, newLabel: Label
 	END;
 
 PROCEDURE FindFirstFold;

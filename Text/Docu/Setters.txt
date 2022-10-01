@@ -15,7 +15,6 @@ DEFINITION TextSetters;
 
 		Reader = POINTER TO ABSTRACT RECORD
 			r-: TextModels.Reader;
-			sString: ARRAY 64 OF SHORTCHAR;
 			string: ARRAY 64 OF CHAR;
 			view: Views.View;
 			textOpts: SET;
@@ -117,9 +116,6 @@ A reader to read through lines returned by a setter. The reader is a conceptual 
 r-: TextModels.Reader
 The text reader used to connect the reader to a text. The text reader state is used as a one element lookahead state for the reader.
 
-sString: ARRAY 64 OF SHORTCHAR
-If sString # "", then the element read most recently was a short character or a string of short characters. Single short characters are returned in sString[0]. If view # NIL, then the element read most recently was a view masked as a short character.
-
 string: ARRAY 64 OF CHAR
 If string # "", then the element read most recently was a character or a string of characters. Single characters are returned in string[0]. If view # NIL, then the element read most recently was a view masked as a character.
 
@@ -185,7 +181,6 @@ Post
 rd.r # NIL
 rd.r.Base() = text
 rd.r.eot OR rd.r.Pos() = pos + 1
-rd.sString = ""
 rd.string = ""
 rd.view = NIL
 rd.textOpts = {}

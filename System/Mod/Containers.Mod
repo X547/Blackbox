@@ -822,6 +822,7 @@ MODULE Containers;
 									VAR pass: BOOLEAN);
 		VAR dest: Views.Frame; m: Models.Model; v: Views.View;
 			x0, y0, x1, y1, w, h, rx, ry, destX, destY: INTEGER; op: INTEGER; isDown, isSingle: BOOLEAN; mo: SET;
+			script: Stores.Operation;
 	BEGIN	(* drag and drop c's selection: mouse is in selection *)
 		x0 := x; y0 := y;
 		REPEAT
@@ -853,8 +854,13 @@ MODULE Containers;
 						IF (op = Mechanisms.copy) OR (noCaret IN c.opts) THEN	(* drop copy *)
 							Controllers.Drop(x, y, f, x0, y0, v, isSingle, w, h, rx, ry)
 						ELSIF op = Mechanisms.move THEN	(* drop copy and delete original *)
+							IF (c.view.Domain() # NIL) & (c.view.Domain() = dest.view.Domain()) THEN
+								Views.BeginScript(c.view, "#System:Moving", script)
+							ELSE script := NIL
+							END;
+							c.DeleteSelection; (* delete first because Controllers.Drop can remove the selection *)
 							Controllers.Drop(x, y, f, x0, y0, v, isSingle, w, h, rx, ry);
-							c.DeleteSelection;
+							IF script # NIL THEN Views.EndScript(c.view, script) END
 						END
 					END
 				ELSIF (op = Mechanisms.move) & ~(noCaret IN c.opts) THEN
@@ -1037,6 +1043,7 @@ MODULE Containers;
 			dMsg.mode := c.opts; dMsg.okToDrop := FALSE;
 			IF g # NIL THEN Views.HandlePropMsg(g.view, dMsg) END;
 			IF (g # NIL) & ~inSelection & (dMsg.okToDrop OR ~(noFocus IN c.opts))THEN
+				c.SetFocus(g.view);
 				focus := g.view
 			ELSIF ~(noCaret IN c.opts) & c.CanDrop(f, msg.x, msg.y) THEN
 				c.Drop(msg.source, f, msg.sourceX, msg.sourceY, msg.x, msg.y, msg.w, msg.h,

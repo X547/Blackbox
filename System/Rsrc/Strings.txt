@@ -1,5 +1,75 @@
 STRINGS
-About	About BlackBox
+&File	File
+&New	&New
+&Open...	&Open...
+&Open Stationery...	&Open Stationery...
+&Save	&Save
+&Save As...	Save &As...
+&Save Copy As...	Save Copy As...
+&Close	&Close
+&Page Setup...	Page Se&tup...
+&Print...	&Print...
+&Exit	E&xit
+
+&Edit	Edit
+&Undo	&Undo
+&Redo	R&edo
+&Cut	Cu&t
+&Copy	&Copy
+&Paste	&Paste
+&Del	&Delete	Delete
+&Copy Properties	&Copy Properties
+&Paste Properties	&Paste Properties
+&Paste Object	Paste O&bject
+&Paste Special...	Paste &Special...
+&Paste to Window	Paste to &Window
+&Insert Object...	&Insert Object...
+&Object Properties...	Object P&roperties...	Alt+Enter
+&Object	&Object
+&Select Document	Select Docu&ment
+&Select All	Select &All
+&Select Next Object	Select &Next Object
+&Preferences...	Pre&ferences...
+
+&Attributes	Attributes
+&Regular	&Regular
+&Bold	&Bold
+&Italic	&Italic
+&Underline	&Underline
+&8 Point	  &8 Point
+&9 Point	  &9 Point
+&10 Point	&10 Point
+&12 Point	1&2 Point
+&16 Point	1&6 Point
+&20 Point	2&0 Point
+&24 Point	2&4 Point
+&Size...	&Size...
+&Default Color	&Default Color
+&Black	Blac&k
+&Red	R&ed
+&Green	&Green
+&Blue	B&lue
+&Color...	&Color...
+&Default Font	Default F&ont
+&Font...	&Font...
+&Typeface...	&Typeface...
+
+&Window	&Window
+&New Window	&New Window
+&Cascade	&Cascade
+&Tile Horizontal	Tile &Horizontal
+&Tile Vertical	&Tile Vertical
+&Arrange Icons	&Arrange Icons
+
+&Help	Help
+&Contents	Contents
+&Examples	Examples
+&About BlackBox	About BlackBox
+
+&Delete	&Delete
+&Properties...	P&roperties...
+
+About BlackBox	About BlackBox
 AlienAttributes	alien attributes
 AlienCause	alien cause
 AlienComponent	alien component
@@ -10,6 +80,7 @@ AlienModel	alien model
 AlienVersion	alien version
 AllocatorNotFound	allocator not found
 AllowFocus	Allow Subfocus
+Apply	Apply
 BehaviorNotAccessible	behavior not accessible
 black	Black
 blue	Blue
@@ -37,13 +108,15 @@ CorruptedCodeFileFor	corrupted code file for ^0
 CyclicImpFrom	cyclic import (^0 imported from ^1)
 darkGrey	Dark Grey
 defaultColor	Default Color
-Deletion	Deleting
+Deleting	Deleting
+Deletion	Deletion
 DepositExpected	deposited view expected
 DialogNotFound	dialog not found
 Documents.ExportDocument	Document
 Documents.ImportDocument	Document
 DocumentVersionProblems	document version problems
 Empty	empty
+Examples	Examples
 FailedToImportDocument	failed to import document
 FailedToOpen	failed to open ^0
 FailedToOpenPrintJob	failed to open print job
@@ -52,6 +125,7 @@ FormatChange	Format Change
 green	Green
 grey	Grey
 Help	Help
+Help Contents	Help Contents
 IdentExpected	identifier expected
 IllegalColor	illegal color
 IllegalDay	illegal day
@@ -74,6 +148,7 @@ InconsistentType	inconsistent type ^0
 InconsistentVersion	inconsistent version
 infinite	infinite
 -infinite	minus infinite
+Inserting	Inserting
 Insertion	Insertion
 InvalidCodeFile	invalid code file ^0
 italic	italic
@@ -98,8 +173,10 @@ NoDepositExpected	no deposited view expected
 NoViewAllocated	no view allocated
 ObjInconsImpFrom	object ^0 inconsistently imported from ^1
 ObjNotFoundImpFrom	object ^0 not found (imported from ^1)
+OK	OK
 OtherSize	Other Size
 PageSetup	Page Setup
+Preferences	Preferences
 PreventFocus	Prevent Subfocus
 PrintHeader	Print Header
 ProcNotFoundIn	procedure ^0 not found in ^1
@@ -118,6 +195,7 @@ SetLayout	Set Layout
 SetMask	Set Mask
 SetProp	Set Properties
 SetTool	Set Tool
+Size	Size
 SyntaxError	syntax error
 SyntaxErrorIn	syntax error in ^0
 strikeout	strikeout
@@ -187,3 +265,9 @@ Stores.Reader.ReadStore.103	file format corrupted or not a Stores.Store in file
 Stores.Reader.ReadStore.104	file format corrupted or not a Stores.Store in file
 Stores.Reader.ReadStore.105	file format corrupted or not a Stores.Store in file
 Stores.Reader.ReadStore.106	file format corrupted or not a Stores.Store in file
+appVersion	1.7
+appVerName	BlackBox Component Builder 1.7
+fileVersion	1.7.0.694
+buildNum	694
+buildDate	2016-09-13
+commitHash	309dcffd55dbadc91e84759f0fd7238bd250499c

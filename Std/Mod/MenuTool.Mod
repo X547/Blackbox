@@ -43,9 +43,9 @@ MODULE StdMenuTool;
 	PROCEDURE Comp (IN s1, s2: ARRAY OF CHAR): INTEGER;
 		VAR i: INTEGER; a, b: CHAR;
 	BEGIN
-		i := 0; a := s1[0]; b := s2[0];
-		WHILE (a # 0X) & ((a = b) OR (a >= "A") & (a <= "Z") & (a = CAP(b)) OR (b >= "A") & (b <= "Z") & (b = CAP(a))) DO
-			INC(i); a := s1[i]; b := s2[i]
+		i := 0; a := Kernel.Upper(s1[0]); b := Kernel.Upper(s2[0]);
+		WHILE (a # 0X) & (a = b) DO
+			INC(i); a := Kernel.Upper(s1[i]); b := Kernel.Upper(s2[i])
 		END;
 		RETURN ORD(a) - ORD(b)
 	END Comp;

@@ -45,7 +45,6 @@ MODULE DevBrowser;
 		noSuchItemExportedKey = "#Dev:NoSuchItemExported";
 		noSuchExtItemExportedKey = "#Dev:NoSuchExtItemExported";
 		noModuleNameSelectedKey = "#Dev:NoModuleNameSelected";
-		noItemNameSelectedKey = "#Dev:NoItemNameSelected";
 
 		regKey = "Dev\Browser\";
 
@@ -63,7 +62,7 @@ MODULE DevBrowser;
 			hideHooks: BOOLEAN;	(* hide hook procedures and interfaces *)
 			clientinterface, extensioninterface: BOOLEAN;
 			sectAttr, keyAttr: TextModels.Attributes;	(* formatting of section and other keywords *)
-			level: SHORTINT;	(* current indentation level *)
+			level: INTEGER;	(* current indentation level *)
 			gap: BOOLEAN;	(* request for lazy Ln, issued with next Indent *)
 			singleton: BOOLEAN;	(* selectively display one object's definition *)
 			thisObj: DevCPT.Name;	(* singleton => selected object *)
@@ -74,7 +73,7 @@ MODULE DevBrowser;
 			pos: INTEGER
 		END;
 		inp: Files.Reader;
-		imp: ARRAY 256 OF Kernel.Name;
+		imp: ARRAY 256 OF Kernel.Utf8Name;
 		num, lev, max: INTEGER;
 
 		options*: RECORD
@@ -104,18 +103,19 @@ MODULE DevBrowser;
 	END GetSelection;
 
 	PROCEDURE GetQualIdent (VAR mod, ident: DevCPT.Name; VAR t: TextModels.Model);
-		VAR s: TextMappers.Scanner; beg, end: INTEGER;
+		VAR s: TextMappers.Scanner; beg, end, res: INTEGER;
 	BEGIN
 		GetSelection(t, beg, end);
 		IF t # NIL THEN
 			s.ConnectTo(t); s.SetOpts({7});	(* acceptUnderscores *)
 			s.SetPos(beg); s.Scan;
 			IF (s.type = TextMappers.string) & (s.len < LEN(mod)) THEN
-				mod := SHORT(s.string$); s.Scan;
+				Kernel.StringToUtf8(s.string, mod, res); 
+				s.Scan;
 				IF (s.type = TextMappers.char) & (s.char = ".") & (s.Pos() <= end) THEN
 					s.Scan;
 					IF (s.type = TextMappers.string) & (s.len < LEN(ident)) THEN
-						ident := SHORT(s.string$)
+						Kernel.StringToUtf8(s.string, ident, res);
 					ELSE mod[0] := 0X; ident[0] := 0X
 					END
 				ELSE ident[0] := 0X
@@ -150,26 +150,26 @@ MODULE DevBrowser;
 	END Scan;
 
 	PROCEDURE CheckModName (VAR mod: DevCPT.Name; t: TextModels.Model);
-		VAR s: TextMappers.Scanner;
+		VAR s: TextMappers.Scanner; res: INTEGER; modStr: TextMappers.String;
 	BEGIN
 		s.ConnectTo(t); s.SetPos(0); Scan(s);
 		IF s.type = module THEN
 			Scan(s);
+			Kernel.Utf8ToString(mod, modStr, res);
 			WHILE (s.type # TextMappers.eot) & (s.type # import) DO Scan(s) END;
 			WHILE (s.type # TextMappers.eot) & (s.type # semicolon)
-					& ((s.type # TextMappers.string) OR (s.string # mod)) DO Scan(s) END;
+					& ((s.type # TextMappers.string) OR (s.string # modStr)) DO Scan(s) END;
 			IF s.type = TextMappers.string THEN
 				Scan(s);
 				IF s.type = becomes THEN
 					Scan(s);
 					IF s.type = TextMappers.string THEN
-						mod := SHORT(s.string$)
+						Kernel.StringToUtf8(s.string, mod, res); 
 					END
 				END
 			END
 		END
 	END CheckModName;
-
 
 	PROCEDURE NewRuler (): TextRulers.Ruler;
 		VAR ra: TextRulers.Attributes; p: TextRulers.Prop;
@@ -194,7 +194,7 @@ MODULE DevBrowser;
 	END Append;
 
 	PROCEDURE IsLegal (name: POINTER TO ARRAY OF SHORTCHAR): BOOLEAN;
-		VAR i: SHORTINT;
+		VAR i: INTEGER;
 	BEGIN
 		IF name^ = "" THEN RETURN FALSE END;
 		IF name[0] = "@" THEN RETURN global.hints END;
@@ -206,14 +206,16 @@ MODULE DevBrowser;
 
 	(* output formatting *)
 
-	PROCEDURE Char (ch: SHORTCHAR);
+	PROCEDURE Char (ch: CHAR);
 	BEGIN
 		global.out.WriteChar(ch)
 	END Char;
 
-	PROCEDURE String (s: ARRAY OF SHORTCHAR);
+	PROCEDURE String (IN s: ARRAY OF SHORTCHAR);
+		VAR res: INTEGER; n: ARRAY 256 OF CHAR;
 	BEGIN
-		global.out.WriteSString(s)
+		Kernel.Utf8ToString(s, n, res); 
+		global.out.WriteString(n)
 	END String;
 
 	PROCEDURE StringConst (s: ARRAY OF SHORTCHAR; long: BOOLEAN);
@@ -255,26 +257,27 @@ MODULE DevBrowser;
 	END StringConst;
 
 	PROCEDURE ProperString (s: ARRAY OF SHORTCHAR);
-		VAR i: SHORTINT;
+		VAR i, res: INTEGER; str: ARRAY LEN(DevCPT.Name) OF CHAR;
 	BEGIN
 		IF s # "" THEN
-			i := 0; WHILE (s[i] # 0X) & (s[i] # "^") DO global.out.WriteChar(s[i]); INC(i) END
+			Kernel.Utf8ToString(s, str, res);
+			i := 0; WHILE (s[i] # 0X) & (s[i] # "^") DO global.out.WriteChar(str[i]); INC(i) END
 		END
 	END ProperString;
 
-	PROCEDURE Keyword (s: ARRAY OF SHORTCHAR);
+	PROCEDURE Keyword (s: ARRAY OF CHAR);
 		VAR a: TextModels.Attributes;
 	BEGIN
 		IF global.keyAttr # NIL THEN a := global.out.rider.attr; global.out.rider.SetAttr(global.keyAttr) END;
-		global.out.WriteSString(s);
+		global.out.WriteString(s);
 		IF global.keyAttr # NIL THEN global.out.rider.SetAttr(a) END
 	END Keyword;
 
-	PROCEDURE Section (VAR out: TextMappers.Formatter; s: ARRAY OF SHORTCHAR);
+	PROCEDURE Section (VAR out: TextMappers.Formatter; s: ARRAY OF CHAR);
 		VAR a: TextModels.Attributes;
 	BEGIN
 		IF global.sectAttr # NIL THEN a := out.rider.attr; out.rider.SetAttr(global.sectAttr) END;
-		out.WriteSString(s);
+		out.WriteString(s);
 		IF global.sectAttr # NIL THEN out.rider.SetAttr(a) END
 	END Section;
 
@@ -287,8 +290,8 @@ MODULE DevBrowser;
 	BEGIN
 		IF n > 1 THEN Hex(x DIV 16, n - 1) END;
 		x := x MOD 16;
-		IF x >= 10 THEN global.out.WriteChar(SHORT(CHR(x + ORD("A") - 10)))
-		ELSE global.out.WriteChar(SHORT(CHR(x + ORD("0"))))
+		IF x >= 10 THEN global.out.WriteChar(CHR(x + ORD("A") - 10))
+		ELSE global.out.WriteChar(CHR(x + ORD("0")))
 		END
 	END Hex;
 
@@ -298,7 +301,7 @@ MODULE DevBrowser;
 	END Ln;
 
 	PROCEDURE Indent;
-		VAR i: SHORTINT;
+		VAR i: INTEGER;
 	BEGIN
 		IF global.gap THEN global.gap := FALSE; Ln END;
 		i := global.level; WHILE i > 0 DO global.out.WriteTab; DEC(i) END
@@ -351,7 +354,7 @@ MODULE DevBrowser;
 		IF i # external THEN Char("-") END
 	END Vis;
 
-	PROCEDURE ProcSysFlag (flag: SHORTINT);
+	PROCEDURE ProcSysFlag (flag: INTEGER);
 	BEGIN
 		IF flag # 0 THEN
 			String(" [");
@@ -362,7 +365,7 @@ MODULE DevBrowser;
 		END
 	END ProcSysFlag;
 
-	PROCEDURE ParSysFlag (flag: SHORTINT);
+	PROCEDURE ParSysFlag (flag: INTEGER);
 		VAR pos: INTEGER;
 	BEGIN
 		IF flag # 0 THEN
@@ -394,7 +397,7 @@ MODULE DevBrowser;
 	END ParSysFlag;
 
 	PROCEDURE StructSysFlag (typ: DevCPT.Struct);
-		VAR flag: SHORTINT;
+		VAR flag: INTEGER;
 	BEGIN
 		flag := typ.sysflag;
 		IF (flag # 0) & ((typ.form # pointer) OR (flag = 2)) THEN
@@ -432,7 +435,7 @@ MODULE DevBrowser;
 
 	PROCEDURE ^ Structure (typ: DevCPT.Struct);
 
-	PROCEDURE Qualifier (mno: SHORTINT);
+	PROCEDURE Qualifier (mno: INTEGER);
 	BEGIN
 		IF (mno > 1) OR (mno = 1) & global.singleton THEN
 			global.modUsed[mno] := TRUE;
@@ -696,7 +699,7 @@ MODULE DevBrowser;
 	END Structure;
 
 	PROCEDURE Const (obj: DevCPT.Object);
-		VAR con: DevCPT.Const; s: SET; i: SHORTINT; x, y: INTEGER; r: REAL;
+		VAR con: DevCPT.Const; s: SET; i, x, y: INTEGER; r: REAL;
 	BEGIN
 		Indent; LocalName(obj); SysStrings(obj); String(" = ");
 		con := obj.conval;
@@ -711,7 +714,7 @@ MODULE DevBrowser;
 			ELSIF con.intval >= 0A0H THEN
 				Hex(con.intval, 3); Char("X")
 			ELSIF (con.intval >= 32) & (con.intval <= 126) THEN
-				Char(22X); Char(SHORT(CHR(con.intval))); Char(22X)
+				Char(22X); Char(CHR(con.intval)); Char(22X)
 			ELSE
 				Hex(con.intval, 2); Char("X")
 			END
@@ -735,9 +738,9 @@ MODULE DevBrowser;
 		| sReal, real:
 			global.out.WriteReal(con.realval)
 		| sString:
-			StringConst(con.ext^, FALSE)
+			StringConst(con.ext, FALSE)
 		| string:
-			StringConst(con.ext^, TRUE)
+			StringConst(con.ext, TRUE)
 		| nilTyp:
 			Keyword("NIL")
 		| comp:	(* guid *)
@@ -773,9 +776,6 @@ MODULE DevBrowser;
 		IF global.hideHooks & IsHook(obj.typ) THEN RETURN END;
 
 		IF global.extensioninterface
-(*
-		& (obj.typ.strobj = obj) & ~((obj.typ.form < pointer) & (obj.typ.BaseTyp # DevCPT.undftyp))
-*)
 		& (NotExtRec(obj.typ)
 			OR
 			(obj.typ.form = pointer) & ~IsLegal(obj.typ.BaseTyp.strobj.name) &
@@ -861,10 +861,10 @@ MODULE DevBrowser;
 	END Var;
 
 	PROCEDURE Proc (obj: DevCPT.Object);
-		VAR ext: DevCPT.ConstExt; i, m: SHORTINT;
+		VAR ext: DevCPT.ConstExt; i, m: INTEGER;
 	BEGIN
 		IF global.hideHooks & (obj.link # NIL) & (obj.link.link = NIL) & IsHook(obj.link.typ) THEN RETURN END;
-		IF global.extensioninterface THEN RETURN END;
+		IF global.extensioninterface & ~((obj.link # NIL) & (obj.link.link = NIL) & IsHook(obj.link.typ)) THEN RETURN END;
 		Indent; Keyword("PROCEDURE"); (* Char(" "); *)
 		IF obj.mode = cProc THEN String(" [code]")
 		ELSIF obj.mode = iProc THEN String(" [callback]")
@@ -877,11 +877,13 @@ MODULE DevBrowser;
 		IF (obj.mode = cProc) & global.hints THEN
 			Ln;
 			INC(global.level); Indent;
-			ext := obj.conval.ext; m := ORD(ext^[0]); i := 1;
-			WHILE i <= m DO
-				global.out.WriteIntForm(ORD(ext^[i]), TextMappers.hexadecimal, 3, "0", TextMappers.showBase);
-				IF i < m THEN String(", ") END;
-				INC(i)
+			ext := obj.conval.ext;
+			IF ext # NIL THEN m := LEN(ext^); i := 0;
+				WHILE i < m DO
+					global.out.WriteIntForm(ORD(ext^[i]), TextMappers.hexadecimal, 3, "0", TextMappers.showBase);
+					INC(i);
+					IF i < m THEN String(", ") END;
+				END;
 			END;
 			DEC(global.level)
 		END;
@@ -918,7 +920,7 @@ MODULE DevBrowser;
 
 	(* definition formatting *)
 
-	PROCEDURE PutSection (VAR out: TextMappers.Formatter; s: ARRAY OF SHORTCHAR);
+	PROCEDURE PutSection (VAR out: TextMappers.Formatter; s: ARRAY OF CHAR);
 		VAR buf, def: TextModels.Model; i: INTEGER;
 	BEGIN
 		buf := global.out.rider.Base();
@@ -937,7 +939,7 @@ MODULE DevBrowser;
 	END PutSection;
 
 	PROCEDURE Scope (def: TextModels.Model; this: DevCPT.Name);
-		VAR out: TextMappers.Formatter; i: SHORTINT; a: TextModels.Attributes;
+		VAR out: TextMappers.Formatter; i: INTEGER; a: TextModels.Attributes;
 	BEGIN
 		global.gap := FALSE; global.thisObj := this; global.singleton := (this # "");
 		global.systemUsed := FALSE; global.comUsed := FALSE;
@@ -963,7 +965,7 @@ MODULE DevBrowser;
 	END Scope;
 
 	PROCEDURE Modules;
-		VAR i, j, n: SHORTINT;
+		VAR i, j, n: INTEGER;
 	BEGIN
 		n := 0; j := 2;
 		IF global.systemUsed THEN INC(n) END;
@@ -1011,9 +1013,6 @@ MODULE DevBrowser;
 	BEGIN
 		null := TextModels.dir.New();
 		DevCPM.Init(null.NewReader(NIL), null);
-(*
-		DevCPT.Init({}); DevCPT.Open(mod); DevCPT.SelfName := "AvoidErr154";
-*)
 		DevCPT.Init({}); main := "@mainMod"; DevCPT.Open(main);
 		DevCPT.processor := 0;	(* accept all sym files *)
 		DevCPT.Import("@notself", mod, noerr);
@@ -1031,9 +1030,11 @@ MODULE DevBrowser;
 		ident: DevCPT.Name; opts: ARRAY OF CHAR; VAR view: Views.View; VAR title: Views.Title
 	);
 		VAR def, buf: TextModels.Model; v: TextViews.View; h: BOOLEAN;
-			p: Properties.BoundsPref; mod: DevCPT.Name; i: SHORTINT; str, str1: ARRAY 256 OF CHAR;
+			p: Properties.BoundsPref; mod: DevCPT.Name; i: INTEGER; 
+			str, str1: ARRAY LEN(DevCPT.Name) OF CHAR;
+			res: INTEGER; n: DevCPT.Name;
 	BEGIN
-		mod := DevCPT.GlbMod[1].name^$;
+		mod := DevCPT.GlbMod[1].name$;
 		i := 0;
 		global.hints := FALSE; global.flatten := FALSE; global.hideHooks := TRUE;
 		global.clientinterface := FALSE; global.extensioninterface := FALSE;
@@ -1075,9 +1076,12 @@ MODULE DevBrowser;
 				v := TextViews.dir.New(def);
 				v.SetDefaults(NewRuler(), TextViews.dir.defAttr);
 				p.w := Views.undefined; p.h := Views.undefined; Views.HandlePropMsg(v, p);
-				title := mod$; Append(title, "."); Append(title, ident);
+				n := mod$ + "." + ident; Kernel.Utf8ToString(n, title, res);
 				view := Documents.dir.New(v, p.w, p.h)
-			ELSE str := mod$; str1 := ident$; title := "";
+			ELSE
+				Kernel.Utf8ToString(mod$, str, res);
+				Kernel.Utf8ToString(ident$, str1, res);
+				title := "";
 				IF global.extensioninterface THEN
 					Dialog.ShowParamMsg(noSuchExtItemExportedKey, str, str1, "")
 				ELSE
@@ -1103,7 +1107,7 @@ MODULE DevBrowser;
 			buf.Append(def);
 			v := TextViews.dir.New(buf);
 			v.SetDefaults(NewRuler(), TextViews.dir.defAttr);
-			title := mod$;
+			Kernel.Utf8ToString(mod, title, res);
 			view := Documents.dir.New(v, width, height)
 		END;
 		global.out.ConnectTo(NIL);
@@ -1112,7 +1116,7 @@ MODULE DevBrowser;
 
 	PROCEDURE ShowInterface* (opts: ARRAY OF CHAR);
 		VAR noerr: BOOLEAN; mod, ident: DevCPT.Name; v: Views.View; title: Views.Title; t: TextModels.Model;
-			str: ARRAY 256 OF CHAR;
+			str: ARRAY 256 OF CHAR; res: INTEGER;
 	BEGIN
 		GetQualIdent(mod, ident, t);
 		CheckModName(mod, t);
@@ -1126,7 +1130,7 @@ MODULE DevBrowser;
 					END;
 					Views.OpenAux(v, title)
 				END
-			ELSE str := mod$; Dialog.ShowParamMsg(modNotFoundKey, str, "", "")
+			ELSE Kernel.Utf8ToString(mod$, str, res); Dialog.ShowParamMsg(modNotFoundKey, str, "", "")
 			END;
 			CloseCompiler
 		ELSE Dialog.ShowMsg(noModuleNameSelectedKey)
@@ -1195,7 +1199,7 @@ MODULE DevBrowser;
 	END RShort;
 
 	PROCEDURE ReadHeader (file: Files.File; VAR view: Views.View; VAR title: Views.Title);
-		VAR n, i, p, fp, hs, ms, ds, cs, vs, m: INTEGER; name: Kernel.Name; first: BOOLEAN;
+		VAR n, i, p, fp, hs, ms, ds, cs, vs, m, res: INTEGER; name: Kernel.Utf8Name; first: BOOLEAN;
 			text: TextModels.Model; v: TextViews.View; fold: StdFolds.Fold; d: Dates.Date; t: Dates.Time;
 			str: ARRAY 64 OF CHAR;
 	BEGIN
@@ -1204,7 +1208,7 @@ MODULE DevBrowser;
 		inp.SetPos(0); RWord(n);
 		IF n = 6F4F4346H THEN
 			RWord(p); RWord(hs); RWord(ms); RWord(ds); RWord(cs); RWord(vs);
-			RNum(n); RName(name); title := name$; i := 0;
+			RNum(n); RName(name); Kernel.Utf8ToString(name, title, res); i := 0;
 			WHILE i < n DO RName(imp[i]); INC(i) END;
 			String("MODULE "); String(name); Ln;
 			String("processor: ");
@@ -1262,11 +1266,11 @@ MODULE DevBrowser;
 
 	PROCEDURE ShowCodeFile*;
 		VAR t: TextModels.Model; f: Files.File; v: Views.View; title: Views.Title; mod, ident: DevCPT.Name;
-			name: Files.Name; loc: Files.Locator; str: ARRAY 256 OF CHAR;
+			name: Files.Name; loc: Files.Locator; str: ARRAY 256 OF CHAR; res: INTEGER;
 	BEGIN
 		GetQualIdent(mod, ident, t);
 		IF mod # "" THEN
-			str := mod$;
+			Kernel.Utf8ToString(mod$, str, res);
 			StdDialog.GetSubLoc(str, "Code", loc, name);
 			f := Files.dir.Old(loc, name, Files.shared);
 			IF f # NIL THEN

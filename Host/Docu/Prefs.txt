@@ -1,0 +1,16 @@
+Preferences
+
+This dialog serves to set parameters of BlackBox. Pressing the OK button applies the settings and stores them persistently in the Windows registry for the current user. Alternatively, by using a command line option when starting BlackBox, the settings are stored in a file. The meaning of the individual parameters is defined below.
+Use true type metric	Use TrueType metrics for calculating the width of a text string. This provides for best printing results but comes with a lower quality of texts displayed on the screen.
+Visual scrolling	When checked, screen updates are performed during scrolling. Otherwise a screen update is only done once when scrolling is finished. Unchecking this option reduces the CPU resp. GPU load while scrolling.
+Beep	When checked, beeps are generated in case of certain errors and warnings. Unchecking this option allows to operate BlackBox more silently, which may be required in a shared office or in a public space.
+Server Mode	When checked, BlackBox is tuned for operating as a server. Background task processing while mouse tracking is enabled and the smallest possible idle period is used for event processing. Note that background task processing may produce side effects or slow down mouse tracking. The reduced idle period potentially increases the CPU load. BlackBox needs to be restarted in order to reflect a change of this option.
+Thick Caret	Use a thick caret for marking the text insertion point instead of the default caret.
+Caret Period	Defines the caret blink period (in milliseconds).
+Language	Defines the language being used.
+Default font	Defines the default font being used for texts. This is the font that is selected via the menu entry Attributes->Default Font.
+Dialog font	Defines the default font being used for controls.
+Status bar	Defines the format of the status bar at the bottom of the BlackBox application window:
+No means no status bar at all.
+Simple means a status bar consisting of a single part, which is used for displaying status messages to the user.
+Double means a status bar consisting of two parts where the left part shows the status messages and the right part shows the current memory consumption.

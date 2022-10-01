@@ -1,3 +1,5 @@
+This is a template to be filled out.
+
 MODULE SqlObxDriv;
 (**
 	project	= "BlackBox"
@@ -11,7 +13,6 @@ MODULE SqlObxDriv;
 
 **)
 
-	(* this is a template to be filled out *)
 
 	IMPORT Dates, Dialog, Services, SqlDrivers;
 
@@ -149,6 +150,16 @@ MODULE SqlObxDriv;
 		ELSE val := <value>
 		END
 	END ReadInteger;
+	
+	PROCEDURE (t: Table) ReadLong (row, column: INTEGER; OUT val: LONGINT);
+	BEGIN
+		ASSERT(row >= 0, 20); ASSERT(row < t.rows, 21);
+		ASSERT(column >= 0, 22); ASSERT(column < t.columns, 23);
+		(* try to read a long integer from table *)
+		IF <table value is not an integer> THEN val := 0; t.res := incompatible
+		ELSE val := <value>
+		END
+	END ReadLong;
 
 	PROCEDURE (t: Table) ReadReal (row, column: INTEGER; OUT val: LONGREAL);
 	BEGIN

@@ -1,3 +1,4 @@
+
 Character Set
 
 
@@ -119,13 +120,22 @@ The following list gives the names of every non-control code in the character se
 7E	~	TILDE
 7F		reserved
 
-80 .. 8A		reserved
+80 .. 89		reserved
+8A	Š	LATIN CAPITAL LETTER S CARON	(Unicode 0160)
 8B		ZERO WIDTH SPACE	(Unicode 200B)
-8C .. 8E		reserved
+8C	Œ	LATIN CAPITAL LIGATURE OE	(Unicode 0152)
+8D		reserved
+8E	Ž	LATIN CAPITAL LETTER Z CARON	(Unicode 017D)
 8F		DIGIT SPACE	(not in Unicode)
 90		HYPHEN	(Unicode 2010)
 91		NON-BREAKING HYPHEN	(Unicode 2011)
-92 .. 9F		reserved
+92 .. 99		reserved
+9A	š	LATIN SMALL LETTER S CARON	(Unicode 0161)
+9B		reserved
+9C	œ	LATIN SMALL LIGATURE OE	(Unicode 0153)
+9D		reserved
+9E	ž	LATIN SMALL LETTER Z CARON	(Unicode 017E)
+9F	Ÿ	LATIN CAPITAL LETTER Y DIAERESIS	(Unicode 0178)
 
 A0	 	NON-BREAKING SPACE
 A1	¡	INVERTED EXCLAMATION MARK

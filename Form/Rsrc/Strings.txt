@@ -1,4 +1,37 @@
-STRINGS
+STRINGS
+&Layout	Layout
+&Align Left	Align &Left
+&Align Right	Align &Right
+&Align Top	Align &Top
+&Align Bottom	Align &Bottom
+&Align To Row	Align To Ro&w
+&Align To Column	Align To &Column
+&Set Grid...	Set &Grid...
+&Select Off-Grid Views	&Select Off-Grid Views
+&Force To Grid	&Force To Grid
+&Set First/Back	Set F&irst/Back
+&Set Last/Front	Set L&ast/Front
+&Sort Views	Sort &Views
+&Replace...	Replace...
+&Recalc Focus Size	R&ecalc Focus Size
+
+mm	&mm
+1/16 &inch	1/16 &inch
+Empty	&Empty
+Guard Field	Guard Field
+Link:	&Link:
+Label Field	Label Field
+Link Field	Link Field
+Notifier Field	Notifier Field
+Set	Set
+Set Grid	Set Grid
+Replace:	Replace:
+Replace All	Replace &All
+Replace Strings in Control Fields	Replace Strings in Control Fields
+Resolution:	&Resolution:
+with:	with:
+in:	in:
+
 AlignBottom	Align Bottom
 AlignHorizontal	Align Horizontal
 AlignLeft	Align Left
@@ -18,6 +51,7 @@ SetName	Set Name
 VariableNoRecord	variable ^0 is not a record or NIL pointer
 VariableNotFound	variable ^0 not found
 VariableNotFoundIn	variable ^0 not found in ^1
+
 FormViews.StdViewDesc	standard Form view
 FormModels.StdModelDesc	standard Form model
 FormControllers.StdControllerDesc	standard Form controller

@@ -100,7 +100,7 @@ MODULE HostWindows;
 		cbValid: BOOLEAN;	(* clipboard contents is valid *)
 		mainActive: BOOLEAN;	(* main is active window *)
 		activating: BOOLEAN;	(* used for mouse window activation *)
-		actMod: Kernel.Module;
+		(* actMod: Kernel.Module; *)
 
 		font, info: WinApi.HANDLE;
 		statusH, alloc, total: INTEGER;
@@ -258,11 +258,14 @@ MODULE HostWindows;
 				INC(i); ch := loc.path[i]
 			END;
 			s1[j] := 0X;
-			IF ((CAP(s1[0]) = "M") & (CAP(s1[1]) = "O") & (CAP(s1[2]) = "D") & (s1[3] = 0X) OR
-				(CAP(s1[0]) = "D") & (CAP(s1[1]) = "O") & (CAP(s1[2]) = "C") & (CAP(s1[3]) = "U") & (s1[4] = 0X) OR
-				(CAP(s1[0]) = "R") & (CAP(s1[1]) = "S") & (CAP(s1[2]) = "R") & (CAP(s1[3]) = "C") & (s1[4] = 0X))
-				& (s2 # "") THEN
-				title := "("; Append(title, s2); Append(title, ")")
+			IF s2 # "" THEN
+				IF (CAP(s1[0]) = "M") & (CAP(s1[1]) = "O") & (CAP(s1[2]) = "D") & (s1[3] = 0X) THEN
+					title := "(" + s2 + ")"
+				ELSIF (CAP(s1[0])="D") & (CAP(s1[1])="O") & (CAP(s1[2])="C") & (CAP(s1[3])="U") & (s1[4] = 0X) THEN
+					title := "{" + s2 + "}"
+				ELSIF (CAP(s1[0])="R") & (CAP(s1[1])="S") & (CAP(s1[2])="R") & (CAP(s1[3])="C") & (s1[4] = 0X) THEN
+					title := "[" + s2 + "]"
+				END
 			END
 		ELSE
 		END;
@@ -342,7 +345,7 @@ MODULE HostWindows;
 		wnd := WinApi.SendMessageW(client, WinApi.WM_MDICREATE, 0, SYSTEM.ADR(m));
 		IF dir.background THEN
 			res := WinApi.SetWindowPos(
-				wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0, WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE)
+				wnd, WinApi.HWND_BOTTOM, 0, 0, 0, 0, WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE)
 		END;
 		IF ~(Windows.noResize IN w.flags) THEN
 (*
@@ -1097,7 +1100,7 @@ MODULE HostWindows;
 	END HandleKey;
 
 	PROCEDURE HandleChar (wnd: WinApi.HANDLE; wParam, lParam: INTEGER);
-		VAR w: Window; mod: SET; ch: CHAR;
+		VAR w: Window; mod: SET;
 	BEGIN
 		IF (wParam >= 20H) & (wParam # 7FH) THEN
 			w := ThisWindow(wnd); mod := KeyModifiers(lParam); w.used := TRUE;
@@ -1173,9 +1176,6 @@ MODULE HostWindows;
 			Dialog.Notify(0, 0, {guardCheck})
 		END
 	END ActivateWin;
-
-
-
 
 	PROCEDURE ActivateWindow* (w: Windows.Window; do: BOOLEAN);
 	BEGIN
@@ -1350,7 +1350,7 @@ MODULE HostWindows;
 			END;
 			IF tWindow # w THEN activating := TRUE END;
 			IF w = bgWindow THEN
-				res := WinApi.SetWindowPos(wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0,
+				res := WinApi.SetWindowPos(wnd, WinApi.HWND_BOTTOM, 0, 0, 0, 0,
 					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOREDRAW)
 			END;
 			Kernel.Try(ActivateWin, wnd, wParam, lParam);
@@ -1463,7 +1463,7 @@ MODULE HostWindows;
 		| WinApi.WM_NCACTIVATE:
 			w := ThisWindow(wnd);
 			IF (w = bgWindow) OR ((bgWindow # NIL) & (wParam MOD 65536 = WinApi.FALSE)) THEN
-				res := WinApi.SetWindowPos(bgWindow.wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0,
+				res := WinApi.SetWindowPos(bgWindow.wnd, WinApi.HWND_BOTTOM, 0, 0, 0, 0,
 					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOACTIVATE)
 			END;
 			style := BITS(WinApi.GetWindowLongW(wnd, -16));
@@ -1492,7 +1492,7 @@ MODULE HostWindows;
 		| WinApi.WM_WINDOWPOSCHANGED:
 			w := ThisWindow(wnd);
 			wp := SYSTEM.VAL(WinApi.WINDOWPOS, lParam);
-			IF (w = bgWindow) & (wp.hwndInsertAfter # 1 (* HWND_BOTTOM *)) THEN
+			IF (w = bgWindow) & (wp.hwndInsertAfter # WinApi.HWND_BOTTOM) THEN
 				res := WinApi.SetWindowPos(wnd, 1 (* HWND_BOTTOM *), 0, 0, 0, 0,
 					WinApi.SWP_NOSIZE + WinApi.SWP_NOMOVE + WinApi.SWP_NOACTIVATE)
 			END
@@ -1731,7 +1731,7 @@ MODULE HostWindows;
 		IF (w # NIL) & ~w.trapped THEN
 			w.trapped := TRUE;
 			IF w.frame # NIL THEN
-				tick.tick := WinApi.GetTickCount();
+				tick.tick := Services.Ticks();
 				w.ForwardCtrlMsg(tick)
 			END;
 			w.trapped := FALSE
@@ -1755,7 +1755,8 @@ MODULE HostWindows;
 *)
 			idleTraped := FALSE
 		END;
-		Services.actionHook.Step
+		Services.actionHook.Step;
+		Windows.dir.Update(NIL)
 	END Idle;
 
 	PROCEDURE ActivateMain* (do: BOOLEAN);
@@ -1889,7 +1890,7 @@ MODULE HostWindows;
 
 	PROCEDURE CreateMainWindows* (menuBar, winMenu: WinApi.HANDLE; Handler: WinApi.WNDPROC);
 		VAR res: INTEGER; class: WinApi.WNDCLASSW; ccs: WinApi.CLIENTCREATESTRUCT;
-			dc: WinApi.HANDLE; tm: WinApi.TEXTMETRICW; str: ARRAY 256 OF CHAR; ver: ARRAY 8 OF CHAR;
+			dc: WinApi.HANDLE; tm: WinApi.TEXTMETRICW;
 	BEGIN
 		(* init window classes *)
 		class.hCursor := WinApi.LoadCursorW(0, SYSTEM.VAL(WinApi.PtrWSTR, WinApi.IDC_ARROW));
@@ -1900,7 +1901,7 @@ MODULE HostWindows;
 		class.lpszMenuName := NIL;
 		class.lpszClassName := "Oberon App";
 		class.hbrBackground := 0; (* 12 + 1; *)	(* application workspace color *)
-		class.style := {3, 5};	(* doubleclicks, privat dc *)
+		class.style := WinApi.CS_VREDRAW + WinApi.CS_HREDRAW + WinApi.CS_DBLCLKS + WinApi.CS_OWNDC;
 		class.hInstance := instance;
 		class.lpfnWndProc := Handler;
 		class.cbClsExtra := 0;
@@ -1989,12 +1990,7 @@ MODULE HostWindows;
 		Dialog.MapString(byteKey, byteStr);
 
 		IF Dialog.appName = "BlackBox" THEN
-			str := Dialog.appName$;
-			ver := " x.y";
-			ver[1] := CHR(Dialog.version DIV 10 + ORD("0"));
-			ver[3] := CHR(Dialog.version MOD 10 + ORD("0"));
-			Append(str, ver);
-			Dialog.ShowStatus(str)
+			Dialog.ShowStatus(Dialog.appName + " " + Dialog.appVersion)
 		END;
 
 		HostMechanisms.InstallDropTarget(client, NIL)
@@ -2002,7 +1998,6 @@ MODULE HostWindows;
 
 	PROCEDURE Init;
 		VAR res: INTEGER; d: Directory; dc: WinApi.HANDLE;
-			Register: PROCEDURE(i: WinApi.HANDLE): INTEGER; p: WinApi.PtrWSTR;
 	BEGIN
 		instance := WinApi.GetModuleHandleW(NIL);
 		dc := WinApi.GetDC(0);

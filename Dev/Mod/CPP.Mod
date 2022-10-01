@@ -13,7 +13,7 @@ MODULE DevCPP;
 **)
 
 	IMPORT
-		DevCPM, DevCPT, DevCPB, DevCPS;
+		Strings, DevCPM, DevCPT, DevCPB, DevCPS;
 		
 	CONST
 		anchorVarPar = TRUE;
@@ -98,7 +98,6 @@ MODULE DevCPP;
 		userList: Elem;
 		recList: Elem;
 		hasReturn: BOOLEAN;
-		numUsafeVarPar, numFuncVarPar: INTEGER;
 		
 
 	PROCEDURE^ Type(VAR typ: DevCPT.Struct; VAR name: DevCPT.String);
@@ -109,7 +108,10 @@ MODULE DevCPP;
 	
 	PROCEDURE IncompleteType (typ: DevCPT.Struct): BOOLEAN;
 	BEGIN
-		IF typ.form = Pointer THEN typ := typ.BaseTyp END;
+		IF typ.form = Pointer THEN
+			IF typ = DevCPT.sysptrtyp THEN RETURN FALSE END;
+			typ := typ.BaseTyp
+		END;
 		RETURN (typ = DevCPT.undftyp) OR (typ.comp = Record) & (typ.BaseTyp = DevCPT.undftyp)
 	END IncompleteType;
 	
@@ -226,7 +228,7 @@ MODULE DevCPP;
 	BEGIN
 		u := userList; userList := NIL;
 		WHILE u # NIL DO
-			next := u.next; DevCPS.name := u.name^$; DevCPT.Find(DevCPS.name, u.base);
+			next := u.next; DevCPS.name := u.name$; DevCPT.Find(DevCPS.name, u.base);
 			IF u.base = NIL THEN DevCPM.Mark(0, u.pos)
 			ELSIF u.base.mode # Typ THEN DevCPM.Mark(72, u.pos)
 			ELSE u.next := userList; userList := u	(* reinsert *)
@@ -254,17 +256,17 @@ MODULE DevCPP;
 	END CheckForwardTypes;
 	
 	PROCEDURE CheckUnimpl (m: DevCPT.Object; typ: DevCPT.Struct; pos: INTEGER);
-		VAR obj: DevCPT.Object;
+		VAR obj: DevCPT.Object; res: INTEGER; n: ARRAY LEN(DevCPT.Name) OF CHAR;
 	BEGIN
 		IF m # NIL THEN
 			IF (m.mode = TProc) & (absAttr IN m.conval.setval) THEN
 				DevCPT.FindField(m.name^, typ, obj);
 				IF (obj = NIL) OR (obj.mode # TProc) OR (absAttr IN obj.conval.setval) THEN
 					DevCPM.Mark(192, pos);
-					DevCPM.LogWLn; DevCPM.LogWStr("  "); DevCPM.LogWStr(m.name^);
+					DevCPM.LogWLn; DevCPM.LogWStr("  "); Strings.Utf8ToString(m.name^, n, res); DevCPM.LogWStr(n);
 					DevCPM.LogWStr(" not implemented");
 					IF typ.strobj # NIL THEN
-						DevCPM.LogWStr(" in "); DevCPM.LogWStr(typ.strobj.name^)
+						DevCPM.LogWStr(" in "); Strings.Utf8ToString(typ.strobj.name^, n, res); DevCPM.LogWStr(n)
 					END
 				END
 			END;
@@ -379,7 +381,7 @@ MODULE DevCPP;
 	END CheckMark;
 
 	PROCEDURE CheckSysFlag (VAR sysflag: SHORTINT;
-										GetSF: PROCEDURE(id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT));
+										GetSF: PROCEDURE(IN id: ARRAY OF SHORTCHAR; num: SHORTINT; VAR flag: SHORTINT));
 		VAR x: DevCPT.Object; i: SHORTINT;
 	BEGIN
 		sysflag := 0;
@@ -399,7 +401,7 @@ MODULE DevCPP;
 						GetSF(DevCPS.name, 0, sysflag)
 					END
 				ELSE
-					GetSF(DevCPS.str^, 0, sysflag)
+					GetSF(DevCPS.str, 0, sysflag)
 				END;
 				DevCPS.Get(sym);
 				IF (sym = comma) OR (sym = plus) THEN DevCPS.Get(sym) END
@@ -409,7 +411,7 @@ MODULE DevCPP;
 	END CheckSysFlag;
 	
 	PROCEDURE Receiver(VAR mode, vis: BYTE; VAR name: DevCPT.Name; VAR typ, rec: DevCPT.Struct);
-		VAR obj: DevCPT.Object; tname: DevCPT.String;
+		VAR tname: DevCPT.String;
 	BEGIN typ := DevCPT.undftyp; rec := NIL; vis := 0;
 		IF sym = var THEN DevCPS.Get(sym); mode := VarPar;
 		ELSIF sym = in THEN DevCPS.Get(sym); mode := VarPar; vis := inPar	(* ??? *)
@@ -433,7 +435,7 @@ MODULE DevCPP;
 		VAR firstPar: DevCPT.Object; VAR resTyp: DevCPT.Struct; VAR name: DevCPT.String
 	);
 		VAR mode, vis: BYTE; sys: SHORTINT;
-				par, first, last, res, newPar, iidPar: DevCPT.Object; typ: DevCPT.Struct;
+				par, first, last, newPar, iidPar: DevCPT.Object; typ: DevCPT.Struct;
 	BEGIN
 		first := NIL; last := firstPar;
 		newPar := NIL; iidPar := NIL;
@@ -469,6 +471,7 @@ MODULE DevCPP;
 				END ;
 				CheckSym(colon); Type(typ, name);
 				IF mode # VarPar THEN CheckAlloc(typ, TRUE, DevCPM.errpos) END;
+				(* IN only allowed for records and arrays *)
 				IF (mode = VarPar) & (vis = inPar) & (typ.form # Undef) & (typ.form # Comp) & (typ.sysflag = 0) THEN err(177)
 				END;
 				(* typ.pbused is set when parameter type name is parsed *)
@@ -583,7 +586,7 @@ MODULE DevCPP;
 	END GetAttributes;
 	
 	PROCEDURE RecordType(VAR typ: DevCPT.Struct; attr: DevCPT.Object);
-		VAR fld, first, last, base: DevCPT.Object; r: Elem; ftyp: DevCPT.Struct; name: DevCPT.String;
+		VAR fld, first, last: DevCPT.Object; r: Elem; ftyp: DevCPT.Struct; name: DevCPT.String;
 	BEGIN typ := DevCPT.NewStr(Comp, Record); typ.BaseTyp := NIL;
 		CheckSysFlag(typ.sysflag, DevCPM.GetRecordSysFlag);
 		IF attr # NIL THEN
@@ -691,7 +694,7 @@ MODULE DevCPP;
 	END ArrayType;
 
 	PROCEDURE PointerType(VAR typ: DevCPT.Struct);
-		VAR id: DevCPT.Object; name: DevCPT.String;
+		VAR name: DevCPT.String;
 	BEGIN typ := DevCPT.NewStr(Pointer, Basic); CheckSysFlag(typ.sysflag, DevCPM.GetPointerSysFlag);
 		CheckSym(to);
 		Type(typ.BaseTyp, name);
@@ -841,6 +844,7 @@ MODULE DevCPP;
 									END
 								ELSE
 									proc := obj;
+									IF (x.left.readonly) & (proc.link.mode = VarPar) & (proc.link.vis = 0)  THEN err(76) END;
 									WHILE (proc.mnolev >= 0) & ~(newAttr IN proc.conval.setval) & (typ.BaseTyp # NIL) DO
 										(* find base method *)
 										typ := typ.BaseTyp; DevCPT.FindField(name, typ, proc);
@@ -957,7 +961,7 @@ MODULE DevCPP;
 	END Sets;
 	
 	PROCEDURE Factor(VAR x: DevCPT.Node);
-		VAR fpar, id: DevCPT.Object; apar: DevCPT.Node;
+		VAR id: DevCPT.Object;
 	BEGIN
 		IF sym < not THEN err(13);
 			REPEAT DevCPS.Get(sym) UNTIL sym >= lparen
@@ -1071,28 +1075,35 @@ MODULE DevCPP;
 			sys: SHORTINT;
 
 		PROCEDURE GetCode;
-			VAR ext: DevCPT.ConstExt; i, n, c: INTEGER; s: ARRAY 256 OF SHORTCHAR;
+			VAR ext: DevCPT.ConstExt; n, c, i: INTEGER; s: POINTER TO ARRAY OF SHORTCHAR;
+			
+			PROCEDURE EnsureLen(len: INTEGER);
+				VAR j: INTEGER; s2: POINTER TO ARRAY OF SHORTCHAR;
+			BEGIN
+				IF len > LEN(s) THEN	(* if overflow then increase size of array s *)
+					NEW(s2, LEN(s) * 2); FOR j := 0 TO n - 1 DO s2[j] := s[j] END; s := s2
+				END
+			END EnsureLen;
 		BEGIN
-			n := 0;
-			IF sym = string THEN
-				NEW(ext, DevCPS.intval);
-				WHILE DevCPS.str[n] # 0X DO ext[n+1] := DevCPS.str[n]; INC(n) END ;
-				ext^[0] := SHORT(CHR(n)); DevCPS.Get(sym);
-			ELSE
-				LOOP
-					IF sym = number THEN c := DevCPS.intval; INC(n);
-						IF (c < 0) OR (c > 255) OR (n = 255) THEN
-							err(64); c := 1; n := 1
-						END ;
-						DevCPS.Get(sym); s[n] := SHORT(CHR(c))
+			n := 0; NEW(s, 64);
+			LOOP
+				IF sym = number THEN c := DevCPS.intval; EnsureLen(n + 1);
+					IF (c < 0) OR (c > 255) OR (DevCPS.numtyp IN {real, real32, real64}) THEN
+						err(63); c := 1; n := 0
 					END ;
-					IF sym = comma THEN DevCPS.Get(sym)
-					ELSIF sym = number THEN err(comma)
-					ELSE s[0] := SHORT(CHR(n)); EXIT
-					END
-				END;
-				NEW(ext, n + 1); i := 0;
-				WHILE i <= n DO ext[i] := s[i]; INC(i) END;
+					DevCPS.Get(sym); s[n] := SHORT(CHR(c)); INC(n)
+				ELSIF sym = string THEN c := DevCPS.intval - 1 (*exclude 0X*); EnsureLen(n + c);
+					FOR i := 0 TO c - 1 DO s[n + i] := DevCPS.str[i] END;
+					DevCPS.Get(sym); INC(n, c)
+				END ;
+				IF sym = comma THEN DevCPS.Get(sym)
+				ELSIF sym = number THEN err(comma)
+				ELSE EXIT
+				END
+			END;
+			IF n # 0 THEN NEW(ext, n); i := 0;
+				WHILE i < n DO ext[i] := s[i]; INC(i) END;
+			ELSE ext := NIL
 			END;
 			proc.conval.ext := ext;
 			INCL(proc.conval.setval, hasBody)
@@ -1134,7 +1145,7 @@ MODULE DevCPP;
 		END Body;
 
 		PROCEDURE TProcDecl;
-			VAR baseProc, o, bo: DevCPT.Object;
+			VAR baseProc, o: DevCPT.Object;
 				objTyp, recTyp: DevCPT.Struct;
 				objMode, objVis: BYTE;
 				objName: DevCPT.Name;
@@ -1244,7 +1255,7 @@ MODULE DevCPP;
 	END ProcedureDeclaration;
 
 	PROCEDURE CaseLabelList(VAR lab, root: DevCPT.Node; LabelForm: SHORTINT; VAR min, max: INTEGER);
-		VAR x, y, lastlab: DevCPT.Node; i, f: SHORTINT; xval, yval: INTEGER;
+		VAR x, y: DevCPT.Node; f: SHORTINT; xval, yval: INTEGER;
 		
 		PROCEDURE Insert(VAR n: DevCPT.Node);	(* build binary tree of label ranges *)	(* !!! *)
 		BEGIN
@@ -1256,7 +1267,7 @@ MODULE DevCPP;
 			END
 		END Insert;
 		
-	BEGIN lab := NIL; lastlab := NIL;
+	BEGIN lab := NIL;
 		LOOP ConstExpression(x); f := x.typ.form;
 			IF f IN {Int8..Int32} + charSet THEN  xval := x.conval.intval
 			ELSE err(61); xval := 1
@@ -1292,8 +1303,8 @@ MODULE DevCPP;
 	END CaseLabelList;
 	
 	PROCEDURE StatSeq(VAR stat: DevCPT.Node);
-		VAR fpar, id, t, obj: DevCPT.Object; idtyp: DevCPT.Struct; e: BOOLEAN;
-				s, x, y, z, apar, last, lastif, pre, lastp: DevCPT.Node; pos, p: INTEGER; name: DevCPT.Name;
+		VAR fpar, id, t: DevCPT.Object; idtyp: DevCPT.Struct; e: BOOLEAN;
+				s, x, y, z, apar, last, lastif, pre, lastp: DevCPT.Node; pos, p: INTEGER;
 
 		PROCEDURE CasePart(VAR x: DevCPT.Node);
 			VAR low, high: INTEGER; e: BOOLEAN; cases, lab, y, lastcase, root: DevCPT.Node; 
@@ -1509,7 +1520,7 @@ MODULE DevCPP;
 						err(eql); DevCPS.Get(sym); ConstExpression(x)
 					ELSE err(eql); x := DevCPB.NewIntConst(1)
 					END ;
-					obj.mode := Con; obj.typ := x.typ; obj.conval := x.conval; (* ConstDesc ist not copied *)
+					obj.mode := Con; obj.typ := x.typ; obj.conval := x.conval; (* ConstDesc is not copied *)
 					CheckSym(semicolon)
 				END
 			END ;
@@ -1533,7 +1544,7 @@ MODULE DevCPP;
 						typ := obj.typ.BaseTyp;
 						IF (typ # NIL) & (typ.comp = Record) & (typ.strobj = NIL) THEN
 							(* pointer to unnamed record: name record as "pointerName^" *)
-							rname := obj.name^$; i := 0;
+							rname := obj.name$; i := 0;
 							WHILE rname[i] # 0X DO INC(i) END;
 							rname[i] := "^"; rname[i+1] := 0X;
 							DevCPT.Insert(rname, o); o.mode := Typ; o.typ := typ; typ.strobj := o
@@ -1602,7 +1613,7 @@ MODULE DevCPP;
 	PROCEDURE Module*(VAR prog: DevCPT.Node);
 		VAR impName, aliasName: DevCPT.Name;
 				procdec, statseq: DevCPT.Node;
-				c, sf: INTEGER; done: BOOLEAN;
+				c: INTEGER; done: BOOLEAN;
 	BEGIN
 		DevCPS.Init; LoopLevel := 0; level := 0; DevCPS.Get(sym);
 		IF sym = module THEN DevCPS.Get(sym) ELSE err(16) END ;
@@ -1614,7 +1625,7 @@ MODULE DevCPP;
 				IF sym = eql THEN DevCPS.Get(sym)
 				ELSE INCL(DevCPM.options, DevCPM.noCode)
 				END;
-				IF sym = string THEN DevCPT.libName := DevCPS.str^$; DevCPS.Get(sym)
+				IF sym = string THEN DevCPT.libName := DevCPS.str$; DevCPS.Get(sym)
 				ELSE err(string)
 				END;
 				CheckSym(rbrak)

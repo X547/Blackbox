@@ -21,7 +21,7 @@ MODULE StdViewSizer;
 			w*, h*: REAL;
 			proportional*, fixedW, fixedH: BOOLEAN;
 			unit, scaleW, scaleH, lastChanged: INTEGER;
-			unitText: ARRAY 6 OF CHAR;
+			unitText: ARRAY 12 OF CHAR;
 			view: Views.View;
 			container: Containers.Controller
 		END;
@@ -30,8 +30,8 @@ MODULE StdViewSizer;
 		VAR pref: Properties.ResizePref;
 	BEGIN
 		IF (v # NIL) & (v.context # NIL) THEN
-			IF Dialog.metricSystem THEN size.unit := Ports.mm * 10; size.unitText := "cm"
-			ELSE size.unit := Ports.inch; size.unitText := "inch"
+			IF Dialog.metricSystem THEN size.unit := Ports.mm * 10; size.unitText := "#Std:cm"
+			ELSE size.unit := Ports.inch; size.unitText := "#Std:inch"
 			END;
 			size.view := v; size.container := c;
 			Services.GetTypeName(v, size.typeName);

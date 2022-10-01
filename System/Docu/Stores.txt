@@ -358,13 +358,13 @@ PROCEDURE (s: Store) Externalize- (VAR wr: Writer)
 NEW, EMPTY
 (For backward compatibility, this method is actually still EXTENSIBLE. This may change in the future.)
 Write the contents of s to writer wr. Externalize must write the same (amount of) data as is read by the corresponding Internalize procedure.
-Externalize ist called locally.
+Externalize is called locally.
 Externalize is extended by various persistent object types, e.g., models, views, and controllers.
 
 PROCEDURE (s: Store) ExternalizeAs- (VAR s1: Store)
 NEW, EMPTY
 Before a store's Externalize procedure is called, its ExternalizeAs procedure is called, which gives the store the opportunity to denote another store that should be externalized in its place (a "proxy"). It is also possible to set s1 to NIL, which means that the store should not be externalized at all. This is used e.g. for compiler error markers, which are never stored.
-ExternalizeAs ist called locally.
+ExternalizeAs is called locally.
 
 Pre
 s1 = s	guaranteed

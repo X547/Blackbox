@@ -114,7 +114,7 @@ MODULE DevCPL486;
 	END MakeConst;
 
 	PROCEDURE AllocConst* (VAR x: Item; con: DevCPT.Const; form: BYTE);
-		VAR r: REAL; short: SHORTREAL; c: DevCPT.Const; i: INTEGER;
+		VAR r: REAL; short: SHORTREAL;
 	BEGIN
 		IF form IN {Real32, Real64} THEN
 			r := con.realval;
@@ -145,7 +145,7 @@ MODULE DevCPL486;
 	(*******************************************************)
 	
 	PROCEDURE SetLabel* (VAR L: Label);
-		VAR link, typ, disp, x: INTEGER; c: SHORTCHAR;
+		VAR link, typ, disp, x: INTEGER;
 	BEGIN
 		ASSERT(L <= 0); link := -L;
 		WHILE link # 0 DO
@@ -344,7 +344,7 @@ MODULE DevCPL486;
 	END GenMove;
 	
 	PROCEDURE GenExtMove* (VAR from, to: Item);
-		VAR w, op: INTEGER;
+		VAR op: INTEGER;
 	BEGIN
 		ASSERT(from.mode # Con);
 		IF from.form IN {Byte, Char8, Char16} THEN op := 0B6H (* MOVZX *)

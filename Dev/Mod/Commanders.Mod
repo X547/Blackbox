@@ -12,7 +12,7 @@ MODULE DevCommanders;
 **)
 
 	IMPORT
-		Kernel, Fonts, Ports, Stores, Models, Views, Controllers, Properties, Dialog, Controls,
+		Kernel, Strings, Fonts, Ports, Stores, Models, Views, Controllers, Properties, Dialog, Controls,
 		TextModels, TextSetters, TextMappers, Services, StdLog;
 
 	CONST
@@ -95,15 +95,14 @@ MODULE DevCommanders;
 
 	(* auxilliary procedures *)
 
-	PROCEDURE IsIdent (VAR s: ARRAY OF CHAR): BOOLEAN;
+	PROCEDURE IsIdent (IN s: ARRAY OF CHAR): BOOLEAN;
 		VAR i: INTEGER; ch: CHAR;
 	BEGIN
 		ch := s[0]; i := 1;
-		IF ("A" <= CAP(ch)) & (CAP(ch) <= "Z") OR (ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_") THEN
+		IF Strings.IsIdentStart(ch) THEN
 			REPEAT
 				ch := s[i]; INC(i)
-			UNTIL ~( ("0" <= ch) & (ch <= "9") OR ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-						OR (ch >= 0C0X) & (ch # "×") & (ch # "÷") & (ch <= 0FFX) OR (ch = "_") );
+			UNTIL ~Strings.IsIdent(ch);
 			RETURN (ch = 0X) & (i <= LEN(Kernel.Name))
 		ELSE
 			RETURN FALSE
@@ -125,57 +124,80 @@ MODULE DevCommanders;
 		END
 	END Scan;
 
-	PROCEDURE GetParExtend (r: TextModels.Reader; VAR end: INTEGER);
-		VAR v, v1: Views.View;
+	PROCEDURE ScanLongString(rd: TextModels.Reader; OUT cmd: POINTER TO ARRAY OF CHAR);
+		VAR  ch: CHAR; first, last, i: INTEGER;
 	BEGIN
-		REPEAT r.ReadView(v); 
-			IF v # NIL THEN 
-				v1 := v;
-				v := Properties.ThisType(v1, "DevCommanders.View") ;
-				IF v = NIL THEN v := Properties.ThisType(v1, "DevCommanders.EndView")  END
+		rd.ReadChar(ch);
+		WHILE ~rd.eot & (ch <= " ") DO rd.ReadChar(ch) END;
+		IF ~rd.eot & (ch = '"') THEN (* starts with a double quote *)
+			first := rd.Pos(); rd.ReadChar(ch);
+			WHILE ~rd.eot & (ch # '"') DO rd.ReadChar(ch) END;
+			IF ~rd.eot THEN (* ends with a double quote *)
+				last := rd.Pos(); NEW(cmd, last - first);
+				rd.SetPos(first); rd.ReadChar(ch); i := 0;
+				WHILE ch # '"' DO cmd[i] := ch; INC(i); rd.ReadChar(ch) END;
+				cmd[i] := 0X; rd.Read
 			END
-		UNTIL r.eot OR (v # NIL);
-		end := r.Pos(); IF ~r.eot THEN DEC(end) END
+		END
+	END ScanLongString;
+
+	PROCEDURE GetParExtend (rd: TextModels.Reader; OUT end: INTEGER);
+		VAR v: Views.View;
+	BEGIN
+		IF rd.view # NIL THEN v := rd.view ELSE rd.ReadView(v) END;
+		WHILE ~rd.eot 
+				& (Properties.ThisType(v, "DevCommanders.View") = NIL) 
+				& (Properties.ThisType(v, "DevCommanders.EndView") = NIL)  DO
+			rd.ReadView(v)
+		END;
+		end := rd.Pos(); IF ~rd.eot THEN DEC(end) END
 	END GetParExtend;
 
-	PROCEDURE Unload (cmd: Dialog.String);
+	PROCEDURE Unload (IN cmd: Dialog.String);
 		VAR modname: Kernel.Name; str: Dialog.String; i: INTEGER; ch: CHAR; mod: Kernel.Module;
 	BEGIN
 		i := 0; ch := cmd[0];
-		WHILE (ch # 0X) & (ch # ".") DO modname[i] := SHORT(ch); INC(i); ch := cmd[i] END;
+		WHILE (ch # 0X) & (ch # ".") DO modname[i] := ch; INC(i); ch := cmd[i] END;
 		modname[i] := 0X;
 		mod := Kernel.ThisLoadedMod(modname);
 		IF mod # NIL THEN
 			Kernel.UnloadMod(mod);
 			IF mod.refcnt < 0 THEN
-				str := modname$;
-				Dialog.MapParamString("#Dev:Unloaded", str, "", "", str);
+				Dialog.MapParamString("#Dev:Unloaded", modname, "", "", str);
 				StdLog.String(str); StdLog.Ln;
 				Controls.Relink
 			ELSE
-				str := modname$;
-				Dialog.ShowParamMsg("#Dev:UnloadingFailed", str, "", "")
+				Dialog.ShowParamMsg("#Dev:UnloadingFailed", modname, "", "")
 			END
 		END
 	END Unload;
 
 	PROCEDURE Execute (t: TextModels.Model; pos: INTEGER; VAR end: INTEGER; unload: BOOLEAN);
-		VAR s: Scanner; beg, res: INTEGER; cmd: Dialog.String;
+		VAR s: Scanner; beg, res: INTEGER; cmd: POINTER TO ARRAY OF CHAR;
 	BEGIN
-		end := t.Length();
+		cmd := NIL;
 		s.s.ConnectTo(t); s.s.SetPos(pos); s.s.SetOpts({TextMappers.returnViews});
 		Scan(s); ASSERT(s.s.type = execMark, 100);
 		Scan(s);
-		IF s.s.type IN {qualident, TextMappers.string} THEN
-			beg := s.s.Pos() - 1; GetParExtend(s.s.rider, end);
+		IF s.s.type = qualident THEN
+			NEW(cmd, LEN(s.qualident$) + 1); cmd^ := s.qualident$
+		ELSIF s.s.type = TextMappers.string THEN
+			NEW(cmd, LEN(s.s.string$) + 1); cmd^ := s.s.string$
+		ELSIF s.s.type = TextMappers.invalid THEN
+			s.s.SetPos(pos + 1);
+			ScanLongString(s.s.rider, cmd);
+		END;
+		IF cmd # NIL THEN
+			beg := s.s.Pos(); IF ~s.s.rider.eot THEN DEC(beg) END; GetParExtend(s.s.rider, end);
 			ASSERT(~cleanerInstalled, 101);
 			Kernel.PushTrapCleaner(cleaner); cleanerInstalled := TRUE;
 			NEW(par); par.text := t; par.beg := beg; par.end := end;
-			IF s.s.type = qualident THEN cmd := s.qualident$ ELSE cmd := s.s.string$ END;
-			IF unload (* & (s.s.type = qualident)*) THEN Unload(cmd) END;
+			IF unload THEN Unload(cmd$) END;
 			Dialog.Call(cmd, " ",  res);
 			par := NIL;
 			Kernel.PopTrapCleaner(cleaner); cleanerInstalled := FALSE;
+		ELSE
+			Dialog.ShowStatus("#System:SyntaxError")
 		END
 	END Execute;
 
@@ -281,7 +303,7 @@ MODULE DevCommanders;
 	PROCEDURE (v: StdEndView) Restore (f: Views.Frame; l, t, r, b: INTEGER);
 		CONST u = point;
 		VAR c: Models.Context; a: TextModels.Attributes; font: Fonts.Font; color: Ports.Color;
-			size, w, asc, dsc, fw: INTEGER; s: ARRAY 2 OF CHAR;
+			size, asc, dsc, fw: INTEGER;
 			points: ARRAY 3 OF Ports.Point;
 	BEGIN
 		ASSERT(v.context # NIL, 20);

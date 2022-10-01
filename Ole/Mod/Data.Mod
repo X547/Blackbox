@@ -505,6 +505,14 @@ MODULE OleData;
 	PROCEDURE (f: MemFile) Close;
 	END Close;
 	
+	PROCEDURE (f: MemFile) Closed(): BOOLEAN;
+	BEGIN RETURN FALSE
+	END Closed;
+	
+	PROCEDURE (f: MemFile) Shared(): BOOLEAN;
+	BEGIN RETURN FALSE
+	END Shared;
+	
 	PROCEDURE (f: MemFile) Flush;
 	END Flush;
 	

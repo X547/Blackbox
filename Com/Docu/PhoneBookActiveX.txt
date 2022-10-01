@@ -1,5 +1,4 @@
-ComPhoneBookActiveX Example
-
+ComPhoneBookActiveX Example
 In this example a simple ActiveX control is implemented. The control offers the same functionality as the phone book in the ComPhoneBook example, but in this example, clients communicate through a dispatch interface. The control will be linked into a DLL and can be used as an ActiveX control from any client which properly supports the ActiveX standard.
 
 The dispatch interface also has to be described in a MIDL definition. This definition is stored in file Phone.idl and shown below:

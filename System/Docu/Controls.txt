@@ -74,7 +74,7 @@ DEFINITION Controls;
 
 	VAR
 		dir-, stdDir-: Directory;
-		par-: Views.View;
+		par-: Control;
 
 	PROCEDURE Notify (c: Control; f: Views.Frame; op, from, to: INTEGER);
 	PROCEDURE OpenLink (c: Control; p: Prop);
@@ -127,11 +127,12 @@ link
 	This is the name of a global variable, to which the control is linked, e.g.,
 	TextCmds.find.replace.
 label
-	This is the displayed string.
-	(not applicable to (text, date, time and color) fields, list boxes, selection boxes, combo boxes)
-	A "&" character indicates which character of the label should be underlined
-	(For the keyboard shortcut. This is a Windows feature, and not available on Mac OS).
-	If you want a "&" to appear, you should write a "&&".
+	This is the displayed name of the control and, optionally, serves to define the keyboard shortcut.
+	The keyboard shortcut must be marked by a preceding "&" character.
+	It will be underlined in the displayed name.
+	If you want "&" to appear in the displayed name, use the escape sequence "&&".
+	Controls that do not have a displayed name, for example text fields, use this property only for defining
+	the keyboard shortcut.
 guard
 	This optional command name denotes a guard procedure which allows to disable/enable a
 	control selectively, and to set the undef and readOnly states as well.
@@ -140,14 +141,13 @@ notifier
 	whenever the value of a control was changed interactively.
 light font
 	A field may either be displayed in the standard font for this purpose, or in a more
-	discreet ("light") font. On some platforms, this property may be interpreted only in fields
-	and captions.
+	discreet ("light") font. On some platforms, this property may be interpreted only in fields and captions.
 
 
 These properties, as well as further control-specific properties (see below) can be set interactively using a suitable tool (-> DevInspector), or programmatically using the Properties.SetMsg.
 
 Command Button
-Pressing a command button invokes a parameterless exported Component Pascal procedure. A command button is either linked to a parameterless exported procedure. It can be either a constant (a normal procedure) or a procedure variable.
+Pressing a command button (also called a push button) invokes the linked BlackBox "Command". A Command is frequently an exported parameterless Component Pascal procedure, but it may be any sequence of procedure calls that comply with the "Command" syntax described in the Docu for StdInterpreter. The individual procedures called may be either constant (or normal) procedures, or procedure variables.
 
 Additional properties:
 default	The button is activated when the user presses return or enter.
@@ -188,8 +188,9 @@ multi line	The field linked to ARRAY n OF CHAR may display several lines.
 	A carriage return character is accepted on input.
 password	Don't display the characters that have been typed in.
 
+
 UpDownField
-The UpDownField is a special text field linked to a BYTE, SHORTINT, INTEGER or LONGINT variable. The value of the integer can be incremented and decremented through arrows.
+The UpDownField is a special text field linked to a BYTE, SHORTINT or INTEGER variable. The value of the integer can be incremented and decremented through arrows, or by using the mouse wheel. If the <Ctrl> key is depressed the value is multiplied or divided by 10 rather than being incremented or decremented by 1. If the <Shift> key is depressed the value is set to the maximum or minimum.
 
 
 DateField
@@ -410,7 +411,7 @@ link: Dialog.String
 Name of the field or procedure to which control is linked, e.g., "TextCmds.find.replace".
 
 label: Dialog.String
-String label of the control. Ignored for fields, list boxes, selection boxes, combo boxes and tree controls.
+Displayed name and keyboard shortcut of the control.
 
 guard: Dialog.String
 Optional name of guard command.
@@ -472,10 +473,10 @@ PROCEDURE  DepositCheckBox
 Allocate a new check box using dir.NewCheckBox and deposit it.
 
 PROCEDURE  DepositRadioButton
-Allocate a new command button using dir.NewPushButton and deposit it.
+Allocate a new radio button using dir.NewRadioButton and deposit it.
 
 PROCEDURE  DepositListBox
-Allocate a new radio button using dir.NewRadioButton and deposit it.
+Allocate a new list box using dir.NewListBox and deposit it.
 
 PROCEDURE  DepositSelectionBox
 Allocate a new selection box using dir.NewSelectionBox and deposit it.
@@ -487,16 +488,16 @@ PROCEDURE  DepositUpDownField
 Allocate a new up-down-field using dir.NewUpDownField and deposit it.
 
 PROCEDURE  DepositDateField
-Allocate a new field using dir.NewDateField and deposit it.
+Allocate a new date field using dir.NewDateField and deposit it.
 
 PROCEDURE  DepositTimeField
-Allocate a new field using dir.NewTimeField and deposit it.
+Allocate a new time field using dir.NewTimeField and deposit it.
 
 PROCEDURE DepositTreeControl
 Allocate a new tree control using dir.NewTreeControl and deposit it.
 
 PROCEDURE  DepositColorField
-Allocate a new field using dir.NewColorField and deposit it.
+Allocate a new color field using dir.NewColorField and deposit it.
 
 PROCEDURE  DepositComboBox
 Allocate a new combo box using dir.NewComboBox and deposit it.

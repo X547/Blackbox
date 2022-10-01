@@ -78,7 +78,10 @@ MODULE TextMappers;
 
 	PROCEDURE Get (VAR s: Scanner; OUT ch: CHAR);
 	BEGIN
-		s.rider.ReadChar(ch)
+		s.rider.ReadChar(ch);
+		IF ({returnViews, maskViews} * s.opts = {returnViews}) & (s.rider.view # NIL) THEN
+			ch := VIEW; s.rider.char := VIEW
+		END
 	END Get;
 
 	PROCEDURE Real (VAR s: Scanner);
@@ -176,34 +179,36 @@ MODULE TextMappers;
 	END Cardinal;
 
 	PROCEDURE Set (VAR s: Scanner);
-		VAR n, m: INTEGER; ch: CHAR;
+		VAR n, m, start: INTEGER; ch: CHAR;
 	BEGIN
-		s.type := set; Get(s, ch); s.Skip(ch); s.set := {};
+		s.type := set; start := s.start; Get(s, ch); s.Skip(ch); s.set := {};
 		WHILE ("0" <= ch) & (ch <= "9") & (s.type = set) DO
 			Cardinal(s, n); s.Skip(ch);
 			IF (MIN(SET) <= n) & (n <= MAX(SET)) THEN
 				INCL(s.set, n);
-				IF ch = "," THEN
-					Get(s, ch); s.Skip(ch)
-				ELSIF ch = "." THEN
+				IF ch = "." THEN
 					Get(s, ch);
 					IF ch = "." THEN
 						Get(s, ch); s.Skip(ch); Cardinal(s, m); s.Skip(ch);
-						IF ch = "," THEN Get(s, ch); s.Skip(ch) END;
 						IF (n <= m) & (m <= MAX(SET)) THEN
 							WHILE m > n DO INCL(s.set, m); DEC(m) END
 						ELSE s.type := invalid
 						END
 					ELSE s.type := invalid
 					END
+				END;
+				IF (s.type = set) & (ch = ",") THEN Get(s, ch); s.Skip(ch);
+					IF ch = "}" THEN s.type := invalid END
+				ELSIF ch # "}" THEN s.type := invalid
 				END
 			ELSE s.type := invalid
 			END
 		END;
 		IF s.type = set THEN
-			s.Skip(ch);
 			IF ch = "}" THEN Get(s, ch) ELSE s.type := invalid END
-		END
+		ELSE s.type := invalid
+		END;
+		s.start := start
 	END Set;
 
 	PROCEDURE Boolean (VAR s: Scanner);
@@ -226,21 +231,12 @@ MODULE TextMappers;
 		s.type := string; s.len := 0; ch := s.rider.char; max := LEN(s.string);
 		REPEAT
 			s.string[s.len] := ch; INC(s.len); Get(s, ch)
-		UNTIL
-			~(	("0" <= ch) & (ch <= "9")
-			  OR ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-			  OR (0C0X <= ch) & (ch <= 0FFX) & (ch # 0D7X) & (ch # 0F7X)
-			  OR acceptUnderscores & (ch = "_"))
-		OR (s.len = max);
+		UNTIL ~(Strings.IsIdent(ch) & (ch # "_") OR acceptUnderscores & (ch = "_")) OR (s.len = max);
 		IF (returnQualIdents IN s.opts) & (ch = ".") & (s.len < max) THEN
 			REPEAT
 				s.string[s.len] := ch; INC(s.len); Get(s, ch)
 			UNTIL
-			~(	("0" <= ch) & (ch <= "9")
-			  OR ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-			  OR (0C0X <= ch) & (ch <= 0FFX) & (ch # 0D7X) & (ch # 0F7X)
-			  OR acceptUnderscores & (ch = "_") )
-			OR (s.len = max)
+			~(Strings.IsIdent(ch) & (ch # "_") OR acceptUnderscores & (ch = "_")) OR (s.len = max)
 		END;
 		IF s.len = max THEN DEC(s.len); s.type := invalid END;	(* ident too long *)
 		s.string[s.len] := 0X
@@ -367,22 +363,25 @@ MODULE TextMappers;
 			ELSIF sign THEN s.type := char;	(* return prefetched sign w/o trailing number *)
 				s.string[0] := s.char; s.string[1] := 0X
 			ELSE
-				CASE ch OF
-				| "A" .. "Z", "a" .. "z", 0C0X .. 0D6X, 0D8X .. 0F6X, 0F8X .. 0FFX: Name(s)
-				| '"': DoubleQuotedString(s)
-				| "'": SingleQuotedString(s)
-				| TAB: s.type := tab; Get(s, ch)
-				| LINE: s.type := line; Get(s, ch)
-				| PARA: s.type := para; Get(s, ch)
-				| VIEW:
-					IF s.rider.view # NIL THEN View(s) ELSE Char(s) END
-				| "{":
-					IF interpretSets IN s.opts THEN Set(s) ELSE Char(s) END
-				| "$":
-					IF interpretBools IN s.opts THEN Boolean(s) ELSE Char(s) END
-				| "_":
-					IF acceptUnderscores THEN Name(s) ELSE Char(s) END
-				ELSE Char(s)
+				IF Strings.IsAlpha(ch) THEN
+					Name(s)
+				ELSE
+					CASE ch OF
+					| '"': DoubleQuotedString(s)
+					| "'": SingleQuotedString(s)
+					| TAB: s.type := tab; Get(s, ch)
+					| LINE: s.type := line; Get(s, ch)
+					| PARA: s.type := para; Get(s, ch)
+					| VIEW:
+						IF s.rider.view # NIL THEN View(s) ELSE Char(s) END
+					| "{":
+						IF interpretSets IN s.opts THEN Set(s) ELSE Char(s) END
+					| "$":
+						IF interpretBools IN s.opts THEN Boolean(s) ELSE Char(s) END
+					| "_":
+						IF acceptUnderscores THEN Name(s) ELSE Char(s) END
+					ELSE Char(s)
+					END
 				END
 			END
 		END
@@ -395,24 +394,15 @@ MODULE TextMappers;
 		VAR i: INTEGER; ch: CHAR;
 	BEGIN
 		ch := s[0]; i := 1;
-		IF ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-		OR (0C0X <= ch) & (ch <= 0FFX) & (ch # 0D0X) & (ch # 0D7X) & (ch # 0F7X) THEN
+		IF Strings.IsIdentStart(ch) THEN
 			REPEAT
 				ch := s[i]; INC(i)
-			UNTIL
-				~(	("0" <= ch) & (ch <= "9")
-				  OR ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-				  OR (0C0X <= ch) & (ch <= 0FFX) & (ch # 0D0X) & (ch # 0D7X) & (ch # 0F7X)
-				  OR (ch = "_") );
+			UNTIL ~ Strings.IsIdent(ch);
 			IF ch = "." THEN
 				INC(i);
 				REPEAT
 					ch := s[i]; INC(i)
-				UNTIL
-					~(	("0" <= ch) & (ch <= "9")
-					  OR ("A" <= CAP(ch)) & (CAP(ch) <= "Z")
-					  OR (0C0X <= ch) & (ch <= 0FFX) & (ch # 0D0X) & (ch # 0D7X) & (ch # 0F7X)
-					  OR (ch = "_") );
+				UNTIL ~ Strings.IsIdent(ch);
 				RETURN ch = 0X
 			ELSE
 				RETURN FALSE
@@ -452,12 +442,12 @@ MODULE TextMappers;
 
 	(** Formatter **)
 
-	PROCEDURE ^ (VAR f: Formatter) SetPos* (pos: INTEGER), NEW;
-	PROCEDURE ^ (VAR f: Formatter) WriteIntForm* (x: LONGINT;
+	PROCEDURE ^ (IN f: Formatter) SetPos* (pos: INTEGER), NEW;
+	PROCEDURE ^ (IN f: Formatter) WriteIntForm* (x: LONGINT;
 														base, minWidth: INTEGER; fillCh: CHAR; showBase: BOOLEAN), NEW;
-	PROCEDURE ^ (VAR f: Formatter) WriteRealForm* (x: REAL;
+	PROCEDURE ^ (IN f: Formatter) WriteRealForm* (x: REAL;
 														precision, minW, expW: INTEGER; fillCh: CHAR), NEW;
-	PROCEDURE ^ (VAR f: Formatter) WriteViewForm* (v: Views.View; w, h: INTEGER), NEW;
+	PROCEDURE ^ (IN f: Formatter) WriteViewForm* (v: Views.View; w, h: INTEGER), NEW;
 
 
 	PROCEDURE (VAR f: Formatter) ConnectTo* (text: TextModels.Model), NEW;
@@ -469,18 +459,18 @@ MODULE TextMappers;
 		END
 	END ConnectTo;
 
-	PROCEDURE (VAR f: Formatter) SetPos* (pos: INTEGER), NEW;
+	PROCEDURE (IN f: Formatter) SetPos* (pos: INTEGER), NEW;
 	BEGIN
 		f.rider.SetPos(pos)
 	END SetPos;
 
-	PROCEDURE (VAR f: Formatter) Pos* (): INTEGER, NEW;
+	PROCEDURE (IN f: Formatter) Pos* (): INTEGER, NEW;
 	BEGIN
 		RETURN f.rider.Pos()
 	END Pos;
 
 
-	PROCEDURE (VAR f: Formatter) WriteChar* (x: CHAR), NEW;
+	PROCEDURE (IN f: Formatter) WriteChar* (x: CHAR), NEW;
 	BEGIN
 		IF (x >= " ") & (x # 7FX) THEN
 			f.rider.WriteChar(x)
@@ -491,74 +481,62 @@ MODULE TextMappers;
 		END
 	END WriteChar;
 
-	PROCEDURE (VAR f: Formatter) WriteInt* (x: LONGINT), NEW;
+	PROCEDURE (IN f: Formatter) WriteInt* (x: LONGINT), NEW;
 	BEGIN
 		f.WriteIntForm(x, decimal, 0, TextModels.digitspace, hideBase)
 	END WriteInt;
 
-	PROCEDURE (VAR f: Formatter) WriteSString* (x: ARRAY OF SHORTCHAR), NEW;
+	PROCEDURE (IN f: Formatter) WriteSString* (x: ARRAY OF SHORTCHAR), NEW;
 		VAR i: INTEGER;
 	BEGIN
 		i := 0; WHILE x[i] # 0X DO f.WriteChar(x[i]); INC(i) END
 	END WriteSString;
 
-	PROCEDURE (VAR f: Formatter) WriteString* (x: ARRAY OF CHAR), NEW;
+	PROCEDURE (IN f: Formatter) WriteString* (x: ARRAY OF CHAR), NEW;
 		VAR i: INTEGER;
 	BEGIN
 		i := 0; WHILE x[i] # 0X DO f.WriteChar(x[i]); INC(i) END
 	END WriteString;
 
-	PROCEDURE (VAR f: Formatter) WriteReal* (x: REAL), NEW;
+	PROCEDURE (IN f: Formatter) WriteReal* (x: REAL), NEW;
 		VAR m: ARRAY 256 OF CHAR;
 	BEGIN
 		Strings.RealToString(x, m); f.WriteString(m)
 	END WriteReal;
 
-	PROCEDURE (VAR f: Formatter) WriteBool* (x: BOOLEAN), NEW;
+	PROCEDURE (IN f: Formatter) WriteBool* (x: BOOLEAN), NEW;
 	BEGIN
 		IF x THEN f.WriteString("$TRUE") ELSE f.WriteString("$FALSE") END
 	END WriteBool;
 
-	PROCEDURE (VAR f: Formatter) WriteSet* (x: SET), NEW;
-		VAR i: INTEGER;
+	PROCEDURE (IN f: Formatter) WriteSet* (x: SET), NEW;
+		VAR str: ARRAY 128 OF CHAR;
 	BEGIN
-		f.WriteChar("{"); i := MIN(SET);
-		WHILE x # {} DO
-			IF i IN x THEN f.WriteInt(i); EXCL(x, i);
-				IF (i + 2 <= MAX(SET)) & (i+1 IN x) & (i+2 IN x) THEN f.WriteString("..");
-					x := x - {i+1, i+2}; INC(i, 3);
-					WHILE (i <= MAX(SET)) & (i IN x) DO EXCL(x, i); INC(i) END;
-					f.WriteInt(i-1)
-				END;
-				IF x # {} THEN f.WriteString(", ") END
-			END;
-			INC(i)
-		END;
-		f.WriteChar("}")
+		Strings.SetToString(x, str); f.WriteString(str)
 	END WriteSet;
 
-	PROCEDURE (VAR f: Formatter) WriteTab*, NEW;
+	PROCEDURE (IN f: Formatter) WriteTab*, NEW;
 	BEGIN
 		f.rider.WriteChar(TAB)
 	END WriteTab;
 
-	PROCEDURE (VAR f: Formatter) WriteLn*, NEW;
+	PROCEDURE (IN f: Formatter) WriteLn*, NEW;
 	BEGIN
 		f.rider.WriteChar(LINE)
 	END WriteLn;
 
-	PROCEDURE (VAR f: Formatter) WritePara*, NEW;
+	PROCEDURE (IN f: Formatter) WritePara*, NEW;
 	BEGIN
 		f.rider.WriteChar(PARA)
 	END WritePara;
 
-	PROCEDURE (VAR f: Formatter) WriteView* (v: Views.View), NEW;
+	PROCEDURE (IN f: Formatter) WriteView* (v: Views.View), NEW;
 	BEGIN
 		f.WriteViewForm(v, Views.undefined, Views.undefined)
 	END WriteView;
 
 
-	PROCEDURE (VAR f: Formatter) WriteIntForm* (x: LONGINT;
+	PROCEDURE (IN f: Formatter) WriteIntForm* (x: LONGINT;
 		base, minWidth: INTEGER; fillCh: CHAR; showBase: BOOLEAN
 	), NEW;
 		VAR s: ARRAY 80 OF CHAR;
@@ -567,7 +545,7 @@ MODULE TextMappers;
 		f.WriteString(s)
 	END WriteIntForm;
 
-	PROCEDURE (VAR f: Formatter) WriteRealForm* (x: REAL;
+	PROCEDURE (IN f: Formatter) WriteRealForm* (x: REAL;
 		precision, minW, expW: INTEGER; fillCh: CHAR
 	), NEW;
 		VAR s: ARRAY 256 OF CHAR;
@@ -576,12 +554,12 @@ MODULE TextMappers;
 	END WriteRealForm;
 
 
-	PROCEDURE (VAR f: Formatter) WriteViewForm* (v: Views.View; w, h: INTEGER), NEW;
+	PROCEDURE (IN f: Formatter) WriteViewForm* (v: Views.View; w, h: INTEGER), NEW;
 	BEGIN
 		f.rider.WriteView(v, w, h)
 	END WriteViewForm;
 
-	PROCEDURE (VAR f: Formatter) WriteParamMsg* (msg, p0, p1, p2: ARRAY OF CHAR), NEW;
+	PROCEDURE (IN f: Formatter) WriteParamMsg* (msg, p0, p1, p2: ARRAY OF CHAR), NEW;
 		VAR s: ARRAY 256 OF CHAR; i: INTEGER; ch: CHAR;
 	BEGIN
 		Dialog.MapParamString(msg, p0, p1, p2, s);
@@ -596,7 +574,7 @@ MODULE TextMappers;
 		END
 	END WriteParamMsg;
 
-	PROCEDURE (VAR f: Formatter) WriteMsg* (msg: ARRAY OF CHAR), NEW;
+	PROCEDURE (IN f: Formatter) WriteMsg* (msg: ARRAY OF CHAR), NEW;
 	BEGIN
 		f.WriteParamMsg(msg, "", "", "")
 	END WriteMsg;

@@ -12,17 +12,11 @@ MODULE DevCPS;
 
 **)
 
-	IMPORT SYSTEM, Math, DevCPM, DevCPT;
+	IMPORT SYSTEM, Math, Strings, DevCPM, DevCPT;
 	
 	CONST
-		MaxIdLen = 256;
+		MaxIdLen = LEN(DevCPT.Name);
 	
-	TYPE
-(*
-		Name* = ARRAY MaxIdLen OF SHORTCHAR;
-		String* = POINTER TO ARRAY OF SHORTCHAR;
-*)
-
 	(* name, str, numtyp, intval, realval, realval are implicit results of Get *)
 
 	VAR
@@ -56,17 +50,17 @@ MODULE DevCPS;
 		module = 75; eof = 76;
 
 	VAR
-		ch: SHORTCHAR;     (*current character*)
+		ch: CHAR;     (*current character*)
 
 	PROCEDURE err(n: SHORTINT);
 	BEGIN DevCPM.err(n)
 	END err;
 	
 	PROCEDURE Str(VAR sym: BYTE);
-		VAR i: SHORTINT; och: SHORTCHAR; lch: CHAR; long: BOOLEAN;
+		VAR i: INTEGER; och: CHAR; lch: CHAR; long: BOOLEAN;
 			s: ARRAY 256 OF CHAR; t: POINTER TO ARRAY OF CHAR;
 	BEGIN i := 0; och := ch; long := FALSE;
-		LOOP DevCPM.GetL(lch);
+		LOOP DevCPM.Get(lch);
 			IF lch = och THEN EXIT END ;
 			IF (lch < " ") & (lch # 9X) THEN err(3); EXIT END;
 			IF lch > 0FFX THEN long := TRUE END;
@@ -96,28 +90,24 @@ MODULE DevCPS;
 	END Str;
 
 	PROCEDURE Identifier(VAR sym: BYTE);
-		VAR i: SHORTINT;
+		VAR i, res: INTEGER; n: ARRAY MaxIdLen OF CHAR;
 	BEGIN i := 0;
 		REPEAT
-			name[i] := ch; INC(i); DevCPM.Get(ch)
-		UNTIL (ch < "0")
-			OR ("9" < ch) & (CAP(ch) < "A")
-			OR ("Z" < CAP(ch)) & (ch # "_") & (ch < "À")
-			OR (ch = "×")
-			OR (ch = "÷")
-			OR (i = MaxIdLen);
+			n[i] := ch; INC(i); DevCPM.Get(ch)
+		UNTIL ~Strings.IsIdent(ch) OR (i = MaxIdLen);
 		IF i = MaxIdLen THEN err(240); DEC(i) END ;
-		name[i] := 0X; sym := ident
+		n[i] := 0X; Strings.StringToUtf8(n, name, res); sym := ident;
+		IF res = 1 (*truncated*) THEN err(240) END
 	END Identifier;
 
 	PROCEDURE Number;
-		VAR i, j, m, n, d, e, a: INTEGER; f, g, x: REAL; expCh, tch: SHORTCHAR; neg: BOOLEAN; r: SHORTREAL;
-			dig: ARRAY 30 OF SHORTCHAR; arr: ARRAY 2 OF INTEGER;
+		VAR i, j, m, n, d, e, a: INTEGER; f, g: REAL; tch: CHAR; neg: BOOLEAN; r: SHORTREAL;
+			dig: ARRAY 30 OF CHAR; arr: ARRAY 2 OF INTEGER;
 
-		PROCEDURE Ord(ch: SHORTCHAR; hex: BOOLEAN): SHORTINT;
+		PROCEDURE Ord(ch: CHAR; hex: BOOLEAN): INTEGER;
 		BEGIN (* ("0" <= ch) & (ch <= "9") OR ("A" <= ch) & (ch <= "F") *)
-			IF ch <= "9" THEN RETURN SHORT(ORD(ch) - ORD("0"))
-			ELSIF hex THEN RETURN SHORT(ORD(ch) - ORD("A") + 10)
+			IF ch <= "9" THEN RETURN ORD(ch) - ORD("0")
+			ELSIF hex THEN RETURN ORD(ch) - ORD("A") + 10
 			ELSE err(2); RETURN 0
 			END
 		END Ord;
@@ -205,11 +195,11 @@ MODULE DevCPS;
 			ELSE err(203)
 			END
 		ELSE (* fraction *)
-			f := 0; g := 0; e := 0; j := 0; expCh := "E";
+			f := 0; g := 0; e := 0; j := 0;
 			WHILE (j < 15) & (j < n) DO g := g * 10 + Ord(dig[j], FALSE); INC(j) END;	(* !!! *)
 			WHILE n > j DO (* 0 <= f < 1 *) DEC(n); f := (Ord(dig[n], FALSE) + f)/10 END;
 			IF (ch = "E") OR (ch = "D") & (DevCPM.oberon IN DevCPM.options) THEN
-				expCh := ch; DevCPM.searchpos := DevCPM.curpos - 1; DevCPM.Get(ch); neg := FALSE;
+				DevCPM.searchpos := DevCPM.curpos - 1; DevCPM.Get(ch); neg := FALSE;
 				IF ch = "-" THEN neg := TRUE; DevCPM.Get(ch)
 				ELSIF ch = "+" THEN DevCPM.Get(ch)
 				END;
@@ -353,7 +343,7 @@ MODULE DevCPS;
 						IF name = "WHILE" THEN s := while
 						ELSIF name = "WITH" THEN s := with
 						END
-			| "G".."H", "J", "K", "Q", "S", "X".."Z", "a".."z", "_", "À".."Ö", "Ø".."ö", "ø".."ÿ": Identifier(s)
+			| "G".."H", "J", "K", "Q", "S", "X".."Z", "a".."z", "_": Identifier(s)
 			| "["  : s := lbrak; DevCPM.Get(ch)
 			| "]"  : s := rbrak; DevCPM.Get(ch)
 			| "^"  : s := arrow; DevCPM.Get(ch)
@@ -363,7 +353,8 @@ MODULE DevCPS;
 			| "}"  : s := rbrace; DevCPM.Get(ch)
 			| "~"  : s := not; DevCPM.Get(ch)
 			| 7FX  : s := upto; DevCPM.Get(ch)
-		ELSE s :=  null; DevCPM.Get(ch)
+		ELSE
+			IF Strings.IsIdent(ch) THEN Identifier(s) ELSE s :=  null; DevCPM.Get(ch) END
 		END ;
 		sym := s
 	END Get;

@@ -13,7 +13,7 @@ MODULE StdTabViews;
 
 	IMPORT
 		Kernel, Dialog, FormViews, StdCFrames, Stores, Views, Controllers, Ports,
-		Properties, Containers, Services, Models, Fonts, Meta;
+		Properties, Containers, Services, Models, Fonts, Meta, StdApi;
 
 	CONST
 		minVersion = 1; maxVersion = 1;
@@ -96,6 +96,7 @@ MODULE StdTabViews;
 			tab, ntab: View
 		END;
 		nv: View;
+		oldModeHook: PROCEDURE(c: Containers.Controller);
 
 	PROCEDURE^ (tv: View) SetIndex* (i : INTEGER), NEW;
 
@@ -157,6 +158,7 @@ MODULE StdTabViews;
 		VAR from: INTEGER; tv: View;
 	BEGIN
 		tv := f.view(View); from := tv.index;
+		tv.Neutralize; (* avoids blocking controls in nested forms, in particular list boxes *)
 		tv.SetIndex(i);
 		CallNotifier(tv, from, i)
 	END SetIndex;
@@ -218,7 +220,7 @@ MODULE StdTabViews;
 		RETURN MAX(0, MIN(tv.index, tv.NofTabs() - 1))
 	END Index;
 
-	PROCEDURE (tv: View) SetItem* (i: INTEGER; label: Dialog.String; v: Views.View), NEW;
+	PROCEDURE (tv: View) SetItem* (i: INTEGER; IN label: Dialog.String; v: Views.View), NEW;
 		VAR sop: SetItemOp;
 	BEGIN
 		ASSERT(i >= 0, 20); ASSERT(label # "", 21); ASSERT(v # NIL, 22);
@@ -320,7 +322,7 @@ MODULE StdTabViews;
 	END GetNewFrame;
 
 	PROCEDURE (tv: View) Restore* (f: Views.Frame; l, t, r, b: INTEGER);
-		VAR v: Views.View;
+		VAR v: Views.View; label: Dialog.String;
 	BEGIN
 		WITH f: Frame DO
 			IF (~f.InDispArea(l,t) OR ~f.InDispArea(r,b)) THEN
@@ -329,9 +331,11 @@ MODULE StdTabViews;
 			END;
 			f.GetDispSize(tv.dispX, tv.dispY, tv.dispW, tv.dispH);
 			IF tv.NofTabs() > 0 THEN
-				v := tv.View(tv.Index());
-				v.context.SetSize(tv.dispW, tv.dispH);
-				Views.InstallFrame(f, v, tv.dispX, tv.dispY, 0, TRUE)
+				tv.GetItem(tv.Index(), label, v); Dialog.MapString(label, label);
+				IF (label # "") & (v # NIL) & (Views.ThisFrame(f, v) = NIL) THEN 
+					v.context.SetSize(tv.dispW, tv.dispH);
+					Views.InstallFrame(f, v, tv.dispX, tv.dispY, 0, TRUE)
+				END
 			END
 		END
 	END Restore;
@@ -397,11 +401,32 @@ MODULE StdTabViews;
 		IF tv.scriptLevel = 0 THEN tv.Reset END
 	END EndChanges;
 
+	PROCEDURE ModeHook(c: Containers.Controller);
+		VAR v, w: Views.View; i: INTEGER; label: Dialog.String;
+	BEGIN
+		IF oldModeHook # NIL THEN oldModeHook(c) END;
+		c.GetFirstView(FALSE, v);
+		WHILE v # NIL DO
+			WITH v: View DO
+				FOR i := 0 TO v.NofTabs() - 1 DO
+					v.GetItem(i, label, w);
+					WITH w: Containers.View DO
+						w.ThisController().SetOpts(c.opts);
+						StdApi.modeHook(w.ThisController())
+					ELSE
+					END
+				END
+			ELSE
+			END;
+			c.GetNextView(FALSE, v)
+		END
+	END ModeHook;
 
 	(* TrapCleaner *)
 
 	PROCEDURE (t: TrapCleaner) Cleanup;
 	BEGIN
+		t.v.tc := NIL;
 		t.v.Reset
 	END Cleanup;
 
@@ -486,6 +511,7 @@ MODULE StdTabViews;
 		VAR stp: Properties.StdProp; p: Properties.Property;
 			face: Fonts.Typeface; size, weight, i, w, h, asc, dsc: INTEGER; style: SET;
 			smsg: Properties.SizePref; fo: FontOp;
+			v: Views.View; label: Dialog.String;
 	BEGIN
 		WITH msg: Properties.ControlPref DO
 			IF tv.NofTabs() = 0 THEN
@@ -508,15 +534,20 @@ MODULE StdTabViews;
 				ELSE
 					w := 0; h:= 0;
 					FOR i := 0 TO tv.NofTabs() - 1 DO
-						smsg.w := Views.undefined; smsg.h := Views.undefined;
-						Views.HandlePropMsg(tv.View(i), smsg); w := MAX(smsg.w, w); h := MAX(smsg.h, h)
+						tv.GetItem(i, label, v); Dialog.MapString(label, label);
+						IF  (label # "") & (v # NIL) THEN
+							smsg.w := Views.undefined; smsg.h := Views.undefined;
+							Views.HandlePropMsg(v, smsg);
+							w := MAX(smsg.w, w); h := MAX(smsg.h, h)
+						END
 					END;
 					IF (w = 0) OR (h = 0) THEN
 						frameDir.GetTabSize(msg.w, msg.h)
 					ELSE
 						(* add some constants to compensate for the tab view itself. *)
 						msg.w := w + 2 * Ports.mm;
-						tv.font.GetBounds(asc, dsc, w); msg.h := h + asc + dsc + 4 * Ports.mm
+						tv.font.GetBounds(asc, dsc, w); msg.h := h + asc + dsc + 4 * Ports.mm;
+						IF msg.h < 0 THEN msg.h := MAX(INTEGER) END
 					END
 				END
 			END
@@ -563,9 +594,11 @@ MODULE StdTabViews;
 	END HandlePropMsg;
 
 	PROCEDURE (tv: View) Neutralize*;
+		VAR v: Views.View;
 	BEGIN
-		IF tv.NofTabs() > 0 THEN
-			tv.View(tv.Index()).Neutralize
+		IF (tv.scriptLevel = 0) & (tv.NofTabs() > 0) THEN
+			v := tv.View(tv.Index());
+			IF v # NIL THEN v.Neutralize END
 		END
 	END Neutralize;
 
@@ -857,6 +890,8 @@ MODULE StdTabViews;
 	PROCEDURE Init;
 		VAR res: INTEGER;
 	BEGIN
+		oldModeHook := StdApi.modeHook;
+		StdApi.modeHook := ModeHook;
 		setFocus := FALSE; dlg.tab := NIL; dlg.index := -1;
 		NEW(d); stdDir := d; dir := d;
 		Dialog.Call('HostTabFrames.Init', 'Could not load HostTabFrames', res)
@@ -864,4 +899,6 @@ MODULE StdTabViews;
 
 BEGIN
 	Init
+CLOSE
+	StdApi.modeHook := oldModeHook
 END StdTabViews.

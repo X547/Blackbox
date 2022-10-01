@@ -17,10 +17,9 @@ MODULE SqlControls;
 
 	CONST
 		nil* = -1;	(** navigator pseudo position **)
-		minVersion = 0; maxBaseVersion = 0;
+		minVersion = 0; maxBaseVersion = 1;
 		anchVersion = 0; navVersion = 0; tabVersion = 0;
 		w = 24;
-		maxCol = 40;
 		defColW = 30 * Ports.mm;
 		left = -1; right = -2; center = -3;	(* adjustment modes *)
 		move = 1; adjust = 2; field = 3;	(* cursor modes *)
@@ -44,8 +43,8 @@ MODULE SqlControls;
 			(* persistent *)
 			sprop: Properties.StdProp;	(* font attributes *)
 			columns: INTEGER;
-			width: ARRAY maxCol OF INTEGER;
-			mode: ARRAY maxCol OF INTEGER;
+			width: POINTER TO ARRAY OF INTEGER;
+			mode: POINTER TO ARRAY OF INTEGER;
 			(* not persistent *)
 			table: SqlDB.Table;
 			fldFont, titFont: Fonts.Font;
@@ -177,15 +176,13 @@ MODULE SqlControls;
 	
 	
 	PROCEDURE SetupTable (t: Table);
-		VAR i, asc, dsc, w: INTEGER;
+		VAR asc, dsc, w: INTEGER;
 	BEGIN
 		t.fldFont := Fonts.dir.This(t.sprop.typeface, t.sprop.size, t.sprop.style.val, Fonts.normal);
 		t.titFont := Fonts.dir.This(t.sprop.typeface, t.sprop.size, t.sprop.style.val, Fonts.bold);
 		t.rowH := 3 * t.sprop.size DIV 2;
 		t.fldFont.GetBounds(asc, dsc, w);
 		t.baseOff := (t.rowH -asc - dsc) DIV 2 + asc;
-		i := t.columns;
-		WHILE i < maxCol DO t.width[i] := defColW; t.mode[i] := center; INC(i) END
 	END SetupTable;
 
 
@@ -203,32 +200,37 @@ MODULE SqlControls;
 		VAR thisVersion: INTEGER; x: BOOLEAN;
 	BEGIN
 		c.Internalize^(rd);
-		IF ~rd.cancelled THEN
-			rd.ReadVersion(minVersion, maxBaseVersion, thisVersion);
-			IF ~rd.cancelled THEN
-				NEW(c.prop);
-				rd.ReadXString(c.prop.link);
-				rd.ReadXString(c.prop.label);
-				rd.ReadXString(c.prop.guard);
-				rd.ReadXString(c.prop.notifier);
-				rd.ReadBool(c.prop.opt[Controls.sorted]);
-				rd.ReadBool(c.prop.opt[Controls.default]); 
-				rd.ReadBool(c.prop.opt[Controls.cancel]);
-				rd.ReadXInt(c.prop.level);
-				rd.ReadBool(x);
-				OpenLink(c, c.prop)
-			END
-		END
+		IF rd.cancelled THEN RETURN END;
+		rd.ReadVersion(minVersion, maxBaseVersion, thisVersion);
+		IF rd.cancelled THEN RETURN END;
+		NEW(c.prop);
+		IF thisVersion >= 1 THEN
+			rd.ReadString(c.prop.link);
+			rd.ReadString(c.prop.label);
+			rd.ReadString(c.prop.guard);
+			rd.ReadString(c.prop.notifier);
+		ELSE (* thisVersion = 0 *)
+			rd.ReadXString(c.prop.link);
+			rd.ReadXString(c.prop.label);
+			rd.ReadXString(c.prop.guard);
+			rd.ReadXString(c.prop.notifier);
+		END ;
+		rd.ReadBool(c.prop.opt[Controls.sorted]);
+		rd.ReadBool(c.prop.opt[Controls.default]); 
+		rd.ReadBool(c.prop.opt[Controls.cancel]);
+		rd.ReadXInt(c.prop.level);
+		rd.ReadBool(x);
+		OpenLink(c, c.prop)
 	END Internalize;
 
 	PROCEDURE (c: Control) Externalize (VAR wr: Stores.Writer), EXTENSIBLE;
 	BEGIN
 		c.Externalize^(wr);
 		wr.WriteVersion(maxBaseVersion);
-		wr.WriteXString(c.prop.link);
-		wr.WriteXString(c.prop.label);
-		wr.WriteXString(c.prop.guard);
-		wr.WriteXString(c.prop.notifier);
+		wr.WriteString(c.prop.link);
+		wr.WriteString(c.prop.label);
+		wr.WriteString(c.prop.guard);
+		wr.WriteString(c.prop.notifier);
 		wr.WriteBool(c.prop.opt[Controls.sorted]);
 		wr.WriteBool(c.prop.opt[Controls.default]);
 		wr.WriteBool(c.prop.opt[Controls.cancel]);
@@ -282,6 +284,26 @@ MODULE SqlControls;
 		Views.Update(c, Views.rebuildFrames);
 	END Do;
 	
+	PROCEDURE FillArray(VAR a: ARRAY OF INTEGER; start, len, val: INTEGER);
+		VAR i: INTEGER;
+	BEGIN
+	 	FOR i := start TO start + len - 1 DO a[i] := val END
+	END FillArray;
+	
+	PROCEDURE CopyArray(VAR from, to: ARRAY OF INTEGER);
+		VAR i: INTEGER;
+	BEGIN
+	 	FOR i := 0 TO LEN(from) - 1 DO to[i] := from[i] END
+	END CopyArray;
+	
+	PROCEDURE Expand(t: Table; nofCols: INTEGER);
+		VAR len: INTEGER; width, mode: POINTER TO ARRAY OF INTEGER;
+	BEGIN
+		len := LEN(t.width);
+		NEW(width, nofCols); CopyArray(t.width, width); FillArray(width, len, nofCols - len, defColW);
+		NEW(mode, nofCols); CopyArray(t.mode, mode); FillArray(mode, len, nofCols - len, center);
+		t.width := width; t.mode := mode
+	END Expand;
 	
 	(* FormatOp *)
 	
@@ -289,6 +311,7 @@ MODULE SqlControls;
 		VAR t: Table; c, w, m: INTEGER;
 	BEGIN
 		t := op.tab; c := op.col; w := op.width; m := op.mode;
+		IF c >= LEN(t.width) THEN Expand(t, c + 10) END;
 		op.width := t.width[c]; op.mode := t.mode[c];
 		t.width[c] := w; t.mode[c] := m;
 		IF c >= t.columns THEN t.columns := c + 1 END;
@@ -614,7 +637,7 @@ MODULE SqlControls;
 		w := 0; h := 0;
 		IF (t.table # NIL) & t.table.Available() & (t.table.columns > 0) THEN
 			c := 0;
-			WHILE (c < t.table.columns) & (c < maxCol) DO INC(w, t.width[c]); INC(c) END;
+			WHILE c < t.table.columns DO INC(w, t.width[c]); INC(c) END;
 			INC(w, 3 * dot);
 			IF t.table.rows = MAX(INTEGER) THEN h := 10000 * Ports.mm
 			ELSE h := (t.table.rows + 1) * t.rowH + 4 * dot
@@ -629,8 +652,8 @@ MODULE SqlControls;
 		INC(x, t.orgX);
 		IF (x >= 0) & (x <= w) & (y >= 0) & (y <= h) THEN
 			c := 0; w := 0; type := 0; INC(x, dot);
-			WHILE (c < maxCol) & (x >= w + t.width[c]) DO INC(w, t.width[c]); INC(c) END;
-			IF (x <= w + 3 * dot) & (c > 0) THEN
+			WHILE (c < t.table.columns) & (x >= w + t.width[c]) DO INC(w, t.width[c]); INC(c) END;
+			IF (c = t.table.columns) OR (x <= w + 3 * dot) & (c > 0) THEN
 				col := c - 1; p := w + dot - t.orgX; type := move
 			ELSIF y - dot < t.rowH THEN
 				type := adjust;
@@ -640,7 +663,8 @@ MODULE SqlControls;
 				ELSE p := center
 				END
 			ELSE
-				col := c; p := (y - dot) DIV t.rowH + t.orgRow - 1; type := field
+				col := c; p := (y - dot) DIV t.rowH + t.orgRow - 1; type := field;
+				IF p >= t.table.rows THEN type := 0 END
 			END
 		ELSE type := 0
 		END
@@ -684,7 +708,6 @@ MODULE SqlControls;
 				pos := t.orgRow
 			ELSE
 				c := 0; w := 0; max := t.table.columns;
-				IF max > maxCol THEN max := maxCol END;
 				WHILE (c < max) DO INC(w, t.width[c]); INC(c) END;
 				size := w + 3 * f.dot;
 				part := f.r - f.l;
@@ -769,11 +792,17 @@ MODULE SqlControls;
 				rd.ReadSet(t.sprop.style.val);
 				t.sprop.style.mask := {Fonts.italic, Fonts.underline, Fonts.strikeout};
 				t.sprop.weight := Fonts.normal;
-				rd.ReadInt(t.columns); i := 0;
-				WHILE i < t.columns DO
-					rd.ReadInt(t.width[i]);
-					rd.ReadInt(t.mode[i]);
-					INC(i)
+				rd.ReadInt(t.columns);
+				IF t.columns > 0 THEN
+					NEW(t.width, t.columns);
+					NEW(t.mode, t.columns);
+					FOR i := 0 TO t.columns - 1 DO
+						rd.ReadInt(t.width[i]);
+						rd.ReadInt(t.mode[i]);
+					END
+				ELSE
+					NEW(t.width, 10); FillArray(t.width, 0, 10, defColW);
+					NEW(t.mode, 10); FillArray(t.mode, 0, 10, center);
 				END;
 				SetupTable(t)
 			END
@@ -802,8 +831,8 @@ MODULE SqlControls;
 		WITH source: Table DO
 			NEW(t.sprop); t.sprop^ := source.sprop^;
 			t.columns := source.columns;
-			t.width := source.width;
-			t.mode := source.mode;
+			NEW(t.width, LEN(source.width)); CopyArray(source.width, t.width);
+			NEW(t.mode, LEN(source.mode)); CopyArray(source.mode, t.mode);
 			t.table := source.table;
 			SetupTable(t)
 		END
@@ -823,6 +852,7 @@ MODULE SqlControls;
 		VAR row, col, x, y, w: INTEGER; data: SqlDB.Row; font: Fonts.Font;
 	BEGIN
 		IF (t.table # NIL) & t.table.Available() & (t.table.columns > 0) THEN
+			IF t.table.columns > LEN(t.width) THEN Expand(t, t.table.columns + 10) END;
 			DEC(t.rowH, t.rowH MOD f.unit);
 			row := SqlDB.names; y := 2 * f.dot; font := t.titFont;
 			WHILE (row < t.table.rows) & (y < b) DO
@@ -830,7 +860,7 @@ MODULE SqlControls;
 					t.table.Read(row, data);
 					IF t.table.res # SqlDB.noData THEN 
 						col := 0; x := 2 * f.dot - t.orgX;
-						WHILE (col < t.table.columns) & (col < maxCol) & (x < r) DO
+						WHILE (col < t.table.columns) & (x < r) DO
 							w := t.width[col];
 							IF x + w >= 0 THEN
 								f.DrawRect(x - f.dot, y, x, y + t.rowH, Ports.fill, Ports.defaultColor);
@@ -1017,13 +1047,20 @@ MODULE SqlControls;
 	PROCEDURE (d: StdDirectory) NewTable (p: Controls.Prop): Views.View;
 		VAR c: Table;
 	BEGIN
-		NEW(c); OpenLink(c, p); InitStdProp(c.sprop); SetupTable(c); RETURN c
+		NEW(c); OpenLink(c, p); InitStdProp(c.sprop); 
+		NEW(c.width, 10); FillArray(c.width, 0, 10, defColW); (* extended on demand *)
+		NEW(c.mode, 10); FillArray(c.mode, 0, 10, center);
+		SetupTable(c); RETURN c
 	END NewTable;
 
 	PROCEDURE (d: StdDirectory) NewTableOn (tab: SqlDB.Table): Views.View;
 		VAR c: Table;
 	BEGIN
-		NEW(c); InitProp(c.prop); c.table := tab; InitStdProp(c.sprop); SetupTable(c); RETURN c
+		NEW(c); InitProp(c.prop); c.table := tab; InitStdProp(c.sprop); 
+		c.columns := tab.columns;
+		NEW(c.width, tab.columns); FillArray(c.width, 0, tab.columns, defColW);
+		NEW(c.mode, tab.columns); FillArray(c.mode, 0, tab.columns, center);
+		SetupTable(c); RETURN c
 	END NewTableOn;
 
 

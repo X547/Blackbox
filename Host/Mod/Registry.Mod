@@ -11,11 +11,39 @@ MODULE HostRegistry;
 
 **)
 
-	IMPORT WinApi, HostFiles, Dialog, Strings;
+	IMPORT WinApi, Files, HostFiles, Dialog, Strings;
 	
 	VAR localeId*: INTEGER;
+		iniFile: POINTER TO HostFiles.FullName; (* NIL if using the Windows registry *)
 
-	PROCEDURE ReadString* (
+	PROCEDURE Split (IN key: ARRAY OF CHAR; OUT section, entry: ARRAY OF CHAR);
+		VAR i, n: INTEGER;
+	BEGIN
+		n := LEN(key$); i := n;
+		WHILE (i > 0) & (key[i - 1] #  "\") & (key[i - 1] #  "/") DO DEC(i) END;
+		IF i = 0 THEN section := Dialog.appName$; entry := key$
+		ELSE Strings.Extract(key, 0, i - 1, section); Strings.Extract(key, i, n, entry);
+			section := Dialog.appName + "\" + section
+		END
+	END Split;
+
+	PROCEDURE ReadFile (IN key: ARRAY OF CHAR; OUT str: ARRAY OF CHAR; VAR res: INTEGER);
+		VAR section, entry: ARRAY 256 OF CHAR; 
+			notfound: ARRAY 2 OF CHAR;
+		CONST ERROR_NOT_FOUND = 1168;
+	BEGIN
+		Split(key, section, entry);
+		WinApi.SetLastError(0);
+		notfound[0] := 0FFFFX; notfound[1] := 0X;
+		res := WinApi.GetPrivateProfileStringW(section, entry, notfound, str, LEN(str), iniFile^);
+		IF str = notfound THEN
+			res := ERROR_NOT_FOUND
+		ELSE
+			res := WinApi.GetLastError()
+		END
+	END ReadFile;
+
+	PROCEDURE ReadRegistry (
 		IN key: ARRAY OF CHAR; OUT str: ARRAY OF CHAR; VAR res: INTEGER
 	);
 		VAR r, len: INTEGER; sw, comp, appl, vers: WinApi.HANDLE;
@@ -28,7 +56,7 @@ MODULE HostRegistry;
 				IF res = 0 THEN
 					res := WinApi.RegOpenKeyW(appl, "CurrentVersion", vers);
 					IF res = 0 THEN
-						len := LEN(str);
+						len := LEN(str) * 2;
 						res := WinApi.RegQueryValueW(vers, key, str, len);
 						r := WinApi.RegCloseKey(vers)
 					END;
@@ -37,6 +65,13 @@ MODULE HostRegistry;
 				r := WinApi.RegCloseKey(comp)
 			END;
 			r := WinApi.RegCloseKey(sw)
+		END
+	END ReadRegistry;
+	
+	PROCEDURE ReadString* (IN key: ARRAY OF CHAR; OUT str: ARRAY OF CHAR; VAR res: INTEGER);
+	BEGIN
+		IF iniFile # NIL THEN ReadFile(key, str, res)
+		ELSE ReadRegistry(key, str, res)
 		END
 	END ReadString;
 	
@@ -73,8 +108,15 @@ MODULE HostRegistry;
 			END
 		END
 	END ReadIntList;
-	
-	PROCEDURE WriteString* (IN key: ARRAY OF CHAR; IN str: ARRAY OF CHAR);
+		
+	PROCEDURE WriteFile (IN key: ARRAY OF CHAR; IN str: ARRAY OF CHAR);
+		VAR res: INTEGER; section, entry: ARRAY 256 OF CHAR; 
+	BEGIN
+		Split(key, section, entry);
+		res := WinApi.WritePrivateProfileStringW(section, entry, str, iniFile^)
+	END WriteFile;
+
+	PROCEDURE WriteRegistry (IN key: ARRAY OF CHAR; IN str: ARRAY OF CHAR);
 		VAR res: INTEGER; sw, comp, appl, vers: WinApi.HANDLE;
 	BEGIN
 		res := WinApi.RegCreateKeyW(WinApi.HKEY_CURRENT_USER, "Software", sw);
@@ -93,8 +135,15 @@ MODULE HostRegistry;
 			END;
 			res := WinApi.RegCloseKey(sw)
 		END
+	END WriteRegistry;
+			
+	PROCEDURE WriteString* (IN key: ARRAY OF CHAR; IN str: ARRAY OF CHAR);
+	BEGIN
+		IF iniFile # NIL THEN WriteFile(key, str)
+		ELSE WriteRegistry(key, str)
+		END
 	END WriteString;
-	
+
 	PROCEDURE WriteInt* (IN key: ARRAY OF CHAR; x: INTEGER);
 		VAR str: ARRAY 64 OF CHAR;
 	BEGIN
@@ -129,6 +178,37 @@ MODULE HostRegistry;
 		Dialog.metricSystem := res = 0
 	END ReadMeasure;
 	
+	PROCEDURE GetMajorVersion(v: ARRAY OF CHAR): INTEGER;
+		VAR majorVersion, pos, res: INTEGER;
+	BEGIN
+		Strings.Find(v, ".", 0, pos);
+		IF pos >= 0 THEN (* maps string v of pattern  "x.yz" to integer xy *)
+			Strings.Replace(v, pos, 1, "");
+			WHILE ("0" <= v[pos]) & (v[pos] <= "9") DO INC(pos) END ;
+			v[pos] := 0X;
+			Strings.StringToInt(v, majorVersion, res);
+			IF res = 0 THEN RETURN majorVersion END
+		END ;
+		RETURN 0 (* invalid pattern; avoid TRAP in startup sequence *)
+	END GetMajorVersion;
+	
+	PROCEDURE SetIniFile;
+		VAR loc: Files.Locator; i: INTEGER; p: WinApi.PtrWSTR; name, opt: HostFiles.FullName;
+	BEGIN
+		p := WinApi.GetCommandLineW(); i := 0;
+		REPEAT
+			HostFiles.GetName(p, i, name, opt);
+			IF opt = "/INIFILE" THEN
+				HostFiles.GetName(p, i, name, opt);
+				NEW(iniFile); loc := Files.dir.This(name);
+				iniFile^ := loc(HostFiles.Locator).path
+			ELSIF opt = "/PORTABLE" THEN
+				NEW(iniFile); loc := Files.dir.This(Dialog.appName + ".ini");
+				iniFile^ := loc(HostFiles.Locator).path
+			END
+		UNTIL (iniFile # NIL) OR (p[i] < " ")
+	END SetIniFile;
+
 	PROCEDURE Init;
 		VAR name, bname: Dialog.String; res, i, v: INTEGER;
 	BEGIN
@@ -147,7 +227,9 @@ MODULE HostRegistry;
 			END
 		END;
 		Dialog.appName := name$;
-		Dialog.version := 16;
+		Dialog.MapString("#System:appVersion", Dialog.appVersion);
+		Dialog.version := GetMajorVersion(Dialog.appVersion);
+		SetIniFile;
 		Dialog.Call("Startup.Setup", "", res);
 		ReadMeasure
 	END Init;

@@ -23,7 +23,7 @@ Commanders can be useful during development; e.g., they may be embedded directly
 
 Typical menu:
 "Insert Commander"	""	"DevCommanders.Deposit; StdCmds.PasteView"	"StdCmds.PasteViewGuard"
-"Insert EndCommander"	""	"DevCommanders.DepositEnd; StdCmds.PasteView"	"StdCmds.PasteViewGuard"
+"Insert End Commander"	""	"DevCommanders.DepositEnd; StdCmds.PasteView"	"StdCmds.PasteViewGuard"
 
 
 TYPE Par

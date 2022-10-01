@@ -1,46 +1,52 @@
 Platform-Specific Issues (Windows)
 
-Module SYSTEM
-Using DLLs in BlackBox modules
-Using COM without special Direct-To-COM compiler
+1	Module SYSTEM
+2	Using DLLs in BlackBox modules
+3	Using COM without Direct-To-COM compiler
+4	Windows-specific information in BlackBox
+5	Runtime type system
+6	Differences between different Windows versions
+7	Linking BlackBox applications
+8	Startup of BlackBox
+9	Using NEW and garbage collection in your applications
+10	Command line parameters of BlackBox
+11	Component Pascal compiler options
+12	Runtime range checks
+
 Windows programming interfaces
 OLE Automation
-Windows-specific information in BlackBox
-Differences between different Windows versions
 The BlackBox linker
-Linking BlackBox applications
-Startup of BlackBox
 
 
-Module SYSTEM
+1 Module SYSTEM
 
 Module SYSTEM contains certain procedures that are necessary to implement low-level operations. It is strongly recommended to restrict the use of these features to specific low-level modules, as such modules are inherently non-portable and usually unsafe. SYSTEM is not considered as part of the language Component Pascal proper.
 
 The procedures contained in module SYSTEM are listed in the following table. v stands for a variable. x, y, and n stands for expressions. T stands for a type. P stands for a procedure. M[a] stands for memory value at address a.
 
 Function procedures
-	Name	Argument types	Result type	Description
-	ADR(v)	any	INTEGER	address of variable v
-	ADR(P)	P: PROCEDURE	INTEGER	address of Procedure P
-	ADR(T)	T: a record type	INTEGER	address of Descriptor of T
-	LSH(x, n)	x, n: integer type*	type of x	logical shift (n > 0: left, n < 0: right)
-	ROT(x, n)	x, n: integer type*	type of x	rotation (n > 0: left, n < 0: right)
-	TYP(v)	record type	INTEGER	type tag of record variable v
-	VAL(T, x)	T, x: any type	T	x interpreted as of type T
-	* integer types without LONGINT
+Name	Argument types	Result type	Description
+ADR(v)	any	INTEGER	address of variable v
+ADR(P)	P: PROCEDURE	INTEGER	address of Procedure P
+ADR(T)	T: a record type	INTEGER	address of Descriptor of T
+LSH(x, n)	x, n: integer type*	type of x	logical shift (n > 0: left, n < 0: right)
+ROT(x, n)	x, n: integer type*	type of x	rotation (n > 0: left, n < 0: right)
+TYP(v)	record type	INTEGER	type tag of record variable v
+VAL(T, x)	T, x: any type	T	x interpreted as of type T
+* integer types without LONGINT
 
 Proper procedures
-	Name	Argument types	Description
-	GET(a, v)	a: INTEGER; v: any basic type,	v := M[a]
-		pointer type, procedure type
-	PUT(a, x)	a: INTEGER; x: any basic type,	M[a] := x
-		pointer type, procedure type
-	GETREG(n, v)	n: integer constant, v: any basic type,	v := Register n
-		pointer type, procedure type
-	PUTREG(n, x)	n: integer constant, x: any basic type,	Register n := x
-		pointer type, procedure type
-	MOVE(a0, a1, n)	a0, a1: INTEGER; n: integer type	M[a1..a1+n-1] :=
-			M[a0..a0+n-1]
+Name	Argument types	Description
+GET(a, v)	a: INTEGER; v: any basic type,	v := M[a]
+	pointer type, procedure type
+PUT(a, x)	a: INTEGER; x: any basic type,	M[a] := x
+	pointer type, procedure type
+GETREG(n, v)	n: integer constant, v: any basic type,	v := Register n
+	pointer type, procedure type
+PUTREG(n, x)	n: integer constant, x: any basic type,	Register n := x
+pointer type, procedure type
+MOVE(a0, a1, n)	a0, a1: INTEGER; n: integer type	M[a1..a1+n-1] :=
+		M[a0..a0+n-1]
 
 The register numbers for PUTREG and GETREG are:
 0: EAX, 1: ECX, 2: EDX, 3: EBX, 4: ESP, 5: EBP, 6: ESI, 7: EDI.
@@ -117,6 +123,7 @@ nil	1	NIL is accepted as formal parameter.
 System flags for procedures
 Name	Value	Description
 code	1	Definition of a Code procedure (see below).
+callback	2	WinApi callback function; uses __stdcall calling conventions.
 ccall	-10	Procedure uses CCall calling convention.
 
 Code procedures
@@ -140,7 +147,7 @@ Examples
 		0F2H, 0ABH;			(* REP STOS *)
 
 
-Using DLLs in BlackBox modules
+2 Using DLLs in BlackBox modules
 
 Any 32-bit DLL can be imported in Component Pascal like a normal Component Pascal module. This holds for Windows system modules (kernel, user, gdi, ...) as well as for any custom DLL written in any programming language. Be aware that the safety qualities of Component Pascal (no dangling pointers, strict type-checking, etc.) are lost if you interface to a DLL written in another programming language.
 
@@ -184,7 +191,7 @@ Like all system flags, "untagged" can only be used if module SYSTEM is imported.
 
 Example:
 
-	RECORD [noalign]	(* untagged, size = 7 bytes *)
+	RECORD [noalign]		(* untagged, size = 7 bytes *)
 		c: SHORTCHAR;	(* offset 0, size = 1 byte *)
 		x: INTEGER;	(* offset 1 , size = 4 bytes *)
 		i: SHORTINT	(* offset 5, size = 2 bytes *)
@@ -222,9 +229,9 @@ Note that Bool is not a data type in C but is defined as int (= INTEGER). 0 and 
 Note that it is not possible to unload a DLL from within BlackBox. To avoid having to exit and restart your development environment repeatedly, it is a good idea to test the DLL that you are developing from within another instance of the BlackBox application.
 
 
-Using COM without special Direct-To-COM compiler
+3 Using COM without Direct-To-COM compiler
 
-Microsoft's Component Object Model (COM) is supported by a special Component Pascal compiler that is available as an add-on product to BlackBox. This compiler makes using COM safer and more convenient. However, for casual use of COM, the approach described in this chapter can be used. It doesn't require a special compiler version. It uses normal untagged records and procedure variables to create COM-style method tables ("vtbl") for objects. The following example shows how it works:
+Microsoft's Component Object Model (COM) is supported by a Direct-To-COM compiler. This compiler makes using COM safer and more convenient. However, for casual use of COM, the approach described in this chapter can be used. It uses normal untagged records and procedure variables to create COM-style method tables ("vtbl") for objects. The following example shows how it works:
 
 MODULE Ddraw ["DDRAW.DLL"];
 
@@ -294,17 +301,7 @@ Some important points:
 Be careful to declare all methods in the method table in the correct order with the correct parameter list.
 
 
-Windows programming interfaces
-
-See the Windows Programming Interfaces Documentation.
-
-
-OLE Automation
-
-See the OLE Automation Controller documentation.
-
-
-Windows-specific information in BlackBox
+4 Windows-specific information in BlackBox
 
 Windows -specific cursors
 
@@ -429,25 +426,22 @@ MODULE Ex;
 END Ex.
 
 
-Runtime type system
+5 Runtime type system
 
 All dynamically allocated Component Pascal records contain a hidden field, which is called the type tag. The type tag points to the type descriptor that contains all type information needed at runtime. Calls of type-bound procedures, type tests and the garbage collector all use the information which is stored in the type descriptor. The type descriptor is allocated only once for every record type in the system.
-Dynamically allocated arrays use a size descriptor to check the bounds of indexes. The size descriptor also contains the type tag of the element type. For every single dynamic array a size descriptor is needed.
+Dynamically allocated arrays use a size descriptor to check the bounds of indexes. The size descriptor also contains the type tag of the element type. For every single dynamic array a size descriptor is needed.
 
 
-Differences between different Windows versions
+6 Differences between different Windows versions
+
 Tree controls look different on Windows NT compared to other versions of Windows. There is a defect in the routine for drawing the background of a Tree control in Windows NT. Hence, BlackBox does not change the color of the background for a disabled or read only tree control under Windows NT, whereas with other windows versions the background is set to gray when the control is disabled or read only.
 
 
-The BlackBox linker
-
-See the DevLinker documentation.
-
-Linking BlackBox applications
+7 Linking BlackBox applications
 
 If you want to distribute an application you have written in BlackBox, you may want to link all modules into a single file for distribution. In this case you need to link the framework to your application. To illustrate the necessary actions we will give an example. First duplicate the BlackBox application in the Explorer and rename it accordingly, in our case "Patterns". Adapt the module Config to your needs, e.g., delete the call which automatically opens the Log text. Then link the framework with your modules into the new application file. You may need to distribute some additional files with your application such as forms and the Menu text.
 
-MODULE Config;
+MODULE Config;
 
 	IMPORT Dialog;
 
@@ -470,13 +464,13 @@ HostMenus HostPictures TextModels TextRulers TextSetters TextViews
 TextControllers TextMappers StdLog TextCmds
 FormModels FormViews FormControllers FormGen FormCmds
 StdFolds StdLinks StdDebug HostTextConv HostMail
-StdMenuTool StdClocks StdStamps StdLogos StdCoder StdScrollers
+StdMenuTool StdClocks StdStamps StdCoder StdScrollers
 OleStorage OleServer OleClient StdETHConv Init ObxPatterns Config
 1 applogo.Ico 2 doclogo.Ico 3 SFLogo.ico 4 CFLogo.ico 5 DtyLogo.ico
 1 Move.cur 2 Copy.cur 3 Link.cur 4 Pick.cur 5 Stop.cur 6 Hand.cur 7 Table.cur ~
 
-
-Startup of BlackBox
+
+8 Startup of BlackBox
 
 The startup of BlackBox happens in several steps.
 
@@ -514,10 +508,10 @@ This is the usual way to configure BlackBox. The standard implementation of Conf
 After the event loop is left (because the user wants to quit the application), the kernel is called to clean up, before the application is left entirely.
 
 
-Using NEW and garbage collection in your applications
+9 Using NEW and garbage collection in your applications
 
 If you are calling NEW in your application and thereby implicitly use the garbage collector, you must link the Kernel into the application. The NEW-procedure is implemented in the kernel, the compiler just generates the code to call this procedure. So every module using NEW has a hidden import of the kernel.
-Don't call WinApi.ExitProcess directly when "importing" the kernel, call Kernel.Quit with parameter 0 instead to assure that occupied system resources get properly released before the application is terminated.
+Don't call WinApi.ExitProcess directly when "importing" the kernel, call Kernel.Quit with parameter 0 instead to assure that occupied system resources get properly released before the application is terminated.
 
 Programs don't need to call the garbage collector explicitly. If the NEW-procedure cannot satisfy a request for heap space, it calls the garbage collector internally before allocating a new heap block from the Windows Memory Manager. The garbage collector marks pointers in stack frames and is able to run anytime.
 
@@ -528,3 +522,87 @@ All dynamically allocated Component Pascal records contain a hidden field, which
 Dynamically allocated arrays use a size descriptor to check the bounds of indexes. The size descriptor also contains the type tag of the element type. For every single dynamic array a size descriptor is needed.
 
 The additional storage required to "tag" objects makes their memory layout different from untagged records provided by the operating system or some procedural shared library. Type tags are critical; they must not be damaged, otherwise the garbage collector will crash the system at some point in time.
+
+
+10 Command line parameters of BlackBox
+
+The command line parameters of BlackBox start with the letter '/' or alternatively the letter '-' immediately followed by a case insensitive parameter name. Depending on the parameter, further parameter values may be required. Each parameter value is separated by white space. If a parameter value contains spaces, it must be enclosed in single or double quotes.
+
+The parameters are:
+
+/USE path
+	Use path for lookup of relative file paths prior to looking them up in the startup directory.
+	If path is relative it refers to the current directory.
+/PAR parameters
+	Specify parameters available via Dialog.commandLinePars.
+/INIFILE iniFile
+	Do not use the Windows registry but use the specified Windows .ini file instead. 
+	The path to the iniFile may be relative or absolute.
+/PORTABLE
+	Short form of /INIFILE where the relative path Dialog.appName followed by ".ini" is used for the .ini file.
+/O file
+	Open the specified file upon startup.
+	Any parameter value not belonging to a parameter name will also be opened, i.e. /O can be omitted.
+/P file
+	Open and print the specified file.
+/LOAD module
+	Load the specified module upon startup.
+/EMBEDDING
+	Start as server.
+/NOAPPWIN
+	Start without an application window.
+/NOSCROLL
+	Do not show scroll bars in the application window.
+/FULLSIZE
+	Start in fullscreen mode.
+/LTRB left top right bottom
+	Specify the window position of the next window to be opened with /O.
+/LANG language
+	Run BlackBox localized to the specified two letter language code.
+
+
+11 Component Pascal compiler options
+
+The Component Pascal compiler supports the following options for compiling a module. Generally, it is recommended to use the default settings (no options) but there may be exceptions. 
+	+	Switch on all runtime range checks. This generates slightly larger code files and increases the runtime. In most situations the difference is small. For the default behavior see Runtime range checks below.
+	-	Switch off emitting the source code position. This generates slightly more compact code files but removes the link to the terminated procedure's source code position in the trap viewer.
+	--	In addition to "-" switch off emitting symbolic information for structured global variables. 
+	---	In addition to "--" switch off emitting symbolic information for all global variables.
+	----	In addition to "---" switch off code file generation.
+	!	Switch off runtime checking of ASSERT statements. Use this option only for very time critical code.
+	!!	In addition to "!" switch off array index checks and pointer initialization. Use this option at your own risk.
+	?	Switch on emitting of (COM related) warnings or hints even if there are no errors.
+	@	Switch on trapping on first error.
+	$	Switch on syntax extensions for compatibility with Oberon.
+	(...)	DevSelector options.
+
+
+12 Runtime range checks
+
+The Component Pascal Language Report does not specify the out-of-range behaviour of the built in arithmetic and set functions, but deliberately allows the compiler writer freedom to make implementation decisions. Some of the current default decisions with this compiler are documented below, primarily because they can lead to unexpected behaviour. These behaviours are not considered to be bugs, and are considered to be within the freedom permitted by the Language Report. Developers are advised to exploit these behaviours with care as:
+- other compilers may behave differently
+- this compiler may behave differently in the future
+- code that uses them may be hard for another reader to understand.
+
+INTEGER arithmetic (+, -, *, DIV, INC, DEC) is not range checked, and the low order 32 bits of the result are returned. This is equivalent to reducing the result MOD 2^32, to a number in the range [-2^31 : 2^31).
+
+LONGINT arithmetic (+, -, *, DIV) is range checked, and overflows lead to a run-time "undefined real result" exception. The explanation for this behaviour is that INTEGER arithmetic uses integer instructions on the main CPU, whereas LONGINT arithmetic uses floating point instructions on the co-processor. INC and DEC are not range-checked, and the low order 64 bits of the result are returned. This is equivalent to reducing the result MOD 2^64, to a number in the range [-2^63 : 2^63).
+
+SHORT(x) is without range checking. In case of x: REAL an overflow leads to infinity. In case of x being any integer type, it returns the low order half of the argument.
+
+ENTIER(x) is range checked. Overflows lead to a run-time "undefined real result" exception.
+
+SHORT(ENTIER(x)) and SHORT(SHORT(ENTIER(x))) are range checked with respect to the outermost integer type. Overflows lead to a run-time "undefined real result" exception. A third SHORT leading to BYTE is range checked with respect to INTEGER.
+Note carefully that using a compound expression in case of out-of-range values is not functionally equivalent to assigning the intermediate LONGINT value to a variable.
+Explanation: Using the floating point unit to perform the compound type transfer in one operation is more efficient than performing the two operations sequentially. The SHORT function is defined as the identity operation, which is clearly only possible for in-range values. It is not defined for out-of-range values.
+
+REAL arithmetic (+, -, *, /) is not range checked but overflows lead to infinity (INF) and underflows lead to zero (0). Internally, all REAL operations are done using the extended 80 bits precision format of the IA32 floating point unit, then converted to 64 bit precision when assigned to a REAL variable or when floating point registers are saved on the stack prior to a function call. This design choice generally reduces arithmetic rounding errors. It does mean that breaking a compound expression into parts may not lead to exactly equivalent results. Constant expression evaluation in the compiler uses 64 bits only because it needs to store intermediate values to memory.
+Example:
+x := Math.Pi(); ASSERT(x = Math.Pi(), 30)
+leads to a TRAP, and so does
+ASSERT(Math.Pi() = Math.Pi(), 30).
+In this case the first call is rounded to 64 bits, the second is left at 80.
+
+The SET expression e IN s does not check if e is within {0..31}. The resulting behavior depends on s being in a register or in memory. In case of a register e MOD 32 IN s is returned. In case of memory, s is treated as an ARRAY of SET and e MOD 32 IN s[e DIV 32] is returned, so out-of-range values for e attempt to read memory outside the actual memory allocated for s. This leads to an "illegal memory read" exception if the resulting address is not mapped. If the resulting address is mapped, it leads to a result which is very random.
+
+INCL(s, e) and EXCL(s, e) use e MOD 32 in order not to violate memory integerity.

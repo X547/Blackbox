@@ -13,7 +13,7 @@ MODULE DevProfiler;
 
 	IMPORT
 		WinApi, WinMM,
-		Kernel, Dialog, Fonts, Ports, Views,
+		Kernel, Strings, Dialog, Fonts, Ports, Views,
 		TextModels, TextRulers, TextViews, TextControllers, TextMappers, StdLog;
 	
 	CONST
@@ -28,7 +28,7 @@ MODULE DevProfiler;
 		END;
 		
 		Proc = POINTER TO RECORD
-			name: Kernel.Name;
+			name: Kernel.Utf8Name;
 			p: INTEGER;
 			next: Proc
 		END;
@@ -119,7 +119,7 @@ MODULE DevProfiler;
 	END InsertModule;
 	
 	PROCEDURE Start*;
-		VAR ref, end, i, j: INTEGER; n: Kernel.Name; m: Kernel.Module; ok: BOOLEAN;
+		VAR ref, end, i, j: INTEGER; n: Kernel.Utf8Name; m: Kernel.Module; ok: BOOLEAN;
 	BEGIN
 		IF ~started THEN
 			IF listLen = 0 THEN	(* all modules *)
@@ -182,10 +182,10 @@ MODULE DevProfiler;
 		i := 0;
 		ch := list[i];
 		WHILE (i < LEN(list)) & (ch # 0X) DO
-			WHILE (ch # 0X) & (ch < "0") OR (ch > "9") & (CAP(ch) < "A") OR (CAP(ch) > "Z") DO INC(i); ch := list[i] END;
+			WHILE (ch # 0X) & ~Strings.IsIdentStart(ch) DO INC(i); ch := list[i] END;
 			IF ch # 0X THEN
 				j := 0;
-				WHILE (ch >= "0") & (ch <= "9") OR (CAP(ch) >= "A") & (CAP(ch) <= "Z") DO
+				WHILE Strings.IsIdent(ch) DO
 					name[j] := ch; INC(j); INC(i); ch := list[i]
 				END;
 				name[j] := 0X;
@@ -207,7 +207,7 @@ MODULE DevProfiler;
 	END GetModuleCount;
 	
 	PROCEDURE GetProcedureCount* (modName, procName: ARRAY OF CHAR; VAR count: LONGINT);
-		VAR i, j, last, ref, end: LONGINT; name: Kernel.Name;
+		VAR i, j, last, ref, end: LONGINT; name: Kernel.Utf8Name;
 	BEGIN
 		i := 0;
 		WHILE (i < numMod) & (mod[i].mod.name # modName) DO INC(i) END;
@@ -241,7 +241,7 @@ MODULE DevProfiler;
 	END Execute;
 	
 	PROCEDURE NewRuler (): TextRulers.Ruler;
-		CONST mm = Ports.mm; pt = Ports.point;
+		CONST mm = Ports.mm;
 		VAR p: TextRulers.Prop;
 	BEGIN
 		NEW(p);
@@ -256,12 +256,12 @@ MODULE DevProfiler;
 	END NewRuler;
 
 	PROCEDURE ShowModule (VAR m: Module);
-		VAR i, p, ref, end: INTEGER; proc, list, a, b: Proc;
+		VAR i, p, ref, end: INTEGER; proc, list, a, b: Proc; modName, nn: Kernel.Name; res: INTEGER;
 	BEGIN
 		ASSERT(totalCount > 0, 20);
 		p := m.count * 100 DIV totalCount;
 		IF p > 0 THEN
-			out.WriteSString(m.mod.name); out.WriteTab; out.WriteTab;
+			Kernel.GetModName(m.mod, modName); out.WriteString(modName); out.WriteTab; out.WriteTab;
 			out.WriteIntForm(p, 10, 2, "", FALSE); out.WriteLn;
 			NEW(proc); list := NIL;
 			ref := m.mod.refs; i := m.first;
@@ -279,7 +279,7 @@ MODULE DevProfiler;
 			END;
 			list := proc.next;
 			WHILE list # NIL DO
-				out.WriteTab; out.WriteSString(list.name); out.WriteTab; out.WriteTab;
+				Strings.Utf8ToString(list.name, nn, res); out.WriteTab; out.WriteString(nn); out.WriteTab; out.WriteTab;
 				out.WriteIntForm(list.p, 10, 2, "", FALSE); out.WriteLn;
 				list := list.next
 			END;
@@ -304,7 +304,7 @@ MODULE DevProfiler;
 		out.WriteLn; out.WriteLn;
 		out.rider.SetAttr(a0);
 		IF totalCount > 0 THEN
-			n := numMod; limit := MAX(INTEGER);
+			n := numMod; limit := MAX(INTEGER); pos := -1;
 			WHILE n > 0 DO
 				i := 0; max := -1;
 				WHILE i < numMod DO
@@ -407,6 +407,6 @@ Menus
 	"Set Profile List"	""	"DevProfiler.SetProfileList"	"DevProfiler.StartGuard"
 	"Start Profiler"	""	"DevProfiler.Start"	"DevProfiler.StartGuard"
 	"Stop Profiler"	""	"DevProfiler.Stop; DevProfiler.ShowProfile"	"DevProfiler.StopGuard"
-	"Execute"	""	"DevProfiler.Execute"	"TextCmds.SelectionGuard"
+	"Timed Execute"	""	"DevProfiler.Execute"	"TextCmds.SelectionGuard"
 
 

@@ -29,7 +29,7 @@ It is important that the exe-file does not appear in the list of files to be pac
 
 Example: 
  DevPacker.PackThis exefilename.exe :=
-Tour.odc "C:\Program files\BlackBox\License.txt" Test/Code/MyConfig.ocf => Code/Config.ocf
+Docu/Tour.odc "C:\Program files\BlackBox\License.txt" Test/Code/MyConfig.ocf => Code/Config.ocf
 
 PROCEDURE ListFromSub (sdir: ARRAY OF CHAR);
 Examines the directory sdir and all its subdirectories. If it finds any files it opens a new document and writes a packing command for the files found. sdir can be an absolute path, including a drive name, or a relative path to the BlackBox directory. It can also be an empty string, in which case the entire BlackBox directory will be listed.
@@ -46,7 +46,7 @@ Absolute vs. Relative paths in filenames
 Imagine that BlackBox is installed in directory D:\BlackBox. Then the file name D:\BlackBox\Std\Code\Log.ocf (absolute path) denotes the same file as Std\Code\Log.ocf (relative path) as far as the packer is concerned. But the packer packs the file into the exe-file with the path given in the command. This makes a crucial difference for HostPackedFiles which reads the exe-file. If the exe-file for example is started in directory C:\temp, and the program makes a call to StdLog, then this command will work if the file was packed using a relative path, but not if it was packed using an absolute path. On the other hand, if the file was packed using an absolute path, a call to open file D:\BlackBox\Std\Code\Log.ocf will work even if no physical drive called D: is present on the machine.
 
 Regarding exe-files
-The packer cannot create an exe-file, it can only pack files into an existing exe-file. This means that the linker has to be used to create a minimum exefile for the packer to use. This minimum exefile must have HostPackedFiles linked in since this is the module that allows for extraction of the files. The minimum linker command is as follows:
+The packer cannot create an exe-file, it can only pack files into an existing exe-file. This means that the linker has to be used to create a minimum exe-file for the packer to use. This minimum exe-file must have HostPackedFiles linked in since this is the module that allows for extraction of the files. The minimum linker command is as follows:
 
  DevLinker.Link exefilename.exe := Kernel$+ Files HostFiles HostPackedFiles StdLoader
 

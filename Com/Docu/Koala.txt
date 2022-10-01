@@ -1,5 +1,4 @@
-ComKoala Example
-
+ComKoala Example
 This example is one of the simplest COM examples. It provides a component which implements the IUnknown interface. In DTC Component Pascal, a concrete extension of the base interface must be defined. The two methods AddRef and Release are implemented by the compiler, and for QueryInterface, the default implementation can be taken. Thus, only the following two lines are necessary to implement this simple interface.
 
 	TYPE

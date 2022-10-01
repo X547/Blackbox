@@ -12,8 +12,8 @@ MODULE DevReferences;
 **)
 	
 	IMPORT
-		Kernel, Files, Fonts, Models, Views, Dialog, Containers,
-		StdDialog,
+		Kernel, Strings, Files, Fonts, Models, Views, Dialog, Containers,
+		StdDialog, StdApi,
 		TextModels, TextMappers, TextViews, TextControllers;
 	
 	CONST
@@ -39,19 +39,17 @@ MODULE DevReferences;
 			beg := 0; r.SetPos(0); r.ReadChar(ch);
 			WHILE ~r.eot & ~found DO
 				(* search legal start symbol *)
-				WHILE ~r.eot & ((ch < "A") OR (ch > "Z") & (ch # "_") & (ch < "a") OR (ch > "z")) DO
+				WHILE ~r.eot & ~Strings.IsIdentStart(ch) DO
 					INC(beg); r.ReadChar(ch)
 				END;
 				i := 0;
 				WHILE ~r.eot & (~bold OR SpecialFont(r)) & (i # len) & (ch = ident[i]) DO
 					r.ReadChar(ch); INC(i)
 				END;
-				found := (i = len) &
-								((ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "Z") & (ch # "_") & (ch < "a") OR (ch > "z"));
+				found := (i = len) & ~Strings.IsIdent(ch);
 				IF ~r.eot & ~found THEN	(* skip rest of identifier *)
 					beg := r.Pos() - 1;
-					WHILE ~r.eot &
-						~((ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "Z") & (ch # "_") & (ch < "a") OR (ch > "z")) DO
+					WHILE ~r.eot & Strings.IsIdent(ch) DO
 						INC(beg); r.ReadChar(ch)
 					END
 				END
@@ -61,24 +59,16 @@ MODULE DevReferences;
 	END SearchIdent;
 
 	PROCEDURE ShowText* (module, ident: TextMappers.String; category: Files.Name);
-		VAR title: Views.Title; loc: Files.Locator; name: Files.Name;
-			v: Views.View; m: Models.Model; t: TextModels.Model; beg, end: INTEGER; c: Containers.Controller;
+		VAR loc: Files.Locator; sub, name: Files.Name;
+			v: Views.View; m: Models.Model; t: TextModels.Model; beg, end: INTEGER;
 	BEGIN
-		StdDialog.GetSubLoc(module, category, loc, name); title := name$;
-		Kernel.MakeFileName(name, "");
 		IF category = "Docu" THEN
-			loc.res := 77; v := Views.OldView(loc, name); loc.res := 0;
-			IF v # NIL THEN
-				WITH v: Containers.View DO
-					c := v.ThisController();
-					IF c # NIL THEN
-						c.SetOpts(c.opts - {Containers.noFocus, Containers.noSelection} + {Containers.noCaret})
-					END
-				ELSE
-				END;
-				Views.OpenAux(v, title)
-			END
+			Kernel.SplitName(module, sub, name); Kernel.MakeFileName(name, "");
+			IF sub = "" THEN sub := "System" END;
+			StdApi.OpenBrowser(sub + "/Docu/" + name, module, v)
 		ELSE
+			StdDialog.GetSubLoc(module, category, loc, name);
+			Kernel.MakeFileName(name, "");
 			v := Views.OldView(loc, name);
 			IF v # NIL THEN Views.Open(v, loc, name, NIL) END
 		END;
@@ -98,7 +88,7 @@ MODULE DevReferences;
 		ELSE Dialog.ShowParamMsg("#System:FileNotFound", name, "", "")
 		END
 	END ShowText;
-	
+
 	PROCEDURE Scan (VAR s: TextMappers.Scanner);
 	BEGIN
 		s.Scan;
@@ -136,7 +126,7 @@ MODULE DevReferences;
 				IF s.type = becomes THEN
 					Scan(s);
 					IF s.type = TextMappers.string THEN
-						mod := SHORT(s.string$)
+						mod := s.string$
 					END
 				END
 			END
@@ -181,7 +171,3 @@ MODULE DevReferences;
 	END ShowDocu;
 
 END DevReferences.
-
- DevReferences.Show
-
-Files.Directory
