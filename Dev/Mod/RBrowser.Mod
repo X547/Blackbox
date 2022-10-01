@@ -315,7 +315,7 @@ MODULE DevRBrowser;
 		subinfo := Files.dir.LocList(root);
 		WHILE subinfo # NIL DO	(* iterate over all locations; no particular sorting order is guaranteed *)
 			subloc := root.This(subinfo.name);
-			IF subloc # NIL THEN
+			IF subloc.res = 0 THEN
 				GetThisSubsystem(subloc, subdesc, isSubsystem);
 				IF isSubsystem THEN WriteSubsystem(f, old, new, bold, subdesc, subinfo.name) END
 			END;

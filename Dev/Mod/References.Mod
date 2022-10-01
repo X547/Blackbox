@@ -12,8 +12,7 @@ MODULE DevReferences;
 **)
 	
 	IMPORT
-		Kernel, Strings, Files, Fonts, Models, Views, Dialog, Containers,
-		StdDialog, StdApi,
+		Kernel, Strings, Files, Fonts, Models, Views, Dialog, StdDialog, StdApi,
 		TextModels, TextMappers, TextViews, TextControllers;
 	
 	CONST
@@ -109,10 +108,10 @@ MODULE DevReferences;
 			ELSIF s.char = "*" THEN
 				IF s.rider.char = ")" THEN s.rider.Read; s.type := comEnd END
 			END
-		END	
+		END
 	END Scan;
-	
-	PROCEDURE CheckModName (VAR mod: TextMappers.String; t: TextModels.Model);
+
+	PROCEDURE ResolveImportAlias* (VAR mod: TextMappers.String; t: TextModels.Model);
 		VAR s: TextMappers.Scanner;
 	BEGIN
 		s.ConnectTo(t); s.SetPos(0); Scan(s);
@@ -131,7 +130,7 @@ MODULE DevReferences;
 				END
 			END
 		END
-	END CheckModName;
+	END ResolveImportAlias;
 
 	PROCEDURE Show (category: Files.Name);
 		VAR c: TextControllers.Controller; s: TextMappers.Scanner; beg, end: INTEGER;
@@ -145,7 +144,7 @@ MODULE DevReferences;
 				s.SetPos(beg); s.Scan;
 				IF s.type = TextMappers.string THEN
 					module := s.string; ident := "";
-					CheckModName(module, c.text);
+					ResolveImportAlias(module, c.text);
 					s.Scan;
 					IF (s.type = TextMappers.char) & (s.char = ".") THEN
 						s.Scan;

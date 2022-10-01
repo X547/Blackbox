@@ -256,21 +256,23 @@ Listing 5-11. Definition of TextRulers.Tab and TabArray
 In tabs.tab.stop, the tab's distance from the left border of the text view is specified (in universal units of course). The tab stops in the tabs.tab array must be sorted in ascending order, and there must be no duplicate values.
 In addition to the stop position kept in field stop, a tab stop can be modified using a set of possible options kept in field type. In particular, these options allow to center text under a tab stop or to right-align text under a tab stop (the default is left alignment):
 
-tab type	tabs.tab[i].type
+tabulator type	tabs.tab[i].type
 left adjusted	{}
 right adjusted	{TextRulers.rightTab}
 centered	{TextRulers.centerTab}
+decimal	{TextRulers.rightTab, TextRulers.centerTab}
 
-For all of the above tab types, it can optionally be specified whether the tab itself is drawn as a vertical bar. Bar tabs are specified by including the value TextRulers.barTab in the tab type set. Since the bars occupy the whole line height, they are useful to to format simple tables.
+For all of the above tab types, it can optionally be specified whether the tab itself is drawn as a vertical bar. Bar tabs are specified by including the value TextRulers.barTab in the tab type set. Since the bars occupy the whole line height, they are useful to format simple tables.
 When created with TextRulers.dir.New(NIL), a ruler has no tabs.
 The following auxiliary procedures are provided to modify a ruler:
 
 	PROCEDURE AddTab (r: Ruler; x: INTEGER)
 	PROCEDURE MakeRightTab (r: Ruler)
 	PROCEDURE MakeCenterTab (r: Ruler)
+	PROCEDURE MakeDecimalTab (r: Ruler; radixChar: CHAR)
 	PROCEDURE MakeLineTab (r: Ruler)
 
-AddTab adds a new left-adjusted normal tab. It can be changed into a right-adjusted or centered tab by calling MakeRightTab or MakeCenterTab. Independently of the adjustment mode, the tab can be turned into a bar tab by calling MakeLineTab.
+AddTab adds a new left-adjusted tab at position x. It can be changed into a right-adjusted, centered, or decimal tab by calling MakeRightTab, MakeCenterTab, or MakeDecimalTab. Independently of the adjustment mode, the tab can be turned into a bar tab by calling MakeLineTab.
 
 Margins
 Text is set within a left and a right margin. These margins can be specified as distances from the left border of the text view. The left margin must be smaller than the right margin.

@@ -113,7 +113,9 @@ MODULE HostWindows;
 		hookDocWinHandler*: PROCEDURE (
 			wnd: WinApi.HANDLE; message, wParam, lParam: INTEGER; VAR res: INTEGER): BOOLEAN;
 			(* hook for handling application specific messages; returns TRUE iff handled *)
-
+		creatingDoc-: BOOLEAN; (* work-around for issue-#106 until a final solution is available;
+			experiments showed that a simple view (i.e. without scrollbars) can skip Restore when this flag is TRUE *)
+		
 	PROCEDURE ScrollModPressed (): BOOLEAN;
 	BEGIN
 		RETURN WinApi.GetAsyncKeyState(11H) < 0
@@ -1015,7 +1017,7 @@ MODULE HostWindows;
 		b := {};
 		IF WinApi.GetKeyState(10H) < 0 THEN INCL(b, Controllers.extend); INCL(b, HostPorts.shift) END;
 		IF WinApi.GetKeyState(11H) < 0 THEN INCL(b, Controllers.modify); INCL(b, HostPorts.ctrl) END;
-		IF ODD(data DIV 20000000H) THEN INCL(b, HostPorts.alt) END;
+		IF ODD(data DIV 20000000H) THEN INCL(b, HostPorts.alt); INCL(b, Controllers.pick) END;
 		RETURN b
 	END KeyModifiers;
 
@@ -1104,7 +1106,7 @@ MODULE HostWindows;
 	BEGIN
 		IF (wParam >= 20H) & (wParam # 7FH) THEN
 			w := ThisWindow(wnd); mod := KeyModifiers(lParam); w.used := TRUE;
-			IF WinApi.VkKeyScanW(CHR(wParam)) >= 4 * 256 THEN EXCL(mod, HostPorts.alt) END;
+			IF WinApi.VkKeyScanW(CHR(wParam)) >= 4 * 256 THEN mod := mod - {HostPorts.alt, Controllers.pick} END;
 			w.KeyDown(CHR(wParam), mod)
 		END
 	END HandleChar;
@@ -1114,12 +1116,12 @@ MODULE HostWindows;
 	BEGIN
 		w := ThisWindow(wnd); b := {}; w.used := TRUE;
 		IF ODD(wParam) THEN INCL(b, HostPorts.left) END;
-		IF ODD(wParam DIV 16) THEN INCL(b, HostPorts.middle) END;
-		IF ODD(wParam DIV 2) THEN INCL(b, HostPorts.right) END;
+		IF ODD(wParam DIV 16) THEN INCL(b, HostPorts.middle); INCL(b, Controllers.pick) END;
+		IF ODD(wParam DIV 2) THEN INCL(b, HostPorts.right); INCL(b, Controllers.popup) END;
 		isDown := b # {};
 		IF ODD(wParam DIV 4) THEN INCL(b, HostPorts.shift); INCL(b, Controllers.extend) END;
 		IF ODD(wParam DIV 8) THEN INCL(b, HostPorts.ctrl); INCL(b, Controllers.modify) END;
-		IF WinApi.GetAsyncKeyState(12H) < 0 THEN INCL(b, HostPorts.alt) END;
+		IF WinApi.GetAsyncKeyState(12H) < 0 THEN INCL(b, HostPorts.alt); INCL(b, Controllers.pick) END;
 		IF ODD(wParam DIV 128) THEN INCL(b, Controllers.doubleClick) END;
 		x := lParam MOD 65536;
 		y := lParam DIV 65536;
@@ -1320,7 +1322,9 @@ MODULE HostWindows;
 		END;
 		CASE message OF
 		| WinApi.WM_CREATE:
-			Kernel.Try(CreateDoc, wnd, wParam, lParam)
+			creatingDoc := TRUE;
+			Kernel.Try(CreateDoc, wnd, wParam, lParam);
+			creatingDoc := FALSE
 		| WinApi.WM_CLOSE:
 			res := WinApi.SendMessageW(main, WinApi.WM_COMMAND, iClose, 0);
 			Controllers.ResetCurrentPath();

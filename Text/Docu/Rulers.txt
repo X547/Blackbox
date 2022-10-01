@@ -68,6 +68,7 @@ DEFINITION TextRulers;
 		END;
 
 	VAR dir-, stdDir-: Directory;
+		defaultRadixChar: CHAR;
 
 	PROCEDURE ReadAttr (VAR rd: Stores.Reader; VAR a: Attributes);
 	PROCEDURE WriteAttr (VAR wr: Stores.Writer; a: Attributes);
@@ -92,6 +93,11 @@ DEFINITION TextRulers;
 	PROCEDURE MakeBarTab (r: Ruler);
 	PROCEDURE MakeCenterTab (r: Ruler);
 	PROCEDURE MakeRightTab (r: Ruler);
+	PROCEDURE MakeDecimalTab (r: Ruler; radixChar: CHAR);
+	
+	PROCEDURE GetRadixChar (a: Attributes; tabIndex: INTEGER): CHAR;
+	PROCEDURE SetRadixChar (a: Attributes; tabIndex: INTEGER; radixChar: CHAR);
+	PROCEDURE SetRadixCharProp (p: Prop; tabIndex: INTEGER; radixChar: CHAR);
 
 	PROCEDURE CopyOf (r: Ruler; shallow: BOOLEAN): Ruler;
 	PROCEDURE GetValidRuler (text: TextModels.Model; pos, hint: INTEGER;
@@ -103,6 +109,8 @@ END TextRulers.
 
 
 TextRulers are textaware views that, if embedded in a text, affect the text setting. A ruler supports interactive and program controlled adjustment of paragraph and limited page formatting. However, the ruler does not perform the actual setting of the text according to the format defined by the ruler. Text setters are used to actually set a text (cf. Section 6.4; TextSetters).
+TextRulers set the preferences {TextModels.maskChar, TextModels.hideable} as response to a TextModels.Pref message. The mask character is TextModels.para. Text rulers are thereby returned as a paragraph character by a text reader.
+Further information on using text rulers is available here.
 
 
 CONST first, left, right, lead, asc, dsc, grid, opts, tabs
@@ -122,11 +130,12 @@ CONST maxTabs
 Maximum number of tab stops that can be held by a TabArray structure. This limits the number of tab stops that can be defined for a ruler.
 
 CONST centerTab, rightTab, barTab
-Possible element of Tab.type. Set elements to be drawn from {centerTab, rightTab, barTab}. Tabulation is centred if centerTab IN type. It is right aligned if rightTab IN type. If neither option is set, tabulation is left aligned. Setting both options is illegal. If barTab IN type, then tab stop serves as the position of a vertical line drawn from the ruler containing this tab definition to the next ruler, or the end of text, if no further ruler follows. (The actual drawing of such a bar is left to the view displaying the text containing the ruler.)
+Possible element of Tab.type. Set elements to be drawn from {centerTab, rightTab, barTab}. Tabulation is centered if centerTab IN type. It is right aligned if rightTab IN type. If neither option is set, tabulation is left aligned. Setting both, centerTab and rightTab, means a decimal tabulator. If barTab IN type, then tab stop serves as the position of a vertical line drawn from the ruler containing this tab definition to the next ruler, or the end of text, if no further ruler follows. (The actual drawing of such a bar is left to the view displaying the text containing the ruler.)
 
 
 TYPE Tab
 Defines a single tab stop as a pair of a stop position and a tabulation type.
+Note that the alignment character for decimal tabs (introduced in version 1.7.1) conceptually also belongs to Tab but is accessed via GetRadixChar and SetRadixChar. This is for keeping the interface of Tab compatible with version 1.7.
 
 stop: INTEGER	[units]
 The tab stop position, measured from the left margin of the setting context of the text, i.e., usually the view displaying the set text.
@@ -330,6 +339,9 @@ Except for performance, equivalent to:
 VAR dir-, stdDir-: Directory	dir # NIL, stdDir # NIL, stable stdDir = d
 Directory and standard directory objects for rulers and styles.
 
+VAR defaultRadixChar*: CHAR
+The character to be used for aligning new decimal tabs. Initially set to ".".
+
 
 PROCEDURE  ReadAttr (VAR rd: Stores.Reader; VAR a: Attributes)
 Read an attributes object; in case the reader returns an alien store, the store is wrapped into an alien attributes object and the wrapper is returned.
@@ -347,7 +359,7 @@ MapsToAlien(NextStore(rd'))
 	a.store = NextStore(rd')
 
 PROCEDURE  WriteAttr (VAR wr: Stores.Writer; a: Attributes)
-Read an attributes object; in case the reader returns an alien store, the store is wrapped into an alien attributes object and the wrapper is returned.
+Write an attributes object; in case a is an alien attributes object, its contained alien store is unwrapped and written.
 
 Pre
 a # NIL	20
@@ -416,6 +428,7 @@ r.style.attr.tabs.len = i
 Post
 r.style.attr.tabs.len = r.style'.attr.tabs.len + 1
 r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].stop = x
+r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = {}
 
 PROCEDURE MakeBarTab (r: Ruler)
 Operation
@@ -437,7 +450,7 @@ r.style # NIL	20
 r.style.attr.tabs.len > 0	21
 
 Post
-r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = centerTab
+r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = {centerTab}
 
 PROCEDURE MakeRightTab (r: Ruler)
 Operation
@@ -448,7 +461,27 @@ r.style # NIL	20
 r.style.attr.tabs.len > 0	21
 
 Post
-r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = righTab
+r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = {righTab}
+
+PROCEDURE MakeDecimalTab (r: Ruler; radixChar: CHAR);
+Operation
+Change the last tab of r to a decimal tab aligned to radixChar.
+
+Pre
+r.style # NIL	20
+r.style.attr.tabs.len > 0	21
+
+Post
+r.style.attr.tabs.tab[r.style.attr.tabs.len - 1].type * {centerTab, rightTab} = {centerTab, rightTab}
+
+PROCEDURE GetRadixChar (a: Attributes; tabIndex: INTEGER): CHAR;
+Return the character to be used for aligning the decimal tab specified in attributes a with the specified tabIndex.
+
+PROCEDURE SetRadixChar (a: Attributes; tabIndex: INTEGER; radixChar: CHAR);
+Set the character to be used for aligning the decimal tab specified in attributes a with the specified tabIndex to radixChar.
+
+PROCEDURE SetRadixCharProp (p: Prop; tabIndex: INTEGER; radixChar: CHAR);
+Set the character to be used for aligning the decimal tab specified in properties p with the specified tabIndex to radixChar.
 
 PROCEDURE CopyOf (r: Ruler; shallow: BOOLEAN): Ruler
 Create [shallow] copy of ruler.

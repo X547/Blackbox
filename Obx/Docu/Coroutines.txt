@@ -1,0 +1,33 @@
+Overview by Example: ObxCoroutines
+
+ObxCoroutines shows how to use BlackBox coroutines. It provides three examples, one that implements a simple plain coroutine, one that runs a coroutine as a background task for finding prime numbers, and one that solves the famous SameFringe problem by using two iterators.
+
+The plain coroutine example sets up a coroutine that iterates from 0 to 9 and then returns. For every iteration it transfers control back to the client, which in this example outputs the value. The client terminates when the iterator has returned. This example deliberately does not use the Iterator pattern but uses plain coroutines in order to show how plain coroutines can be used. For an example that uses the Iterator pattern see the SameFringe problem.
+
+ObxCoroutines.RunPlainCoroutine
+
+
+The background task example creates a coroutine that computes the number of prime numbers up to and including the specified limit. The output is written into the log window. This example uses the Task pattern. In order to run with maximum speed it uses a Sleep(0) for transferring control to main.
+
+ObxCoroutines.RunPrimes 1000000
+ObxCoroutines.RunPrimes 10000000
+
+
+The SameFringe example answers the question if two binary trees have the same fringe. The fringe of a binary tree is defined as the sequence of leaf nodes encountered in a pre-order traversal. The trees to be compared are defined right after the RunSameFringe command. A name or a string denotes a leaf node, ~ denotes NIL, and [<left> <right>] denotes an internal node with <left> and <right> subnodes. This example uses the Iterator pattern.
+
+ObxCoroutines.RunSameFringe a  a
+ObxCoroutines.RunSameFringe [a b]  [b a]
+ObxCoroutines.RunSameFringe [~ [~ [a b]]]  [[[a b] ~] ~]
+
+
+If you want to remove any system defined references to coroutines that would prevent the garbage collector from collecting coroutine objects you can execute the following command:
+
+Coroutines.Cleanup
+
+
+If you want to stop coroutine support in BlackBox it suffices to unload the module Coroutines.
+
+DevDebug.UnloadThis ObxCoroutines Coroutines 
+
+
+ObxCoroutines  sources

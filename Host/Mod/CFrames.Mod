@@ -1230,9 +1230,7 @@ MODULE HostCFrames;
 		ASSERT(~f.disabled, 100);
 		IF (ch = AU) OR (ch = AD) THEN
 			val := f.val;
-			IF WinApi.GetKeyState(WinApi.VK_SHIFT) < 0 THEN (* Shift key pressed *)
-				IF ch = AU THEN val := f.max ELSE val := f.min END
-			ELSIF WinApi.GetKeyState(WinApi.VK_CONTROL) < 0 THEN (* Ctrl key pressed *)
+			IF WinApi.GetKeyState(WinApi.VK_CONTROL) < 0 THEN (* Ctrl key pressed *)
 				IF ch = AU THEN
 					IF ((f.min + 9) DIV 10 <= val) & (val <= f.max DIV 10) THEN val := val * 10 END
 				ELSE

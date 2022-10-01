@@ -168,12 +168,12 @@ MODULE XhtmlStdFileWriters;
 	PROCEDURE MakeFileSpec (IN path: ARRAY OF CHAR; OUT loc: Files.Locator; OUT file: Files.Name);
 		VAR i, j: INTEGER; ch: CHAR; s: Files.Name;
 	BEGIN
-		loc := Files.dir.This(""); IF loc = NIL THEN RETURN END;
+		loc := Files.dir.This(""); IF loc.res # 0 THEN RETURN END;
 		j := 0; i := 0; ch := path[0];
 		WHILE ch # 0X DO
 			IF ch = "/" THEN
 				s[j] := 0X;	(* s contains next path element *)
-				loc := loc.This(s); IF loc = NIL THEN RETURN END;
+				loc := loc.This(s); IF loc.res # 0 THEN RETURN END;
 				j := 0
 			ELSE
 				s[j] := ch; INC(j)

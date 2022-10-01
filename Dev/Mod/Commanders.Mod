@@ -176,7 +176,7 @@ MODULE DevCommanders;
 		VAR s: Scanner; beg, res: INTEGER; cmd: POINTER TO ARRAY OF CHAR;
 	BEGIN
 		cmd := NIL;
-		s.s.ConnectTo(t); s.s.SetPos(pos); s.s.SetOpts({TextMappers.returnViews});
+		s.s.ConnectTo(t); s.s.SetPos(pos); s.s.SetOpts({TextMappers.returnViews, TextMappers.maskViews});
 		Scan(s); ASSERT(s.s.type = execMark, 100);
 		Scan(s);
 		IF s.s.type = qualident THEN

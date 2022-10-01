@@ -51,6 +51,9 @@ MODULE HostMenus;
 		(* File for specifying command line options *)
 		cmdLinePath = "System/Rsrc"; cmdLineFile = "CommandLine.txt";
 		
+		(* first character of a submenu name *)
+		submenuPrefix = "$";
+		
 
 	TYPE
 		Item* = POINTER TO RECORD (StdDialog.Item)
@@ -111,7 +114,7 @@ MODULE HostMenus;
 		UpdateOleMenus*: PROCEDURE;
 		TranslateOleKeys1*: PROCEDURE (VAR msg: WinApi.MSG; VAR done: BOOLEAN);
 		TranslateOleKeys2*: PROCEDURE (VAR msg: WinApi.MSG; VAR done: BOOLEAN);
-		
+
 
 	PROCEDURE [1] FINIT 0DBH, 0E3H;
 	PROCEDURE [1] FCLEX 0DBH, 0E2H;
@@ -426,16 +429,53 @@ MODULE HostMenus;
 		lastMenu := curMenu; curMenu := NIL
 	END Close;
 
+	PROCEDURE IsSubmenu(m: Menu): BOOLEAN;
+	BEGIN RETURN m.menu[0] = submenuPrefix
+	END IsSubmenu;
+	
+	PROCEDURE FindSubmenu(item: StdDialog.Item): Menu;
+		VAR m: Menu;
+	BEGIN
+		IF item.string[0] = submenuPrefix THEN
+			m := firstMenu;
+			WHILE (m # NIL) & (m.menu # item.string$) DO m := m.next END;
+			RETURN m
+		ELSE
+			RETURN NIL
+		END
+	END FindSubmenu;
+
+	PROCEDURE InitSubmenus;
+		VAR menu, submenu: Menu; item: StdDialog.Item; res: INTEGER; label: Dialog.String;
+	BEGIN
+		menu := firstMenu;
+		WHILE menu # NIL DO
+			item := menu.firstItem;
+			WHILE item # NIL DO
+				submenu := FindSubmenu(item);
+				IF submenu # NIL THEN label := "?";
+					res := WinApi.GetMenuStringW(menu.menuH, item(Item).id, label, LEN(label), {});
+					res := WinApi.ModifyMenuW(menu.menuH, item(Item).id,
+									WinApi.MF_BYCOMMAND + WinApi.MF_POPUP + WinApi.MF_STRING,
+									submenu.menuH, label)
+				END;
+				item := item.next
+			END;
+			menu := menu.next
+		END
+	END InitSubmenus;
+
 	PROCEDURE InitMenus*;
 		VAR m, n, old: Menu; res, i: INTEGER; used, u: SET; tp: Stores.TypeName; oldBar: WinApi.HANDLE;
 	BEGIN
 		ASSERT(curMenu = NIL, 20);
 		IF firstMenu # NIL THEN
 			used := {}; m := firstMenu;
-			WHILE m # NIL DO GetHotkey(m.menu, m.hot, used); m := m.next END;
+			WHILE m # NIL DO GetHotkey(m.menu, m.hot, used); m := m.next END; (* set explicit menu hotkeys *)
 			m := firstMenu; i := 0;
 			WHILE m # NIL DO
-				IF (m.hot = -1) & (m.type = "") THEN m.hot := FirstFree(m.menu, used) END;
+				(* set implicit hotkeys of unconditional menus *)
+				IF (m.hot = -1) & (m.type = "") & ~IsSubmenu(m) THEN m.hot := FirstFree(m.menu, used) END;
 				IF m.isWinMenu THEN m.class := 4; i := 100
 				ELSIF m.isPopup THEN m.class := 10
 				ELSIF i = 0 THEN m.class := 0
@@ -447,20 +487,21 @@ MODULE HostMenus;
 			END;
 			m := firstMenu;
 			WHILE m # NIL DO
-				IF m.hot = -1 THEN
+				(* set implicit hotkeys of conditional menus, grouped by type *)
+				IF (m.hot = -1) & ~IsSubmenu(m) THEN
 					tp := m.type$; u := used; n := m;
 					WHILE n # NIL DO
-						IF (n.hot = -1) & (n.type = tp) THEN n.hot := FirstFree(n.menu, u) END;
+						IF (n.hot = -1) & (n.type = tp) & ~IsSubmenu(n) THEN n.hot := FirstFree(n.menu, u) END;
 						n := n.next
 					END
 				END;
-				IF m.hot >= 0 THEN SetHotkey(m.menu, m.hot) END;
+				IF (m.hot >= 0) & ~IsSubmenu(m) THEN SetHotkey(m.menu, m.hot) END;
 				m := m.next
 			END;
 			newMenuBar := WinApi.CreateMenu();
 			m := firstMenu;
 			WHILE m # NIL DO
-				IF ((m.type = "") OR (m.type = type)) & ~m.isPopup THEN
+				IF ((m.type = "") OR (m.type = type)) & ~m.isPopup & ~IsSubmenu(m) THEN
 					res := WinApi.AppendMenuW(newMenuBar, WinApi.MF_POPUP, m.menuH, m.menu)
 				END;
 				m := m.next
@@ -479,7 +520,8 @@ MODULE HostMenus;
 					m := m.next
 				END;
 				res := WinApi.DestroyMenu(oldBar)
-			END
+			END;
+			InitSubmenus
 		END
 	END InitMenus;
 	
@@ -804,6 +846,23 @@ MODULE HostMenus;
 	END MenuCommand;
 	
 	
+	PROCEDURE FindAccelerator(menu: Menu; code: INTEGER; ctrl, shift: BOOLEAN): Item;
+		VAR item: StdDialog.Item; submenu: Menu; res: Item;
+	BEGIN
+		item := menu.firstItem;
+		WHILE item # NIL DO
+			WITH item: Item DO
+				IF (item.code = code) & (item.ctrl = ctrl) & (item.shift = shift) THEN RETURN item END;
+				submenu := FindSubmenu(item);
+				IF submenu # NIL THEN res := FindAccelerator(submenu, code, ctrl, shift);
+					IF res # NIL THEN RETURN res END
+				END;
+			END;
+			item := item.next
+		END;
+		RETURN NIL
+	END FindAccelerator;
+	
 	PROCEDURE TranslateAccelerators (VAR msg: WinApi.MSG; filter: SET; VAR done: BOOLEAN);
 		VAR m: Menu; i: StdDialog.Item; id, code: INTEGER; ctrl, shift, alt: BOOLEAN; ch: CHAR;
 			failed, ok, control: BOOLEAN; par: Dialog.Par; focus: Views.View;
@@ -852,10 +911,8 @@ MODULE HostMenus;
 			IF (id = 0) & ~alt & (ctrl OR (code >= 70H) & (code <= 7FH)) (* function key *) THEN
 				m := menus;
 				WHILE (m # NIL) & (id = 0) DO
-					IF ((m.type = "") OR (m.type = type)) & ~m.isPopup & (m.class IN filter) THEN
-						i := m.firstItem;
-						WHILE (i # NIL) &
-							((i(Item).code # code) OR (i(Item).ctrl # ctrl) OR (i(Item).shift # shift)) DO i := i.next END;
+					IF ((m.type = "") OR (m.type = type)) & ~m.isPopup & (m.class IN filter) & ~IsSubmenu(m) THEN
+						i := FindAccelerator(m, code, ctrl, shift);
 						IF i # NIL THEN
 							IF i.filter^ # "" THEN StdDialog.CheckFilter(i, failed, ok , par) END;
 							IF (i.filter^ = "") OR ~failed & ~par.disabled THEN id := i(Item).id END
@@ -1040,7 +1097,7 @@ MODULE HostMenus;
 		old := menuBar; menuBar := WinApi.CreateMenu();
 		m := menus;
 		WHILE m # NIL DO
-			IF ((m.type = "") OR (m.type = type)) & ~m.isPopup THEN
+			IF ((m.type = "") OR (m.type = type)) & ~m.isPopup & ~IsSubmenu(m) THEN
 				res := WinApi.AppendMenuW(menuBar, WinApi.MF_POPUP,  m.menuH, m.menu)
 			END;
 			m := m.next

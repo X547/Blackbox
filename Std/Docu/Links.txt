@@ -37,11 +37,13 @@ Link views, also called links, are views that always appear in pairs. They are o
 
 	A link to the user manual
 
-If you do not see anything special to the left and right of the above text stretch, use Text>Show Marks to make the views visible.
+If you do not see anything special to the left and right of the above text stretch, use Text->Show Marks to make the views visible.
 
 If you click on either the left or right link view, the command associated with the link is executed. Moreover, the entire text stretch between the link pair is active also. The mouse cursor changes its shape when it points to the active stretch.
 
-If you hold down the ctrl key when clicking on one of the link stretch, the two views are transformed into a textual form:
+If you hold down the Ctrl key when clicking the right mouse button on a link, a dialog is opened that allows for inspecting and editing the link's properties. The Link property contains the command (or command sequence) of the link. The Close property defines if the document that contains the link is closed when the link is executed. This dialog is described more fully in Links & Targets.
+
+If you hold down the Ctrl key when clicking the left mouse button on a link, the two views are transformed into a textual form:
 
 	<StdCmds.OpenBrowser('System/Docu/User-Man', 'User Manual')>A link to the user manual<>
 
@@ -49,13 +51,14 @@ The syntax is "<" command sequence ">" text stretch "<" ">". The command sequenc
 
 	<Dialog.Beep; Dialog.Beep>beep beep<>
 
-To turn this specification into an active text stretch, select it (from and including the first "<", to and including the last ">") and then execute Tools>Create Link.
+To turn this specification into an active text stretch, select it (from and including the first "<", to and including the last ">") and then execute Tools->Create Link.
+A possibly simpler way to create this link is to enter, then select, the text "beep beep" (without the quotes), then use the menu option Tools->Create Link; then type into the Link: field "Dialog.Beep; Dialog.Beep" (without the quotes); then click Apply. The blue coloring and underlining are applied automatically.
 
 You may have noticed that the name "link" thus just denotes the most typical use of link views. They are not inherently specialized for text linking. The behavior is completely determined by the command sequence associated with them.
 
 In order to use link views for hypertext linking, it must be possible to use link commands which open a particular piece of text. The standard command for this purpose is StdCmds.OpenBrowser. For example, the command "StdCmds.OpenBrowser('Obx/Docu/Sys-Map', 'Map to the Obx Subsystem')" opens the Obx map text in browser mode.
 
-Sometimes it is useful to have a command which, as a reaction to activating it via a link view, scrolls the text in which the link view is embedded, to a certain target position. This target position can be marked with a pair of target views, which are created in a similar way as link views. The command to scroll to a certain target view is ShowTarget. To determine which target to show, a target contains an arbitrary identifier name.
+Sometimes it is useful to have a command which, as a reaction to activating it via a link view, scrolls the text in which the link view is embedded, to a certain target position. This target position can be marked with a pair of target views, which are created and handled in a similar way as link views. The command to scroll to a certain target view is ShowTarget. To determine which target to show, a target contains an arbitrary identifier name.
 
 For example, the link view with the specification
 	<StdLinks.ShowTarget('first target')>show target<>
@@ -116,13 +119,17 @@ Link/target directories.
 
 
 PROCEDURE CreateGuard (VAR par: Dialog.Par)
-Menu guard procedure used for CreateLink and CreateTarget. par.disabled remains FALSE (i.e., the menu entry is not disabled) if the following holds. The focus view is a text view and the current text selection exactly covers a stretch of text with the syntax: "<" text ">" text "<>".
+Menu guard procedure used for CreateLink and CreateTarget. par.disabled remains FALSE (i.e. the menu entry is enabled) if the focus view is a text view and has a selection.
 
 PROCEDURE CreateLink
-Insert a link into the focus text. To create a link, a piece of text with the following syntax must be selected: "<" command sequence ">" arbitrary text "<>". The command sequence must not contain a ">" character. The stretch "<" command sequence ">" is replaced with the left link view. The stretch "<>" is replaced with the right link view. The link views can be hidden/shown with Text>Show Marks and Text>Hide Marks, resp. To edit the command sequence of a link, click on one of the link views with the ctrl key pressed. This replaces the views with the original text.
+Insert a link into the focus text. If the selected text does not follow the special syntax described below, it is converted into a link (blue and underlined and embedded within a left and a right link view) and the link's property editor is opened.
+If the selected text follows the syntax  "<" command sequence ">" arbitrary text "<>", were the command sequence must not contain a ">" character, a link including the command sequence is inserted. The stretch "<" command sequence ">" is replaced with the left link view, the stretch "<>" is replaced with the right link view.
+The link views can be shown/hidden with Text->Show Marks and Text->Hide Marks, respectively. To inspect or edit the command sequence of a link, click with the right mouse button on a link. Alternatively, click on one of the link views with the Ctrl key pressed. This replaces the views with the special syntax for creating the link.
 
 PROCEDURE CreateTarget
-Insert a target into the focus text. To create a target, a piece of text with the following syntax must be selected: "<" target identifier ">" arbitrary text "<>". The target identifier must not contain a ">" character. The stretch "<" target identifier ">" will be replaced with the left target view. The stretch "<>" will be replaced with the right target view. Target views can be hidden/shown with Text>Show Marks and Text>Hide Marks, resp. To edit the target identifier of an existing target, click on one of the views with the ctrl key pressed. This replaces the views with the original text.
+Insert a target into the focus text. If the selected text does not follow the special syntax described below, it is converted into a target (embedded within a left and a right target view) and the target's property editor is opened.
+If the selected text follows the syntax  "<" target identifier ">" arbitrary text "<>", were the target identifier must not contain a ">" character, a target including the target identifier is inserted. The stretch "<" target identifier ">" is replaced with the left target view, the stretch "<>" is replaced with the right target view.
+Target views can be shown/hidden with Text->Show Marks and Text->Hide Marks, respectively. To inspect or edit the identifier of a target, hold down the Ctrl key and click with the right mouse button on a target. Alternatively, click the left mouse button on one of the target views with the Ctrl key pressed. This replaces the views with the special syntax for creating the target.
 
 PROCEDURE ShowTarget (ident: ARRAY OF CHAR)
 Searches the first target view in the focus text whose target identifier equals ident. If one is found, the text is scrolled such that the target view is shown on the first line, and the text stretch between the left and right target views is selected. (Note: if the text is opened in mask mode, the selection is not visible.)

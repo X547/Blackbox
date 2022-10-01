@@ -1,5 +1,7 @@
 Map to the Std Subsystem
 
+Links-Dialog	Links & Targets
+
 StdApi 	API for StdCmds
 StdClocks	analog clock views
 StdCmds	cmds of std menus

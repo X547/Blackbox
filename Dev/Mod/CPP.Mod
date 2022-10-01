@@ -6,14 +6,14 @@ MODULE DevCPP;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
 **)
 
 	IMPORT
-		Strings, DevCPM, DevCPT, DevCPB, DevCPS;
+		DevCPM, DevCPT, DevCPB, DevCPS;
 		
 	CONST
 		anchorVarPar = TRUE;
@@ -256,17 +256,18 @@ MODULE DevCPP;
 	END CheckForwardTypes;
 	
 	PROCEDURE CheckUnimpl (m: DevCPT.Object; typ: DevCPT.Struct; pos: INTEGER);
-		VAR obj: DevCPT.Object; res: INTEGER; n: ARRAY LEN(DevCPT.Name) OF CHAR;
+		VAR obj: DevCPT.Object;
 	BEGIN
 		IF m # NIL THEN
 			IF (m.mode = TProc) & (absAttr IN m.conval.setval) THEN
 				DevCPT.FindField(m.name^, typ, obj);
 				IF (obj = NIL) OR (obj.mode # TProc) OR (absAttr IN obj.conval.setval) THEN
 					DevCPM.Mark(192, pos);
-					DevCPM.LogWLn; DevCPM.LogWStr("  "); Strings.Utf8ToString(m.name^, n, res); DevCPM.LogWStr(n);
-					DevCPM.LogWStr(" not implemented");
+					DevCPM.LogWLn; DevCPM.LogWStr("  "); 
 					IF typ.strobj # NIL THEN
-						DevCPM.LogWStr(" in "); Strings.Utf8ToString(typ.strobj.name^, n, res); DevCPM.LogWStr(n)
+						DevCPM.LogWPar("#Dev:NotImplementedIn", m.name, typ.strobj.name)
+					ELSE
+						DevCPM.LogWPar("#Dev:NotImplemented", m.name, "")
 					END
 				END
 			END;

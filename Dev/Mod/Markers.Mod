@@ -145,13 +145,22 @@ MODULE DevMarkers;
 
 	PROCEDURE Load (v: StdView);
 		VAR view: Views.View; t: TextModels.Model; s: TextMappers.Scanner;
-			err: INTEGER; i: INTEGER; ch: CHAR; loc: Files.Locator;
+			err: INTEGER; i: INTEGER; ch: CHAR; loc, langLoc: Files.Locator;
 			msg: ARRAY 1024 OF CHAR;
 	BEGIN
+		view := NIL;
 		err := ABS(v.err); NumToStr(err, msg, i);
-		loc := Files.dir.This("Dev"); IF loc = NIL THEN RETURN END;
-		loc := loc.This("Rsrc"); IF loc = NIL THEN RETURN END;
-		view := Views.OldView(loc, errFile);
+		loc := Files.dir.This("Dev"); IF loc.res # 0 THEN RETURN END;
+		loc := loc.This("Rsrc"); IF loc.res # 0 THEN RETURN END;
+		IF (Dialog.language # "") & (Dialog.language # "en") THEN
+			langLoc := loc.This(Dialog.language);
+			IF langLoc.res = 0 THEN
+				view := Views.OldView(langLoc, errFile)
+			END
+		END;
+		IF (view = NIL) OR ~ (view IS TextViews.View) THEN
+			view := Views.OldView(loc, errFile)
+		END;
 		IF (view # NIL) & (view IS TextViews.View) THEN
 			t := view(TextViews.View).ThisModel();
 			IF t # NIL THEN
@@ -177,8 +186,8 @@ MODULE DevMarkers;
 		CASE v.mode OF
 		  mark:
 			v.context.GetSize(w, h);
-			f.DrawLine(point, 0, w - 2 * point, h, 0, color);
-			f.DrawLine(w - 2 * point, 0, point, h, 0, color)
+			f.DrawLine(point, 0, w - f.dot, h, 0, color);
+			f.DrawLine(0, h + f.dot, w, - 2 * f.dot,  0, color)
 		| message:
 			font.GetBounds(asc, dsc, w);
 			f.DrawString(2 * point, asc, color, v.msg^, font)

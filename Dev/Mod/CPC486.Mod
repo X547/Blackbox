@@ -6,7 +6,7 @@ MODULE DevCPC486;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
@@ -1792,9 +1792,26 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 			DevCPL486.MakeReg(r, BX, Pointer); DevCPL486.GenPush(r)
 		END
 	END PrepCall;
+		
+	PROCEDURE AdjustStackCCall(p: DevCPT.Object);
+		VAR n: INTEGER;
+	BEGIN
+		n := 0;
+		WHILE p # NIL DO
+			IF p.mode = VarPar THEN
+				IF (p.typ.comp = DynArr) & ~p.typ.untagged THEN INC(n, p.typ.size); 
+				ELSIF (p.typ.comp = Record) & ~p.typ.untagged THEN INC(n, 4 + 4);
+				ELSE INC(n, 4)
+				END
+			ELSE INC(n, (p.typ.size + 3) DIV 4 * 4)
+			END;
+			p := p.link
+		END;
+		AdjustStack(n)
+	END AdjustStackCCall;
 	
 	PROCEDURE Call* (VAR x, tag: DevCPL486.Item);	(* TProc: tag.typ = actual receiver type *)
-		VAR i, n: INTEGER; r, y: DevCPL486.Item; typ: DevCPT.Struct; lev: BYTE; saved: BOOLEAN; p: DevCPT.Object;
+		VAR i, n: INTEGER; r, y: DevCPL486.Item; typ: DevCPT.Struct; lev: BYTE; saved: BOOLEAN;
 	BEGIN
 		IF x.mode IN {LProc, XProc, IProc} THEN
 			lev := x.obj.mnolev; saved := FALSE;
@@ -1809,14 +1826,7 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 			END;
 			DevCPL486.GenCall(x);
 			IF x.obj.sysflag = ccall THEN	(* remove parameters *)
-				p := x.obj.link; n := 0;
-				WHILE p # NIL DO
-					IF p.mode = VarPar THEN INC(n, 4)
-					ELSE INC(n, (p.typ.size + 3) DIV 4 * 4)
-					END;
-					p := p.link
-				END;
-				AdjustStack(n)
+				AdjustStackCCall(x.obj.link)
 			END;
 			IF saved THEN DevCPL486.GenPop(r) END;
 		ELSIF x.mode = TProc THEN
@@ -1866,14 +1876,7 @@ lx	:= LONG(SHORT(ly))	y b+	y w*	x w	*
 		ELSE	(* proc var *)
 			DevCPL486.GenCall(x); Free(x);
 			IF x.typ.sysflag = ccall THEN	(* remove parameters *)
-				p := x.typ.link; n := 0;
-				WHILE p # NIL DO
-					IF p.mode = VarPar THEN INC(n, 4)
-					ELSE INC(n, (p.typ.size + 3) DIV 4 * 4)
-					END;
-					p := p.link
-				END;
-				AdjustStack(n)
+				AdjustStackCCall(x.typ.link)
 			END;
 			x.typ := x.typ.BaseTyp
 		END;

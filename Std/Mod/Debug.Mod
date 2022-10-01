@@ -55,8 +55,6 @@ MODULE StdDebug;
 	
 	VAR
 		out: TextMappers.Formatter;
-		path: ARRAY 4 OF Ports.Point;
-		empty: Kernel.Name;
 
 
 	PROCEDURE NewRuler (): TextRulers.Ruler;
@@ -147,7 +145,7 @@ MODULE StdDebug;
 		IF mode = char THEN out.WriteChar(22X) END
 	END WriteString;
 	
-	PROCEDURE OutString (s: ARRAY OF CHAR);
+	PROCEDURE OutString (IN s: ARRAY OF CHAR);
 		VAR str: Dialog.String;
 	BEGIN
 		Dialog.MapString(s, str);
@@ -579,59 +577,68 @@ MODULE StdDebug;
 		END
 	END GetTrapMsg;
 
+	PROCEDURE OutAdr (adr: INTEGER);
+	BEGIN
+		out.WriteString(" ("); OutString("#System:adr"); out.WriteString(" = "); WriteHex(adr); out.WriteChar(")")
+	END OutAdr;
+
 	PROCEDURE Trap;
 		VAR a0: TextModels.Attributes; action: Action; msg: ARRAY 512 OF CHAR;
 	BEGIN
 		out.ConnectTo(TextModels.dir.New());
 		a0 := out.rider.attr;
 		out.rider.SetAttr(TextModels.NewWeight(a0, Fonts.bold));
-		IF Kernel.err = 129 THEN out.WriteString("invalid WITH")
-		ELSIF Kernel.err = 130 THEN out.WriteString("invalid CASE")
-		ELSIF Kernel.err = 131 THEN out.WriteString("function without RETURN")
-		ELSIF Kernel.err = 132 THEN out.WriteString("type guard")
-		ELSIF Kernel.err = 133 THEN out.WriteString("implied type guard")
-		ELSIF Kernel.err = 134 THEN out.WriteString("value out of range")
-		ELSIF Kernel.err = 135 THEN out.WriteString("index out of range")
-		ELSIF Kernel.err = 136 THEN out.WriteString("string too long")
-		ELSIF Kernel.err = 137 THEN out.WriteString("stack overflow")
-		ELSIF Kernel.err = 138 THEN out.WriteString("integer overflow")
-		ELSIF Kernel.err = 139 THEN out.WriteString("division by zero")
-		ELSIF Kernel.err = 140 THEN out.WriteString("infinite real result")
-		ELSIF Kernel.err = 141 THEN out.WriteString("real underflow")
-		ELSIF Kernel.err = 142 THEN out.WriteString("real overflow")
-		ELSIF Kernel.err = 143 THEN out.WriteString("undefined real result")
-		ELSIF Kernel.err = 144 THEN out.WriteString("not a number")
-		ELSIF Kernel.err = 200 THEN out.WriteString("keyboard interrupt")
+		IF Kernel.err = 129 THEN OutString("#System:invalid WITH")
+		ELSIF Kernel.err = 130 THEN OutString("#System:invalid CASE")
+		ELSIF Kernel.err = 131 THEN OutString("#System:function without RETURN")
+		ELSIF Kernel.err = 132 THEN OutString("#System:type guard")
+		ELSIF Kernel.err = 133 THEN OutString("#System:implied type guard")
+		ELSIF Kernel.err = 134 THEN OutString("#System:value out of range")
+		ELSIF Kernel.err = 135 THEN OutString("#System:index out of range")
+		ELSIF Kernel.err = 136 THEN OutString("#System:string too long")
+		ELSIF Kernel.err = 137 THEN OutString("#System:stack overflow")
+		ELSIF Kernel.err = 138 THEN OutString("#System:integer overflow")
+		ELSIF Kernel.err = 139 THEN OutString("#System:division by zero")
+		ELSIF Kernel.err = 140 THEN OutString("#System:infinite real result")
+		ELSIF Kernel.err = 141 THEN OutString("#System:real underflow")
+		ELSIF Kernel.err = 142 THEN OutString("#System:real overflow")
+		ELSIF Kernel.err = 143 THEN
+			OutString("#System:undefined real result"); out.WriteString(" (");
+			out.WriteIntForm(Kernel.val MOD 10000H, TextMappers.hexadecimal, 4, "0", TextMappers.hideBase); out.WriteString(", ");
+			out.WriteIntForm(Kernel.val DIV 10000H, TextMappers.hexadecimal, 3, "0", TextMappers.hideBase); out.WriteChar(")")
+		ELSIF Kernel.err = 144 THEN OutString("#System:not a number")
+		ELSIF Kernel.err = 200 THEN OutString("#System:keyboard interrupt")
 		ELSIF Kernel.err = 201 THEN
-			out.WriteString("NIL dereference")
+			OutString("#System:NIL dereference")
 		ELSIF Kernel.err = 202 THEN
-			out.WriteString("illegal instruction: ");
+			OutString("#System:illegal instruction"); out.WriteString(": ");
 			out.WriteIntForm(Kernel.val, TextMappers.hexadecimal, 5, "0", TextMappers.showBase)
 		ELSIF Kernel.err = 203 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL dereference (read)")
-			ELSE out.WriteString("illegal memory read (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN OutString("#System:NIL dereference (read)")
+			ELSE OutString("#System:illegal memory read"); OutAdr(Kernel.val)
 			END
 		ELSIF Kernel.err = 204 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL dereference (write)")
-			ELSE out.WriteString("illegal memory write (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN OutString("#System:NIL dereference (write)")
+			ELSE OutString("#System:illegal memory write"); OutAdr(Kernel.val)
 			END
 		ELSIF Kernel.err = 205 THEN
-			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN out.WriteString("NIL procedure call")
-			ELSE out.WriteString("illegal execution (ad = "); WriteHex(Kernel.val); out.WriteChar(")")
+			IF (Kernel.val >= -4) & (Kernel.val < 65536) THEN OutString("#System:NIL procedure call")
+			ELSE OutString("#System:illegal execution"); OutAdr(Kernel.val)
 			END
-		ELSIF Kernel.err = 257 THEN out.WriteString("out of memory")
-		ELSIF Kernel.err = 10001H THEN out.WriteString("bus error")
-		ELSIF Kernel.err = 10002H THEN out.WriteString("address error")
-		ELSIF Kernel.err = 10007H THEN out.WriteString("fpu error")
+		ELSIF Kernel.err = 257 THEN OutString("#System:out of memory")
+		ELSIF Kernel.err = 10001H THEN OutString("#System:bus error")
+		ELSIF Kernel.err = 10002H THEN OutString("#System:address error")
+		ELSIF Kernel.err = 10007H THEN OutString("#System:fpu error")
 		ELSIF Kernel.err < 0 THEN
-			out.WriteString("Exception "); out.WriteIntForm(-Kernel.err, TextMappers.hexadecimal, 3, "0", TextMappers.showBase)
+			OutString("#System:Exception");  out.WriteChar(" ");
+			out.WriteIntForm(-Kernel.err, TextMappers.hexadecimal, 3, "0", TextMappers.showBase)
 		ELSE
-			out.WriteString("TRAP "); out.WriteInt(Kernel.err);
-			IF Kernel.err = 126 THEN out.WriteString("  (not yet implemented)")
-			ELSIF Kernel.err = 125 THEN out.WriteString("  (call of obsolete procedure)")
-			ELSIF Kernel.err >= 100 THEN out.WriteString("  (invariant violated)")
-			ELSIF Kernel.err >= 60 THEN out.WriteString("  (postcondition violated)")
-			ELSIF Kernel.err >= 20 THEN out.WriteString("  (precondition violated)")
+			OutString("#System:TRAP"); out.WriteChar(" "); out.WriteInt(Kernel.err);
+			IF Kernel.err = 126 THEN out.WriteString("  ("); OutString("#System:not yet implemented");  out.WriteChar(")")
+			ELSIF Kernel.err = 125 THEN out.WriteString("  ("); OutString("#System:call of obsolete procedure");  out.WriteChar(")")
+			ELSIF Kernel.err >= 100 THEN out.WriteString("  ("); OutString("#System:invariant violated");  out.WriteChar(")")
+			ELSIF Kernel.err >= 60 THEN out.WriteString("  ("); OutString("#System:postcondition violated");  out.WriteChar(")")
+			ELSIF Kernel.err >= 20 THEN out.WriteString("  ("); OutString("#System:precondition violated");  out.WriteChar(")")
 			END
 		END;
 		GetTrapMsg(msg);
@@ -645,9 +652,4 @@ MODULE StdDebug;
 
 BEGIN
 	Kernel.InstallTrapViewer(Trap);
-	empty := "";
-	path[0].x := refViewSize DIV 2; path[0].y := 0;
-	path[1].x := refViewSize; path[1].y := refViewSize DIV 2;
-	path[2].x := refViewSize DIV 2; path[2].y := refViewSize;
-	path[3].x := 0; path[3].y := refViewSize DIV 2;
 END StdDebug.

@@ -128,8 +128,8 @@ MODULE StdMenuTool;
 		PROCEDURE IncludeSub (sub: ARRAY OF CHAR);
 			VAR loc: Files.Locator; view: Views.View; t: TextModels.Model; s: TextMappers.Scanner;
 		BEGIN
-			loc := Files.dir.This(sub); IF loc = NIL THEN RETURN END;
-			loc := loc.This(rsrcDir); IF loc = NIL THEN RETURN END;
+			loc := Files.dir.This(sub); IF loc.res # 0 THEN RETURN END;
+			loc := loc.This(rsrcDir); IF loc.res # 0 THEN RETURN END;
 			view := Views.OldView(loc, menuFile);
 			IF (view # NIL) & (view IS TextViews.View) THEN
 				t := view(TextViews.View).ThisModel();
@@ -234,8 +234,8 @@ MODULE StdMenuTool;
 			loc: Files.Locator;
 	BEGIN
 		InitNotifier;
-		loc := Files.dir.This(sysDir); IF loc = NIL THEN RETURN END;
-		loc := loc.This(rsrcDir); IF loc = NIL THEN RETURN END;
+		loc := Files.dir.This(sysDir); IF loc.res # 0 THEN RETURN END;
+		loc := loc.This(rsrcDir); IF loc.res # 0 THEN RETURN END;
 		view := Views.OldView(loc, menuFile);
 		IF (view # NIL) & (view IS TextViews.View) THEN
 			t := view(TextViews.View).ThisModel();
@@ -282,7 +282,7 @@ MODULE StdMenuTool;
 			IF Comp(sub.name, sysDir) # 0 THEN
 				loc := Files.dir.This(sub.name);
 				loc := loc.This(rsrcDir);
-				IF loc # NIL THEN
+				IF loc.res = 0 THEN
 					path := menuFile;
 					Kernel.MakeFileName(path, "");
 					f := Files.dir.Old(loc, path, Files.shared);

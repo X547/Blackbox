@@ -3,7 +3,9 @@ DevAnalyzer
 
 Overview
 
-Click on any of the blue warnings to jump directly to the corresponding tutorial section. For technical support go to the section on contact information. 
+DevAnalyzer can be applied just like the normal Component Pascal compiler for checking a program's syntactic and semantic correctness (it even uses the base modules of the Component Pascal compiler). In the examples below you can, for instance, remove a semicolon somewhere and DevAnalyzer will report the resulting syntax error.
+
+Click on any of the underlined blue warning messages to jump directly to the corresponding tutorial section.
 
 
 Warning message 	Number	Explanation: item is ...	Option
@@ -26,7 +28,6 @@ Click on any of the blue warnings to jump directly to the corresponding tutorial
 During the development of a program, many design iterations are made. The source text is changed repeatedly and enhanced, errors are corrected, output statements are inserted and removed again later. The programmer changes procedure bodies and thereby inserts variables that are later not needed anymore. Modules are imported  for temporary purposes  but later never used.
 
 To clean up such modules, which have evolved over time, DevAnalyzer has been developed. It is a "normal" Component Pascal compiler, which does a full syntactic and semantic analysis with error checking of the program at hand, but does not generate a symbol file or object code. Instead, it examines the program and reports problems in the code. The analysis takes place per module. Inter-module dependencies are not taken into account.
-	DevAnalyzer can be applied just like the normal Component Pascal compiler for checking a program's syntactic and semantic correctness (it even uses the base modules of the Component Pascal compiler). In the examples below you can, for instance, remove a semicolon somewhere and DevAnalyzer will report the resulting syntax error.
 
 
 Tutorial

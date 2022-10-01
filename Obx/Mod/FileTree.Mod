@@ -58,7 +58,7 @@ MODULE ObxFileTree;
 		dlg.currentPath := dlg.path$;
 		dlg.tree.DeleteAll();
 		loc := ThisLocator(dlg.path);
-		IF loc # NIL THEN BuildDirTree(loc, NIL); Dialog.UpdateList(dlg.tree) END;
+		IF loc.res = 0 THEN BuildDirTree(loc, NIL); Dialog.UpdateList(dlg.tree) END;
 		Dialog.Update(dlg)
 	END Update;
 
@@ -73,7 +73,7 @@ MODULE ObxFileTree;
 				n := dlg.tree.Parent(n); path := "";
 				WHILE n # NIL DO n.GetName(p); path := p + "/" + path; n := dlg.tree.Parent(n) END;
 				loc := ThisLocator(dlg.currentPath + path);
-				IF loc # NIL THEN
+				IF loc.res = 0 THEN
 					conv := NIL; fname := name$;
 					v := Views.Old(Views.dontAsk, loc, fname, conv);
 					IF v # NIL THEN Views.Open(v, loc, fname, conv) END

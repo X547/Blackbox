@@ -30,7 +30,8 @@ MODULE Controllers;
 		(** TrackMsg.modifiers, EditMsg.modifiers **)
 		doubleClick* = 0;	(** clicking history **)
 		extend* = 1; modify* = 2;	(** modifier keys **)
-		(* extend = Sub.extend; modify = Sub.modify *)
+		popup* = 3;	(** show popup menu **)
+		pick* = 4;	(** pick attributes **)
 
 		(** PollDropMsg.mark, PollDrop mark **)
 		noMark* = FALSE; mark* = TRUE;

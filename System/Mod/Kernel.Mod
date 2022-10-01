@@ -227,6 +227,15 @@ MODULE Kernel;
 			par: INTEGER
 		END;
 
+		Coroutine* = POINTER TO CoroutineDesc;
+		CoroutineDesc = RECORD
+			prev, next: POINTER [untagged] TO CoroutineDesc; (* circular list *)
+			fiber: WinApi.PtrVoid;
+			stackBase, stackTop: INTEGER; (* stackBase = 0 means not yet started *)
+			trapStack: TrapCleaner;
+			trapChecker: Handler;
+			stackChecked: BOOLEAN;
+		END;
 
 	VAR
 		baseStack: INTEGER;	(* modList, root, and baseStack must be together for remote debugging *)
@@ -273,6 +282,9 @@ MODULE Kernel;
 		wouldFinalize: BOOLEAN;
 
 		watcher*: PROCEDURE (event: INTEGER);	(* for debugging *)
+
+		currentCoroutine, mainCoroutine: Coroutine;
+		mainCoroutineRefcnt: INTEGER;
 
 
 	(* code procedures for exception handling *)
@@ -465,7 +477,7 @@ MODULE Kernel;
 	PROCEDURE Upper* (ch: CHAR): CHAR;
 	BEGIN
 		IF ("a" <= ch) & (ch <= "z") THEN RETURN CAP(ch) (* common case optimized *)
-		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharUpperW( S.VAL(WinApi.PtrWSTR, ch )))
+		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharUpperW( S.VAL(WinApi.PtrWSTR, ORD(ch))))
 		ELSE RETURN ch
 		END
 	END Upper;
@@ -481,7 +493,7 @@ MODULE Kernel;
 	PROCEDURE Lower* (ch: CHAR): CHAR;
 	BEGIN
 		IF ("A" <= ch) & (ch <= "Z") THEN RETURN CHR(ORD(ch) + 32)
-		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ch)))
+		ELSIF ch > 7FX THEN RETURN S.VAL(CHAR, WinApi.CharLowerW(S.VAL(WinApi.PtrWSTR, ORD(ch))))
 		ELSE RETURN ch
 		END
 	END Lower;
@@ -1148,7 +1160,9 @@ MODULE Kernel;
 	BEGIN
 		IF mod.refcnt = 0 THEN
 			t := mod.term; mod.term := NIL;
-			IF t # NIL THEN t() END;	(* terminate module *)
+			IF t # NIL THEN t();	(* terminate module *)
+				IF mod.refcnt # 0 THEN RETURN END
+			END;
 			i := 0;
 			WHILE i < mod.nofptrs DO	(* release global pointers *)
 				S.PUT(mod.varBase + mod.ptrs[i], 0); INC(i)
@@ -1486,22 +1500,59 @@ MODULE Kernel;
 		END
 	END CheckCandidates;
 
+	(* coroutine stacks are only checked if they are anchored in globals. If all coroutine stacks were checked,
+	unreferenced coroutines would survive forever because the stack contains a reference to the coroutine.
+	mainCoroutine and currentCoroutine are always anchored globally. *)
+	PROCEDURE MarkReferencedCoroutines(min, max: INTEGER);
+		VAR c, stop: Coroutine; sp, sb, tag, p: INTEGER;
+	BEGIN
+		candidates[0] := max; nofcand := 1;	(* ensure complete scan for interface mark*)
+		c := mainCoroutine;
+		REPEAT c.stackChecked := FALSE; c := c.next UNTIL c = mainCoroutine;
+		REPEAT
+			c := mainCoroutine; stop := c;
+			REPEAT (* tries to minimize the number of CheckCandidates calls *)
+				sb := c.stackBase;
+				S.GET(S.VAL(INTEGER, c) - SIZE(ANYPTR), tag);
+				IF ODD(tag) & (~c.stackChecked) & (sb # 0) THEN
+					c.stackChecked := TRUE;
+					sp := c.stackTop;
+					WHILE sp < sb DO
+						S.GET(sp, p);
+						IF (p > min) & (p < max) & (~strictStackSweep OR (p MOD 16 = 0)) THEN
+							candidates[nofcand] := p; INC(nofcand);
+							IF nofcand = LEN(candidates) - 1 THEN CheckCandidates; nofcand := 0; stop := c END
+						END;
+						INC(sp, 4)
+					END
+				END;
+				c := c.next
+			UNTIL c = stop;
+			IF nofcand > 0 THEN CheckCandidates; nofcand := 0; c := NIL END;
+		UNTIL c = mainCoroutine
+	END MarkReferencedCoroutines;
+	
 	PROCEDURE MarkLocals;
 		VAR sp, p, min, max: INTEGER; c: Cluster;
 	BEGIN
 		S.GETREG(FP, sp); nofcand := 0; c := root;
 		WHILE c.next # NIL DO c := c.next END;
 		min := S.VAL(INTEGER, root); max := S.VAL(INTEGER, c) + c.size;
-		WHILE sp < baseStack DO
-			S.GET(sp, p);
-			IF (p > min) & (p < max) & (~strictStackSweep OR (p MOD 16 = 0)) THEN
-				candidates[nofcand] := p; INC(nofcand);
-				IF nofcand = LEN(candidates) - 1 THEN CheckCandidates; nofcand := 0 END
+		IF currentCoroutine = NIL THEN (* classical single stack *)
+			WHILE sp < baseStack DO
+				S.GET(sp, p);
+				IF (p > min) & (p < max) & (~strictStackSweep OR (p MOD 16 = 0)) THEN
+					candidates[nofcand] := p; INC(nofcand);
+					IF nofcand = LEN(candidates) - 1 THEN CheckCandidates; nofcand := 0 END
+				END;
+				INC(sp, 4)
 			END;
-			INC(sp, 4)
-		END;
-		candidates[nofcand] := max; INC(nofcand);	(* ensure complete scan for interface mark*)
-		IF nofcand > 0 THEN CheckCandidates END
+			candidates[nofcand] := max; INC(nofcand);	(* ensure complete scan for interface mark*)
+			IF nofcand > 0 THEN CheckCandidates END
+		ELSE (* with coroutine support *)
+			currentCoroutine.stackTop := sp;
+			MarkReferencedCoroutines(min, max)
+		END
 	END MarkLocals;
 
 	PROCEDURE MarkFinObj;
@@ -1975,7 +2026,11 @@ MODULE Kernel;
 				IF ~secondTrap THEN trapped := FALSE; secondTrap := TRUE END
 			END;
 			err := -(excpRec.ExceptionCode MOD 256);
-			pc := context.Eip; sp := context.Esp; fp := context.Ebp; stack := baseStack;
+			pc := context.Eip; sp := context.Esp; fp := context.Ebp;
+			IF (currentCoroutine = NIL) OR (currentCoroutine.stackBase = baseStack) THEN stack := baseStack
+			ELSE (* don't display a coroutine's TryHandler *)
+				stack := currentCoroutine.stackBase - 3*SIZE(ANYPTR) (* COMPILER DEPENDENT *)
+			END;
 			IF err = -4 THEN err := 200	(* keyboard interrupt *)
 			ELSIF err = -5 THEN
 				val := excpRec.ExceptionInformation[1];
@@ -2148,6 +2203,89 @@ MODULE Kernel;
 					WinApi.GetCurrentProcess(), main, {1, 3, 4, 16..19}, 0, {});
 		t := WinApi.CreateThread(NIL, 4096, KeyboardWatcher, main, {}, id);
 	END InstallKeyboardInt;
+
+	(* -------------------- coroutine support --------------------- *)
+
+	PROCEDURE BeginCoroutines* (VAR main: Coroutine);
+	BEGIN
+		ASSERT(main # NIL, 20);
+		IF mainCoroutine = NIL THEN
+			main.stackBase := baseStack;
+			main.next := main; main.prev := main;
+			main.fiber := WinApi.ConvertThreadToFiber(0);
+			IF main.fiber # 0 THEN
+				currentCoroutine := main; mainCoroutine := main; mainCoroutineRefcnt := 1
+			ELSE main := NIL
+			END
+		ELSE
+			INC(mainCoroutineRefcnt); main := mainCoroutine
+		END
+	END BeginCoroutines;
+	
+	PROCEDURE EndCoroutines*;
+		VAR res: INTEGER;
+	BEGIN
+		IF mainCoroutineRefcnt > 0 THEN
+			DEC(mainCoroutineRefcnt);
+			IF mainCoroutineRefcnt = 0 THEN
+				currentCoroutine := NIL; mainCoroutine := NIL;
+				res := WinApi.ConvertFiberToThread()
+			END
+		END
+	END EndCoroutines;
+	
+	PROCEDURE AddCoroutine* (this: Coroutine; startProc: PROCEDURE (par: INTEGER); par: INTEGER;
+												stackMin, stackMax: INTEGER; VAR done: BOOLEAN);
+	BEGIN
+		ASSERT(this.fiber = 0, 20); (* reuse of 'this'  without RemoveCoroutine *)
+		this.stackBase := 0; (* reset because of possible reuse of 'this' *)
+		(* Windows seems to use the default also for a very small stack size, so we better avoid it *)
+		IF (stackMin # 0) & (stackMin < 1000) THEN stackMin := 1000 END;
+		IF (stackMax # 0) & (stackMax < 2000) THEN stackMax := 2000 END;
+		this.fiber := WinApi.CreateFiberEx(stackMin, stackMax, {}, startProc, par);
+		IF this.fiber # 0 THEN
+			done := TRUE;
+			this.next := currentCoroutine.next; this.prev := currentCoroutine;
+			currentCoroutine.next.prev := this; currentCoroutine.next := this
+		ELSE (* swap space or virtual address space exhausted *)
+			done := FALSE
+		END
+	END AddCoroutine;
+
+	PROCEDURE SetCoroutineBase* (this: Coroutine);
+	BEGIN
+		ASSERT(this.stackBase = 0);
+		this.stackBase := S.ADR(this) + SIZE(ANYPTR); (* COMPILER DEPENDENT *)
+	END SetCoroutineBase;
+
+	PROCEDURE RemoveCoroutine* (this: Coroutine);
+		VAR t: TrapCleaner; chk: Handler;
+	BEGIN
+		IF this.next # NIL THEN
+			this.prev.next := this.next; this.next.prev := this.prev;
+			this.next := NIL; this.prev := NIL
+		END;
+		IF (this # currentCoroutine) & (this.fiber # 0) THEN
+			WinApi.DeleteFiber(this.fiber); this.fiber := 0;
+			WHILE this.trapStack # NIL DO
+				t := this.trapStack; this.trapStack := t.next; t.Cleanup
+			END;
+			chk := this.trapChecker; this.trapChecker := NIL;
+			IF (chk # NIL) & (err # 128) THEN chk() END
+		END;
+	END RemoveCoroutine;
+
+	PROCEDURE TransferCoroutine* (target: Coroutine);
+	BEGIN
+		ASSERT(target.next # NIL, 20);
+		IF target # currentCoroutine THEN
+			currentCoroutine.trapStack := trapStack; currentCoroutine.trapChecker := trapChecker;
+			S.GETREG(FP, currentCoroutine.stackTop);
+			trapStack := target.trapStack; trapChecker := target.trapChecker;
+			currentCoroutine := target;
+			WinApi.SwitchToFiber(target.fiber)
+		END
+	END TransferCoroutine;
 
 	(* -------------------- Initialization --------------------- *)
 

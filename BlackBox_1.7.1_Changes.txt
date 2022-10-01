@@ -1,0 +1,361 @@
+BlackBox 1.7.1 Changes
+
+Features
+#135 adding hierarchical menus
+#137 Enlarge the size of the default font
+#138 Files64 - Support for files larger than 2GB
+#139 Support for localization of error messages
+#140 Unwrapping IMPORT aliasses
+#142 adding a disassembler to the ocf importer
+#147 Adding a "Mod1" function to Math/SMath
+#148 StdCoder to support file names with spaces
+#150 improvements in DevSearch
+#151 Extending the domain of Math.ArcTan2
+#153 adding basic console I/O
+#154 Atomic operation to get date and time
+#156 adding Coroutines to BlackBox
+#157 Extending the domain of Math.Sin, Cos, & Tan
+#158 adding low-level console logging
+#163 Adding 'Decimal' Tabs to Rulers
+#166 adding SendInput to WinApi
+#172 adding BOOLEAN parameters to StdInterpreter
+#173 adding new modifiers in Controllers
+#175 Display StdLinks.Link command
+
+Documentation
+#146 TextRulers docu improvements
+#152 Documentation improved for CommStreams, Dialog, Controllers
+#155 Cleanups in the sources of HostDialog
+#159 Annual copyright date change in About & License files.
+#160 Outdated link to OP2.Paper.ps in the compiler sources
+#171 fixing inconsistent links in docu
+
+Bugs
+#106 View restored twice on Open
+#132 Trash in the definitions for extended records with unicode identifiers
+#133 Encoding/Decoding unicode filenames and paths
+#134 interface change not detected
+#136 Ajusting sizes of emebbeded views in the About dialog
+#141 Comparison of named empty string with array of SHORTCHAR does not work.
+#143 inconsistent module list when CLOSE loads itself indirectly
+#144 inconsistent docu and usage of Files.Locator error codes
+#145 adding scanner option 'maskViews' in DevCommanders
+#149 bug in Kernel.Upper/Lower
+#161 fixing Dialog.MapString with empty message
+#164 Backward compatibilty with UpDn Controls
+#165 adding a check for passing guarded function result as VAR parameter
+#167 endless loop in DevBrowser for cyclic pointer type
+#168 improvements in DevLinkChk
+#169 ccall bug with stack management after a call
+#170 DevBrowser.ImportSymFile should return TextViews.View
+#174 fixing resource keys in StdLinks
+#176 avoiding window 'ghosting' in mouse tracking loops
+#178 renaming Host/Docu/Prefs to Prefs-Dialog
+#179 fixing the value of WinApi.WM_MOUSELAST
+#180 fixing resource string lookup in OleClient.PasteSpecial
+#181 fixing error handling of HostDialog.OpenExternal
+#182 fixing code page conversion in RTF import
+
+Details
+#106 (Bug, 2017-10-28): View restored twice on Open
+The Restore procedure of a view is called twice when a view is first opened. Experiments showed that for simple views (no scrollbars) this is not required. Until a final solution is available it is proposed that a flag (HostWindows.creatingDoc) is introduced that allows a simple view to skip the first Restore.
+
+#132 (Bug, 2016-10-08): Trash in the definitions for extended records with unicode identifiers
+If the name of the base type of a record uses non-ASCII characters, that name is displayed in the interface with additional unwanted characters appended (00X $ㇲ扁ᡀƵ 03X  00X).
+
+Reported by Valery Shipkov, 2016-09-28.
+
+#133 (Bug, 2016-10-18): Encoding/Decoding unicode filenames and paths
+StdCoder does not encode/decode file names and paths correctly if they contain arbitray Unicode characters.
+
+Reported by Hans Klaver, 2016-10-06.
+
+#134 (Bug, 2017-01-24): interface change not detected
+The compiler does not report an interface change when changing the array length of an exported pointer type that points to a fixed length array. For example, changing 1 to 2 in the following module is not reported as an interface change:
+
+MODULE Test;
+TYPE A* = POINTER TO ARRAY 1 OF CHAR;
+END Test.
+
+Reported by J. Templ, 2016-10-12.
+Based on an issue reported by Oleg-N-Cher for ofront.
+
+#135 (Feature, 2016-10-24): adding hierarchical menus
+Hierarchical menus, i.e. menu items that expand to a nested menu, should be added to the BlackBox distribution. An implementation for hierarchical menus by Juan Antonio Ortega is available from CPC as the CpcDropDown subsystem. It is proposed to integrate this subsystem into the standard distribution and to add support for keyboard shortcuts.
+
+#136 (Bug, 2016-11-19): Ajusting sizes of emebbeded views in the About dialog
+The trailing letter R of the string "COMPONENT BUILDER" is not displayed fully in the "About Blackbox" dialog box under some versions of Windows 10.
+
+Reported by Helmut Zinn and Alexander Shiryaev.
+
+#137 (Feature, 2016-11-24): Enlarge the size of the default font
+When user first time download and install BlackBox the size of the default font is extremely small 8pt.
+Comfortable size for Arial font is 10pt.
+
+#138 (Feature, 2017-06-08): Files64 - Support for files larger than 2GB
+It is proposed to add support for files larger than MAX(INTEGER), which is about 2GB.
+Similar to Files/HostFiles, the pair of modules Files64/HostFiles64 should be added to BlackBox.
+In addition, Stores.Reader and Stores.Writer operations working on Files64 should be supported in 
+a new module Stores64.
+
+#139 (Feature, 2017-02-25): Support for localization of error messages
+The error file should be opened from a language specific location. Compiler log messages and runtime error messages (traps) should be mapped with Dialog.MapString.
+Rendering of error markers should be improved such that it uses lines with 45 degree.
+
+#140 (Feature, 2016-11-23): Unwrapping IMPORT aliasses
+The Menu Commands "Source", "Interface", & "Documentation" unwrap item aliases, which is a very useful feature.
+
+The Menu Command "Info->Global Variables" does not, which is both inconsistent and unhelpful. The Dependancies Tool and the command DevBrowser.ShowCodeFile have the same shortcoming.
+
+There is discussion, with partial implementation, on http://community.blackboxframework.org/viewtopic.php?f=49&t=143
+
+Proposed by Robert, 21-Oct-2016
+
+#141 (Bug, 2016-12-25): Comparison of named empty string with array of SHORTCHAR does not work.
+Comparison of named empty string with array of SHORTCHAR does not work.
+Instead of comparing 0X with the first array element, -1 is used.
+This seems to be the same kind of bug as #128, which fixed it for assignment.
+
+Reported by Josef Templ, 2016-11-02.
+
+#142 (Feature, 2017-03-15): adding a disassembler to the ocf importer
+Opening a BlackBox object file (.ocf) shows the header of the file but not the code generated by the compiler. It is proposed to add a decoder (disassembler) for i386/387 instructions and to use it for showing the code generated by the compiler.
+
+Proposed by J. Templ, 2016-11-04.
+
+#143 (Bug, 2016-12-31): inconsistent module list when CLOSE loads itself indirectly
+When the CLOSE section of an unloaded module M loads itself indirectly,
+e.g. by calling Kernel.ThisMod(N) for a module N that imports M, the 
+resulting module list contains N but not M. This leads to recursive
+traps later on.
+
+Reported by x512, 2016-11-20.
+
+#144 (Bug, 2016-12-28): inconsistent docu and usage of Files.Locator error codes
+The Files documentation states that Files.Locator.This returns
+NIL in case of an error and sets the result code in the receiver.
+This differs from the implementation in HostFiles, which always returns a
+new locator and sets the error code in the result. This implementation 
+uses the same pattern as Files.Directory.This and should be kept unchanged.
+There are also several places in client modules (e.g. StdMenuTool.IncludeSub)
+where error checking needs to be aligned with the specification.
+
+#145 (Bug, 2017-03-08): adding scanner option 'maskViews' in DevCommanders
+BlackBox 1.6 treated a ruler (TextRulers.Ruler) that appeared in front of or inside the command of a DevCommander as a paragraph character (0EX). With issue #103 of BlackBox 1.7 this behavior has been changed unintentionally and in 1.7 rulers are thereby returned as views (02X), which invalidates commands that contain a ruler or other masked views. The reason for the side effect is that option 'maskViews' was ignored in 1.6 but is honored in 1.7. By adding option 'maskViews' to the scanner used in DevCommanders the behavior of 1.6 can be re-established.
+
+#146 (Documentation, 2017-02-24): TextRulers docu improvements
+The documentation of TextRulers.WriteAttr needs to be fixed
+because it is identical to the documentation of TextRulers.ReadAttr.
+In addition, the preferences (masking and hiding) of TextRulers should be documented.
+
+#147 (Feature, 2017-03-07): Adding a "Mod1" function to Math/SMath
+There are two obvious definitions of the "IntegerPartOf" function; round towards zero or round towards -infinity. Both are implemented (as Math.Trunc & Math.Floor), which is very convenient, and avoids pointless discussion about which is "better".
+
+However only one of the corresponding "FractionalPartOf" functions is provided (Math.Frac).
+This is a proposal to add the other function under the name Math.Mod1. There would be no back-compatibility issues.
+
+In addition, it is proposed to add mappings for SMath runtime errors similar to Math in System/Rsrc/Strings.
+Proposed by Robert, 22-Feb-2017.
+
+#148 (Feature, 2017-03-06): StdCoder to support file names with spaces
+Currently the StdCoder "Tools->Encode File List" menu option cannot encode files whose names include spaces.
+The proposal is to support such files by enclosing their names in "" or ''.
+Proposed by Robert, 22-Feb-2017.
+
+#149 (Bug, 2017-03-13): bug in Kernel.Upper/Lower
+Calling Kernel.Upper/Lower can crash the system because the argument
+is not passed correctly as a single character to WinApi.CharUpperW/CharLowerW.
+Instead it may be treated as a zero-terminated character string
+and converted in place, which overwrites memory at an arbitrary location.
+In order to fix this, the character must be zero extended to a 32-bit value
+before passing it to WinApi.
+
+#150 (Feature, 2017-03-21): improvements in DevSearch
+The following improvements are proposed for DevSearch:
+- localization support for hard-coded string "Search for " in GetTitle
+- same behavior for SelectCaseSens and SelectCaseInSens, which are the commands
+  executed when clicking on a search result link.
+  Currently SelectCaseInSens opens a find dialog box but SelectCaseSens does not.
+  It is proposed to not open a dialog box in both cases.
+- avoiding redundant Kernel.Upper calls in Find
+
+#151 (Feature, 2017-03-30): Extending the domain of Math.ArcTan2
+Currently this function TRAPs when both inputs are 0. The proposal is to allow this as a valid input, and then return 0.
+Similar considerations apply to SMath and INF.
+There would be no backward compatibility issues with programs that do not currently TRAP at runtime.
+Proposed by Robert.
+
+#152 (Documentation, 2017-03-27): Documentation improved for CommStreams, Dialog, Controllers
+Typing errors in the documentation of CommStreams.LocalAdr and Dialog.ShowMsg need to be fixed.
+Controllers.path should be documented.
+
+Reported by Helmut Zinn, 2017-03-07.
+
+#153 (Feature, 2017-06-12): adding basic console I/O
+It is proposed to add basic console I/O functionality to the BlackBox distribution. The interface should be compatible with the Console module already in use for the BlackBox versions for Linux and BSD.
+
+Proposed by Ivan Denisov, 2017-03-19.
+
+#154 (Feature, 2017-03-15): Atomic operation to get date and time
+Module *Dates* has *GetDate* and *GetTime* procedures. However it does not have *GetDateTime* procedure.
+There is the risk that at the boundary of the day application will get previous day but the time will be 00:00:00 except of 23:59:59. So there will be one day back.
+
+To prevent such case in applications with critical safety there should be atomistic operation for getting date and time.
+
+There is the hook *GetTime* (OUT d: Date; OUT t: Time)* for this operation, so realization of this issue is trivial.
+
+#155 (Documentation, 2017-09-14): Cleanups in the sources of HostDialog
+Comments in the sources of the module HostDialog referring to the non-existent module Hook should be removed.
+
+Reported by Ivan Denisov, 2017-03-16.
+
+#156 (Feature, 2017-05-12): adding Coroutines to BlackBox
+It is proposed to add Coroutines to BlackBox. Even if coroutines are not as powerful as threads, they can for example simplify writing of long-running background tasks considerably.
+A first inspiration can be found in the CPC package named 'Co_' by Dmitry V.Dagaev, 2014-03-28. This package is based on Windows fibers. It has, however, a rather complex programming interface and is not integrated with the garbage collector and other Kernel services.
+
+Proposed by J. Templ, 2017-03-21.
+
+#157 (Feature, 2017-04-10): Extending the domain of Math.Sin, Cos, & Tan
+These functions currently have an arbitrary domain limit of ±1.E18. The FPU hardware supports accurate calculation up
+±9.223E18 (2^63). The proposal is to remove this arbitrary software limit which:
+1 - Extends the useful range of these functions
+2 - Shortens, and speeds up, the resulting code
+3 - Makes the code easier to understand because of the removal of arbitrary limits and a distracting comment.
+In addition it is proposed to add a "SinCos" procedure.
+Proposed by Robert.
+
+#158 (Feature, 2017-05-22): adding low-level console logging
+It is proposed to add a low-level logging feature that can be used for logging to the console window. The module should not import any other modules and thereby can even be used for logging in the BlackBox Kernel module. In addition it is proposed to export an interface that can be used from a high-level Console module (issue-#153) for general purpose console application programming.
+
+#159 (Documentation, 2017-08-17): Annual copyright date change in About & License files.
+The About & License files need to be updated with a 2017 copyright notice.
+Maybe there are other files in this category.
+Maybe these annual changes can be automated like the other fields in the About file; this would provide a long-term solution to this recurring issue.
+Reported by Robert.
+
+#160 (Documentation, 2017-06-25): Outdated link to OP2.Paper.ps in the compiler sources
+The link to the ETH Oberon-2 compiler paper OP2.Paper.ps is outdated.
+The correct link is 'ftp://ftp.ethoberon.ethz.ch/Oberon/OberonV4/Docu/OP2.Paper.ps'.
+This change affects the header comment of all compiler source files.
+
+Reported by Ivan Denisov, 2017-04-30.
+
+#161 (Bug, 2017-05-19): fixing Dialog.MapString with empty message
+A call of Dialog.MapString("#Subsystem:message", out) should not do any mapping if 'message' is empty because it is not possible to have an empty key in a Strings resource file. The same applies to Dialog.MapParamString.
+
+Reported by Helmut Zinn, 2017-05-03.
+
+#163 (Feature, 2017-07-09): Adding 'Decimal' Tabs to Rulers
+It is proposed to add a fourth Tab type to Rulers which would align text regions to any decimal point character they contained.
+A starting point might be an implementation by Robert, but that currently contains serious bugs.
+The precise behaviour (in particular with regard to national conventions) needs to be discussed.
+Proposed by Robert & Helmut Zinn.
+
+#164 (Bug, 2017-07-09): Backward compatibilty with UpDn Controls
+A newly introduced, obscure, and unused feature that uses the shift key to set min/max values has caused some backward compatibility problems. It is proposed to remove this feature.
+Proposed by Robert.
+
+#165 (Bug, 2017-08-02): adding a check for passing guarded function result as VAR parameter
+If a function returns a pointer and that result is guarded to some extended type it can be passed as a VAR parameter. This leads to an illegal instruction TRAP at runtime. The compiler should report an error in such a case. For a test case see https://forum.oberoncore.ru/viewtopic.php?f=127&t=6081 .
+
+Reported by Ilya Ermakov of oberoncore, 2017-07-07.
+
+#166 (Feature, 2017-08-02): adding SendInput to WinApi
+The function SendInput is missing in WinApi. It is proposed to add SendInput together with its parameter types and the constants required.
+
+Proposed by Doug Danforth, 2017-07-05.
+
+#167 (Bug, 2017-08-02): endless loop in DevBrowser for cyclic pointer type
+The following legal type definition leads to an endless loop when showing the interface of the module.
+
+TYPE T* = POINTER TO ARRAY OF T;
+
+#168 (Bug, 2017-08-17): improvements in DevLinkChk
+Checking links with Info->Check Links... has several shortcomings. The following list shows some examples.
+1. The parser used for extracting the commands and arguments differs from StdInterpreter (used in Dialog.Call).
+2. Double quote is allowed for string parameters but is rejected by StdInterpreter.
+3. Backslash is not supported for path delimiters.
+4. Only the first command of a sequence of commands is checked.
+It is proposed to use a parser similar to StdInterpreter for avoiding
+inconsistencies and for checking all commands of a command sequence.
+In addition, it is proposed to update the list of well-known 'link' commands and to add StdLinks.ShowTarget.
+
+Reported by J. Templ, 2017-008-11.
+
+#169 (Bug, 2017-08-17): ccall bug with stack management after a call
+If a procedure marked as [ccall] is called then the stack is not reset correctly after the call if:
+1. a VAR-parameter (incl. IN and OUT) is used and
+2. the type of the VAR-parameter is an open array or a record and
+3. the VAR-parameter type is not marked as 'untagged'.
+
+Reported by luowy, 2017-08-04.
+
+#170 (Bug, 2017-09-01): DevBrowser.ImportSymFile should return TextViews.View
+The store returned by DevBrowser.ImportSymFile is a Documents.(Std)Document, which is an internally used and undocumented data type. In addition, the importer is registered with a TextViews.View type and this one, the view contained in the document, should be returned instead. The same holds for ImportCodeFile. A proposal for a fix exists from Oberoncore.
+
+Refers to Oberoncore B25.
+
+#171 (Documentation, 2017-09-01): fixing inconsistent links in docu
+Inconsistent links or links with syntax errors should be fixed in the docu.
+The updated DevLinkChk tool of issue-#168 should be used for generating a list of such links.
+
+#172 (Feature, 2017-09-01): adding BOOLEAN parameters to StdInterpreter
+It is proposed to add parameters of type BOOLEAN to StdInterpreter. The possible values are the keywords TRUE and FALSE.
+In addition, it is proposed to check for syntax errors before calling the procedure.
+
+#173 (Feature, 2017-09-12): adding new modifiers in Controllers
+By convention, a mouse-right click on a graphical object under Windows shows a popup menu.
+In BlackBox for Windows there is already a platform specific modifier that
+indicates that the right mouse button has been pressed. This modifier is defined in
+HostPorts.right. In order to be able to abstract from the platform specific
+modifier it is proposed to add a new platform independent modifier as Controllers.popup for that purpose.
+This avoids the import of HostPorts in modules such as DevDependencies and TextRulers.
+Similarly, the Alt key is defined in HostPorts but not in Controllers. Since it is used in several modules,
+mainly for drag and pick, it is proposed to add another modifier named Controllers.pick.
+It is proposed that pick is triggered by both the Alt key and the mouse middle button.
+
+#174 (Bug, 2017-09-22): fixing resource keys in StdLinks
+The module StdLinks uses resource keys of the form "#StdLinks:..." instead of "#Std:...".
+In addition the missing resource keys should be added to the Std/Rsrc/Strings resource file.
+
+Reported by H. Zinn, 2017-09-08.
+
+#175 (Feature, 2017-10-12): Display StdLinks.Link command
+It was originally proposed to display the complete link command in the status line when the mouse is moved over an active link. After discussion, the proposal is to display, and control, this command in the Link dialog by pressing Ctrl + mouse right.
+In addition, it is proposed to simplify the insertion of links by converting any unformatted selected text into a link and opening the link dialog for specifying the properties.
+The same principles should also be applied to targets.
+
+Proposed by Helmut Zinn.
+
+#176 (Bug, 2017-10-08): avoiding window 'ghosting' in mouse tracking loops
+When selecting text or in general whenever a mouse tracking loop takes longer than 5 seconds,
+Windows thinks that the application is not responding and turns the application window into
+a 'ghost' window. This happens in particular with Windows 10 but there are also cases in 
+XP and Vista where ghosting occurs.
+It is proposed to change this behavior by consuming all Windows messages while mouse tracking.
+Only mouse messages will be processed, though.
+Problem reported by Doug Danforth & Robert Campbell.
+
+#178 (Bug, 2017-10-24): renaming Host/Docu/Prefs to Prefs-Dialog
+It is proposed to rename the docu file of the Edit->Preferences... dialog to Prefs-Dialog.odc in order to clean up the file list produced by Info->Repository.
+
+#179 (Bug, 2017-10-28): fixing the value of WinApi.WM_MOUSELAST
+The value of WinApi.WM_MOUSELAST needs to be fixed. The correct value is WM_MOUSEWHEEL = 522.
+
+Proposed by luowy, 2017-07-19.
+
+#180 (Bug, 2017-11-05): fixing resource string lookup in OleClient.PasteSpecial
+Strings resources for OLE converters as used by the command OleClient.PasteSpecial are currently looked up in the Host subsystem only. It is proposed to look up such resources also in the converter's subsystem in order to provide true extensibility, i.e. to avoid the need for patching the standard Host/Rsrc/Strings file for converters implemented outside of the Host subsystem.
+
+Proposed by Robert Campbell, 2017-10-30.
+
+#181 (Bug, 2017-11-20): fixing error handling of HostDialog.OpenExternal
+HostDialog.OpenExternal, which is used by Dialog.OpenExternal, does not report any error messages and does not always work as expected under Linux wine. It is proposed to add clear text error messages and to improve the behavior under wine. The special situation under wine is that there are two levels of associations with filename extensions and protocols: (1) wine's Windows registry and (2) the Linux desktop. The wine associations should take precedence.
+In addition, it is proposed to add error handling also to RunExternal and to improve its behavior when calling 'cmd' under wine.
+
+#182 (Bug, 2017-12-11): fixing code page conversion in RTF import
+RTF texts encoded for example with a russian Windows version are not imported correctly by BlackBox when opened on a non-russian Windows version.
+In addition, eastern languages (e.g. Simplified Chinese) use multi-byte encoding, which is not imported correctly by BlackBox.
+
+Reported by Oleg N. Cher and luowy, 2017-11-18.
+

@@ -14,6 +14,7 @@ DEFINITION Math;
 
 	PROCEDURE Sin (x: REAL): REAL;
 	PROCEDURE Cos (x: REAL): REAL;
+	PROCEDURE SinCos (x: REAL; OUT s, c: REAL);
 	PROCEDURE Tan (x: REAL): REAL;
 	PROCEDURE ArcSin (x: REAL): REAL;
 	PROCEDURE ArcCos (x: REAL): REAL;
@@ -32,6 +33,7 @@ DEFINITION Math;
 	PROCEDURE Ceiling (x: REAL): REAL;
 	PROCEDURE Trunc (x: REAL): REAL;
 	PROCEDURE Frac (x: REAL): REAL;
+	PROCEDURE Mod1 (x: REAL): REAL;
 	PROCEDURE Round (x: REAL): REAL;
 
 	PROCEDURE Mantissa (x: REAL): REAL;
@@ -62,7 +64,7 @@ PROCEDURE Sqrt (x: REAL): REAL
 Returns the square root of x.
 
 Pre
-x >= 0.0	20
+x >= 0.0
 
 Post
 result >= 0.0
@@ -83,7 +85,7 @@ PROCEDURE Ln (x: REAL): REAL
 Returns the natural logarithm of x.
 
 Pre
-x >= 0.0	20
+x >= 0.0
 
 Post
 x = 0.0
@@ -107,10 +109,10 @@ PROCEDURE Power (x, y: REAL): REAL
 Returns xy. 
 
 Pre
-x >= 0.0	20
-x # 0.0  OR  y # 0.0	21
-x # INF  OR  y # 0.0	22
-x # 1.0  OR  ABS(y) # INF	23
+20	x >= 0.0
+21	x # 0.0  OR  y # 0.0
+22	x # INF  OR  y # 0.0
+23	x # 1.0  OR  ABS(y) # INF
 
 Post
 x = 0.0  &  y < 0.0
@@ -142,7 +144,7 @@ PROCEDURE Sin (x: REAL): REAL
 Returns the sine of x.
 
 Pre
-ABS(x) # INF	20
+ABS(x) # INF
 
 Post
 -1.0 <= result <= 1.0
@@ -151,22 +153,31 @@ PROCEDURE Cos (x: REAL): REAL
 Returns the cosine of x.
 
 Pre
-ABS(x) # INF	20
+ABS(x) # INF
 
 Post
 -1.0 <= result <= 1.0
+
+PROCEDURE SinCos (x: REAL; OUT s, c: REAL);
+Returns the sine & cosine of x.
+
+Pre
+ABS(x) # INF
+
+Post
+-1.0 <= s, c <= 1.0
 
 PROCEDURE Tan (x: REAL): REAL
 Returns the tangent of x. The Tan can be computed for all possible REAL arguments except ±INF.
 
 Pre
-ABS(x) # INF	20
+ABS(x) # INF
 
 PROCEDURE ArcSin (x: REAL): REAL
 Returns the arcus sine of x.
 
 Pre
--1.0 <= x <= 1.0	20
+-1.0 <= x <= 1.0
 
 Post
 -pi/2.0 <= result <= pi/2.0
@@ -175,7 +186,7 @@ PROCEDURE ArcCos (x: REAL): REAL
 Returns the arcus cosine of x.
 
 Pre
--1.0 <= x <= 1.0	20
+-1.0 <= x <= 1.0
 
 Post
 0.0 <= result <= pi
@@ -191,24 +202,31 @@ x = -INF
 	result = -pi/2.0
 
 PROCEDURE ArcTan2 (y, x: REAL): REAL
-Returns the quadrant-correct principal value of the argument of the complex number x + iy in the range (-pi, pi].
-
-Pre
-y # 0  OR  x # 0	20
-ABS(y) # INF  OR  ABS(x)  # INF	21
+Returns the argument (angle) of the complex number x + iy measured anti-clockwise from the positive real axis.
+All input pairs, including (0., 0.), are valid.
 
 Post
--pi < result <= pi
-ABS(y) # INF  &  x = INF
-	result = 0
-y = INF  &  ABS(x) # INF
-	result = pi/2.0
-ABS(y) # INF  &  x = -INF
-	result = pi
-y = -INF  &  ABS(x) # INF
-	result = -pi/2.0
+-pi <= result <= pi
+The following table lists the IEEE 754-2008 "special values" of the function:
 
-PROCEDURE Sinh (x: REAL): REAL
+	   y   	x	  result  
+	±0	+0, fin, INF	±0
+	±fin	INF	±0
+	±INF	INF	±pi / 4
+	±fin	0	±pi / 2
+	±INF	-fin, 0, fin	±pi / 2
+	±INF	-INF	±3 pi / 4
+	±0	-INF, -fin, -0	±pi
+	±fin	-INF	±pi
+	Key:
+		+0	The zero with a positive sign bit (0)
+		-0	The zero with a negative sign bit (1)
+		0	A zero with any sign bit (0 or 1)
+		fin	Any finite positive number in (0 ... INF)
+		±	+ or -, but both occurances in a line are the same.
+
+
+PROCEDURE Sinh (x: REAL): REAL
 Returns the hyperbolic sine of x.
 
 Post
@@ -250,7 +268,7 @@ PROCEDURE ArcCosh (x: REAL): REAL;
 Returns the inverse hyperbolic cosine of x.
 
 Pre
-1.0 <= x	20
+1.0 <= x
 
 Post
 0.0 <= result
@@ -261,7 +279,7 @@ PROCEDURE ArcTanh (x: REAL): REAL;
 Returns the inverse hyperbolic tangent of x.
 
 Pre
--1.0 <= x <= 1.0	20
+-1.0 <= x <= 1.0
 
 Post
 x = 1.0
@@ -274,7 +292,7 @@ Below you find the definition of additional trigonometric and hyperbolic functio
 		Cot (x) = 1.0 / Math.Tan(x)
 		Csc (x) = 1.0 / Math.Sin(x)
 		Sec (x) = 1.0 / Math.Cos(x)
-		ArcCot (x) = Math.Pi() / 2.0 - Math.ArcTan(x)
+		ArcCot (x) = Math.ArcTan(1.0 / x)
 		ArcCsc (x) = Math.ArcSin(1.0 / x)
 		ArcSec (x) = Math.ArcCos(1.0 / x)
 
@@ -288,7 +306,7 @@ Below you find the definition of additional trigonometric and hyperbolic functio
 
 Miscellaneous functions
 
-You could easily implement the functions Sign, Floor, Ceiling, Trunc, Frac, and Round yourself, using the ENTIER standard function. They are provided here for convenience, and in versions which return REAL typed results, so that no conversions between reals and integers become necessary if they are used in real expressions.
+You could in principle implement the functions Sign, Floor, Ceiling, Trunc, Frac, Mod1, and Round yourself, using the ENTIER standard function. They are provided here for convenience, and in versions which return REAL typed results, so that no conversions between reals and integers become necessary if they are used in REAL expressions.
 
 PROCEDURE Sign (x: REAL): REAL
 Returns the sign of x, that is 1.0 if x > 0.0, -1.0 if x < 0.0 and 0.0 if x = 0.0.
@@ -297,7 +315,7 @@ Post
 result IN {-1.0, 0.0, 1.0}
 
 PROCEDURE Floor (x: REAL): REAL
-Returns the greatest integer less than or equal to x. This function is identical to ENTIER, except that it returns a REAL type value.
+Returns the greatest integer less than or equal to x. This function is identical to ENTIER, except that it returns a REAL type value and it does not generate an integer overflow.
 
 Post
 x = INF
@@ -324,10 +342,24 @@ x = -INF
 	result = -INF
 
 PROCEDURE Frac (x: REAL): REAL
-Frac is the fractional part of the argument. The following equation holds: x = Trunc(x) + Frac(x).
+Frac is the fractional part of the argument.
+The following equation holds: x = Trunc(x) + Frac(x).
 
 Pre
-x # INF  &  x # -INF	20
+x # INF  &  x # -INF
+
+Post
+-1 < result < 1
+
+PROCEDURE Mod1 (x: REAL): REAL
+Mod1 is the fractional part of the argument modulo 1.
+The following equation holds: x = Floor(x) + Mod1(x).
+
+Pre
+x # INF  &  x # -INF
+
+Post
+0  ≤ result < 1
 
 PROCEDURE Round (x: REAL): REAL
 Same as Floor(x + 0.5).
@@ -355,7 +387,7 @@ Note: the normal arithmetic operations of the language Component Pascal, and the
 Note: Real(0, 0) = 0.
 
 Pre
-(1.0 <= ABS(m) < 2.0)  OR  (m = 0.0)	20
+20	(1.0 <= ABS(m) < 2.0)  OR  (m = 0.0)
 
 Post
 m = 0.0

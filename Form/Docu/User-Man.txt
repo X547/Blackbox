@@ -59,7 +59,7 @@ When clicking into a selection, and moving the cursor around, the selected views
 
 5 Drag & Pick
 
-Drag & Pick is also supported in forms. In forms, another view's size can be picked up. This is very convenient for layout editing. For example, select several controls which have different sizes, hold down the alt key, and then drag to another view. When you release the mouse over this view, all selected views will be made the same size as this one.
+Drag & Pick is also supported in forms. In forms, another view's size can be picked up. This is very convenient for layout editing. For example, select several controls which have different sizes, hold down the alt key (or, alternatively, use the middle mouse button), and then drag to another view. When you release the mouse over this view, all selected views will be made the same size as this one.
 
 
 6 Layout and Mask Modes

@@ -351,7 +351,16 @@ Implicit.TextViews	TextControllers
 
 Location	Location
 Count	Count
-Searching	searching
-NoMatchFound	no match found.
-OpenFindCmd	StdCmds.OpenToolDialog('Text/Rsrc/Cmds', 'Find / Replace')
-OpenFindCmdNotFound	open command for find dialog not found
+Searching	Searching
+NoMatchFound	No match found.
+SearchFor	Search for
+
+NewSymFile	new symbol file
+ChangedLibFlag	changed library flag
+InconsistentImport	^0.^1 is not consistently imported
+IsNoLongerInSymFile	^0 is no longer in symbol file
+IsRedefinedInternally	^0 is redefined internally
+IsRedefined	^0 is redefined
+IsNewInSymFile	^0 is new in symbol file
+NotImplementedIn	^0 not implemented in ^1
+NotImplemented	^0 not implemented

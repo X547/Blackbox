@@ -105,7 +105,7 @@ PROCEDURE (l: Listener) Close
 NEW, ABSTRACT
 Closes the listener, so that no services can't be requested over the network anymore. Close has no effect if the listener was closed already.
 
-PROCEDURE (l: Listener) LocalAdr
+PROCEDURE (l: Listener) LocalAdr (): Adr
 NEW, ABSTRACT
 Returns the name of the local port on which the listener listens.
 

@@ -3928,8 +3928,8 @@ MODULE WinApi ["KERNEL32.dll"];
 		WM_MBUTTONDOWN* = 519 (* {0..2, 9} *);
 		WM_MBUTTONUP* = 520 (* {3, 9} *);
 		WM_MBUTTONDBLCLK* = 521 (* {0, 3, 9} *);
-		WM_MOUSELAST* = 521 (* {0, 3, 9} *);
-		WM_MOUSEWHEEL* = 522;
+		WM_MOUSEWHEEL* = 522 (* {1, 3, 9} *);
+		WM_MOUSELAST* = 522 (* {1, 3, 9} *);
 		WM_PARENTNOTIFY* = 528 (* {4, 9} *);
 		MENULOOP_WINDOW* = 0 (* {} *);
 		MENULOOP_POPUP* = 1 (* {0} *);
@@ -4305,8 +4305,13 @@ MODULE WinApi ["KERNEL32.dll"];
 		HWND_TOPMOST* = -1;
 		HWND_NOTOPMOST* = -2;
 		DLGWINDOWEXTRA* = 30 (* {1..4} *);
+		INPUT_MOUSE* = 0;
+		INPUT_KEYBOARD* = 1;
+		INPUT_HARDWARE* = 2;
 		KEYEVENTF_EXTENDEDKEY* = {0};
 		KEYEVENTF_KEYUP* = {1};
+		KEYEVENTF_UNICODE* = {2};
+		KEYEVENTF_SCANCODE* = {3};
 		MOUSEEVENTF_MOVE* = {0};
 		MOUSEEVENTF_LEFTDOWN* = {1};
 		MOUSEEVENTF_LEFTUP* = {2};
@@ -4314,6 +4319,12 @@ MODULE WinApi ["KERNEL32.dll"];
 		MOUSEEVENTF_RIGHTUP* = {4};
 		MOUSEEVENTF_MIDDLEDOWN* = {5};
 		MOUSEEVENTF_MIDDLEUP* = {6};
+		MOUSEEVENTF_XDOWN* = {7};
+		MOUSEEVENTF_XUP* = {8};
+		MOUSEEVENTF_WHEEL* = {11};
+		MOUSEEVENTF_HWHEEL* = {12};
+		MOUSEEVENTF_MOVE_NOCOALESCE* = {13};
+		MOUSEEVENTF_VIRTUALDESK* = {14};
 		MOUSEEVENTF_ABSOLUTE* = {15};
 		MWMO_WAITALL* = {0};
 		MWMO_ALERTABLE* = {1};
@@ -11204,6 +11215,38 @@ MODULE WinApi ["KERNEL32.dll"];
 		RetGetSidSubAuthority* = POINTER TO (*?*) ARRAY [untagged] OF INTEGER;
 		RetDdeAccessData* = POINTER TO (*?*) ARRAY [untagged] OF SHORTCHAR;
 		RetCommandLineToArgvW* = POINTER TO (*?*) ARRAY [untagged] OF PtrWSTR;
+		PtrMOUSEINPUT* = POINTER TO MOUSEINPUT;
+		MOUSEINPUT* = RECORD [untagged]
+			dx*: INTEGER;
+			dy*: INTEGER;
+			mouseData*: INTEGER;
+			dwFlags*: SET;
+			time*: INTEGER;
+			dwExtraInfo*: INTEGER;
+		END;
+		PtrKEYBDINPUT* = POINTER TO KEYBDINPUT;
+		KEYBDINPUT* = RECORD [untagged]
+			wVk*: SHORTINT;
+			wScan*: SHORTINT;
+			dwFlags*: SET;
+			time*: INTEGER;
+			dwExtraInfo*: INTEGER;
+		END;
+		PtrHARDWAREINPUT* = POINTER TO HARDWAREINPUT;
+		HARDWAREINPUT* = RECORD [untagged]
+			uMsg*: INTEGER ;
+			wParamL*: SHORTINT;
+			wParamH*: SHORTINT;
+		END;
+		PtrINPUT* = POINTER TO INPUT;
+		INPUT* = RECORD [untagged]
+			type*: INTEGER; (* INPUT_XXX *)
+			u*: RECORD [union]
+				mi*: MOUSEINPUT;
+				ki*: KEYBDINPUT;
+				hi*: HARDWAREINPUT;
+			END;
+		END;
 
 	PROCEDURE InterlockedIncrement* (VAR [nil] lpAddend: INTEGER): INTEGER;
 	(*END InterlockedIncrement;*)
@@ -11458,11 +11501,17 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE CreateFiber* (dwStackSize: INTEGER; lpStartAddress: FIBER_START_ROUTINE; lpParameter: PtrVoid): PtrVoid;
 	(*END CreateFiber;*)
 
+	PROCEDURE CreateFiberEx* (dwStackCommitSize, dwStackReserveSize: INTEGER; dwFlags: SET; lpStartAddress: FIBER_START_ROUTINE; lpParameter: PtrVoid): PtrVoid;
+	(*END CreateFiberEx;*)
+
 	PROCEDURE DeleteFiber* (lpFiber: PtrVoid);
 	(*END DeleteFiber;*)
 
 	PROCEDURE ConvertThreadToFiber* (lpParameter: PtrVoid): PtrVoid;
 	(*END ConvertThreadToFiber;*)
+
+	PROCEDURE ConvertFiberToThread* (): BOOL;
+	(*END ConvertFiberToThread;*)
 
 	PROCEDURE SwitchToFiber* (lpFiber: PtrVoid);
 	(*END SwitchToFiber;*)
@@ -11851,7 +11900,7 @@ MODULE WinApi ["KERNEL32.dll"];
 	PROCEDURE FormatMessageA* (dwFlags: SET; lpSource: PtrVoid; dwMessageId: INTEGER; dwLanguageId: INTEGER; lpBuffer: PtrSTR; nSize: INTEGER; VAR [nil] Arguments: PtrSTR): INTEGER;
 	(*END FormatMessageA;*)
 
-	PROCEDURE FormatMessageW* (dwFlags: SET; lpSource: PtrVoid; dwMessageId: INTEGER; dwLanguageId: INTEGER; lpBuffer: PtrWSTR; nSize: INTEGER; VAR [nil] Arguments: PtrSTR): INTEGER;
+	PROCEDURE FormatMessageW* (dwFlags: SET; lpSource: PtrVoid; dwMessageId: INTEGER; dwLanguageId: INTEGER; lpBuffer: PtrWSTR; nSize: INTEGER; VAR [nil] Arguments: PtrWSTR): INTEGER;
 	(*END FormatMessageW;*)
 
 	PROCEDURE FormatMessage* ["FormatMessageA"] (dwFlags: SET; lpSource: PtrVoid; dwMessageId: INTEGER; dwLanguageId: INTEGER; lpBuffer: PtrSTR; nSize: INTEGER; VAR [nil] Arguments: PtrSTR): INTEGER;
@@ -17145,6 +17194,9 @@ MODULE WinApi ["KERNEL32.dll"];
 
 	PROCEDURE DdeCmpStringHandles* ["USER32.dll", ""] (hsz1: HSZ; hsz2: HSZ): INTEGER;
 	(*END DdeCmpStringHandles;*)
+		
+	PROCEDURE SendInput* ["USER32.dll", ""] (nInputs: INTEGER; pInputs: POINTER TO ARRAY [untagged] OF INPUT; cbSize: INTEGER): INTEGER;
+	(*END SendInput;*)
 
 	PROCEDURE LZStart* ["LZ32.dll", ""] (): INTEGER;
 	(*END LZStart;*)

@@ -1,10 +1,10 @@
 MENU "#Text:&Text" ("TextViews.View")
 	"#Text:&Find / Replace..."	"F"	"TextCmds.InitFindDialog; 
 	StdCmds.OpenToolDialog('Text/Rsrc/Cmds', '#Text:Find / Replace')"	""
-	"#Text:&Find Again"	"F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~I~B~E~R')"		"TextCmds.FindAgainGuard"
-	"#Text:&Find Previous"	"*F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~I~B~ER')"		"TextCmds.FindAgainGuard"
-	"#Text:&Find First"	"F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~I~B~E~R')"		"TextCmds.FindAgainGuard"
-	"#Text:&Find Last"	"*F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~I~B~ER')"		"TextCmds.FindAgainGuard"
+	"#Text:&Find Again"	"F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~R')"		"TextCmds.FindAgainGuard"
+	"#Text:&Find Previous"	"*F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('R')"		"TextCmds.FindAgainGuard"
+	"#Text:&Find First"	"F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~R')"		"TextCmds.FindAgainGuard"
+	"#Text:&Find Last"	"*F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('R')"		"TextCmds.FindAgainGuard"
 	SEPARATOR
 	"#Text:&Shift Left"	"F11"	"TextCmds.ShiftLeft"	"TextCmds.EditGuard"
 	"#Text:&Shift Right"	"F12"	"TextCmds.ShiftRight"	"TextCmds.EditGuard"

@@ -9,7 +9,7 @@ DEFINITION Controllers;
 		decLine = 0; incLine = 1; decPage = 2; incPage = 3; gotoPos = 4;
 		nextPageX = 0; nextPageY = 0; gotoPageX = 2; gotoPageY = 3;
 		cut = 0; copy = 1; pasteChar = 2; paste = 4;
-		doubleClick = 0; extend = 1; modify = 2;
+		doubleClick = 0; extend = 1; modify = 2; popup = 3; pick = 4;
 		noMark = FALSE; mark = TRUE;
 		hide = FALSE; show = TRUE;
 
@@ -139,6 +139,7 @@ DEFINITION Controllers;
 	PROCEDURE Delete (f: Forwarder);
 	PROCEDURE ForwardVia (target: BOOLEAN; VAR msg: Message);
 	PROCEDURE SetCurrentPath (target: BOOLEAN);
+	PROCEDURE ResetCurrentPath;
 	PROCEDURE PollSection (VAR msg: PollSectionMsg);
 	PROCEDURE PollOps (VAR msg: PollOpsMsg);
 	PROCEDURE PollCursor (x, y: INTEGER; OUT cursor: INTEGER);
@@ -150,8 +151,6 @@ DEFINITION Controllers;
 	PROCEDURE Drop (x, y: INTEGER; source: Views.Frame; sourceX, sourceY: INTEGER;
 									view: Views.View; isSingle: BOOLEAN; w, h, rx, ry: INTEGER);
 	PROCEDURE PasteView (view: Views.View; w, h: INTEGER; clipboard: BOOLEAN);
-	PROCEDURE ResetCurrentPath;
-	PROCEDURE SetCurrentPath (target: BOOLEAN);
 
 END Controllers.
 
@@ -201,11 +200,18 @@ This value can be assigned to the EditMsg.op field. It denotes the input of some
 CONST paste
 This value can be assigned to the EditMsg.op field. The receiver view should insert a copy of the data that EditMsg.view contains. If it cannot insert the data directly because it doesn't know its type, it should insert a copy of the whole EditMsg.view into its model if it has this capability, i.e., if it is a container.
 
-CONST doubleClick
-This value means that a mouse button has been pressed in a way which is interpreted by the underlying user interface as a "double click". A double click is signaled to the application as a modifier; other modifiers are extend and modify.
+CONST doubleClick, extend, modify, popup, pick
+BlackBox abstracts from the details of the pointing device (usually a mouse) and keyboard layout by passing information about special kinds of mouse clicks and mouse/key combinations as platform independent modifiers. For the mapping of platform specific keys see platform specific modifiers. Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input. 
 
-CONST extend, modify
-BlackBox operates with two virtual modifier keys. The extend key is used to extend or toggle selections (usually the shift key), the modify key to change the default behavior of a command (e.g., to change a drag-and-move into a drag-and-copy, using the control key). The behavior of possible additional modifier keys is platform-specific (see the document on platform-specific issues for such modifiers). Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input.
+doubleClick means that a mouse button has been pressed in a way which is interpreted by the underlying user interface as a "double click".
+
+extend is used to extend or toggle selections (usually by pressing the Shift key).
+
+modify is used to change the default behavior of a command, for example to change a drag-and-move into a drag-and-copy (usually by pressing the Ctrl key).
+
+popup means that a mouse button has been pressed in a way which is intended for showing a popup menu (usually by pressing the right mouse button if a multi-button mouse is available).
+
+pick means that a mouse button has been pressed in a way which is intended for drag-and-pick (usually by pressing the middle mouse button if a three-button mouse is available, or by pressing the Alt key).
 
 CONST noMark, mark
 Used internally.
@@ -411,7 +417,7 @@ op: INTEGER	op IN {cut .. paste}
 Operation to be performed.
 
 modifiers: SET	valid iff op= pasteChar
-Modifier keys.
+Modifier keys. For the mapping of platform specific keys see platform specific modifiers.
 
 char: CHAR	valid iff op = pasteChar
 Character to be pasted, or to be interpreted in the case of control characters.
@@ -469,7 +475,7 @@ Extension
 This message is sent when the mouse button is pressed down.
 
 modifiers: SET
-Determines which modifier keys have been pressed together with the mouse button.
+Determines which modifier keys have been pressed together with the mouse button. For the mapping of platform specific keys see platform specific modifiers.
 
 
 TYPE WheelMsg (CursorMessage)
@@ -539,7 +545,7 @@ The reference point inside the selection where drag & drop started.
 
 
 VAR path-: BOOLEAN
-Used internally.
+The currently set path, either frontPath or targetPath. The path is set and reset by SetCurrentPath and ResetCurrentPath.
 
 
 PROCEDURE Forward (VAR msg: Message)
@@ -573,7 +579,10 @@ PROCEDURE ForwardVia (target: BOOLEAN; VAR msg: Views.CtrlMessage)
 Send msg to either target or front focus.
 
 PROCEDURE SetCurrentPath (target: BOOLEAN)
-Set path to target. Must be balanced by a call to ResetCurrentPath, otherwise a trap will occur (in Controllers.BalanceCheckActions.Do).
+Set path to target and push the previous path value onto a stack. Must be balanced by a call to ResetCurrentPath, otherwise a trap will occur (in Controllers.BalanceCheckAction.Do).
+
+PROCEDURE ResetCurrentPath
+Reset path to the value it had before the last call of SetCurrentPath. Calls of ResetCurrentPath must exactly balance the calls of SetCurrentPath.
 
 PROCEDURE PollSection (VAR msg: PollSectionMsg)
 Poll the current focus view's scroll state.
@@ -596,7 +605,3 @@ PROCEDURE Drop (x, y: INTEGER; source: Views.Frame; sourceX, sourceY: INTEGER;
 										view: Views.View; isSingle: BOOLEAN; w, h, rx, ry: INTEGER)
 
 PROCEDURE PasteView (view: Views.View; w, h: INTEGER; clipboard: BOOLEAN)
-
-PROCEDURE ResetCurrentPath
-
-PROCEDURE SetCurrentPath (target: BOOLEAN)

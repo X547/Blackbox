@@ -449,15 +449,14 @@ MODULE Dialog;
 		out := "";
 		IF in[0] = "#" THEN
 			i := 0; ch := in[1];
-			WHILE (ch # 0X) (* & (ch # ".") *) & (ch # ":") DO subsys[i] := ch; INC(i); ch := in[i + 1] END;
+			WHILE (ch # 0X) & (ch # ":") DO subsys[i] := ch; INC(i); ch := in[i + 1] END;
 			subsys[i] := 0X;
-			IF ch # 0X THEN
-				INC(i, 2); ch := in[i]; j := 0;
-				WHILE (ch # 0X) DO in[j] := ch; INC(i); INC(j); ch := in[i] END;
-				in[j] := 0X
-			ELSE
-				RETURN
-			END;
+			IF subsys = "" THEN (* no Subsystem *) RETURN END;
+			IF ch = ":" THEN INC(i); ch := in[i + 1] END;
+			IF ch = 0X THEN (* no message *) RETURN END;
+			INC(i); ch := in[i]; j := 0;
+			WHILE (ch # 0X) DO in[j] := ch; INC(i); INC(j); ch := in[i] END; (* in := message *)
+			in[j] := 0X;
 			tab := tabList;
 			WHILE (tab # NIL) & (tab.name # subsys) DO tab := tab.next END;
 			IF tab = NIL THEN LoadStringTab(subsys, tab) END;

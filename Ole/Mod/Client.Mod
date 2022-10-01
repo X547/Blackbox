@@ -1647,11 +1647,24 @@ MODULE OleClient;
 		END
 		END
 	END InsertObject;
+	
+	PROCEDURE MapOleConv(IN key: ARRAY OF CHAR; OUT val: ARRAY OF CHAR);
+		VAR subs, k: Dialog.String;
+	BEGIN
+		Dialog.MapString("#Host:" + key, val);
+		IF val = key THEN
+			Kernel.SplitName(key, subs, k);
+			IF (subs # "Host") & (subs # "Ole") THEN
+				IF subs = "" THEN subs := "System" END;
+				Dialog.MapString("#" + subs + ":" + key, val)
+			END
+		END
+	END MapOleConv;
 
 	PROCEDURE PasteSpecial*;
 		VAR res: INTEGER; p: WinOleDlg.OLEUIPASTESPECIALW; win: HostWindows.Window;
 			guids: ARRAY 1 OF COM.GUID; pmfp: WinApi.PtrMETAFILEPICT;
-			entries: ARRAY 16 OF WinOleDlg.OLEUIPASTEENTRYW; key: Dialog.String;
+			entries: ARRAY 16 OF WinOleDlg.OLEUIPASTEENTRYW;
 			conv: ARRAY 16 OF OleData.Converter; str: ARRAY 16, 2, 64 OF CHAR;
 			c: OleData.Converter; n: INTEGER; msg: Controllers.EditMsg;
 	BEGIN
@@ -1662,8 +1675,8 @@ MODULE OleClient;
 			IF (c.imp # "") & ~(OleData.info IN c.opts) THEN
 				entries[n].fmtetc := c.format;
 				IF c.type # "" THEN
-					key := "#Host:" + c.imp; Dialog.MapString(key, key); str[n, 0] := key$;
-					key := "#Host:" + c.type; Dialog.MapString(key, key); str[n, 1] := key$;
+					MapOleConv(c.imp, str[n, 0]);
+					MapOleConv(c.type, str[n, 1]);
 					entries[n].lpstrFormatName := str[n, 0];
 					entries[n].lpstrResultText := str[n, 1]
 				ELSE

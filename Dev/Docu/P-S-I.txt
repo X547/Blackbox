@@ -320,17 +320,19 @@ The module HostPorts exports constants for Windows-specific cursors which can be
 		linkCursor = 25;
 		pickCursor = 26;	(* drag and pick cursor *)
 		
-Windows-specific mouse and keyboard modifiers
+Windows-specific mouse and keyboard modifiers
 
-Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input. In addition to the platform independant modifiers Controllers.doubleClick, Controllers.extend, and Controllers.modify they contain platform-specific modifiers defined in HostPorts:
+Modifier sets are used in Controllers.TrackMsg, Controllers.EditMsg, and Ports.Frame.Input. The BlackBox platform independant modifier elements doubleClick, extend, modify, popup, and pick are defined in module Controllers. Additional Windows platform-specific modifier elements are defined in module HostPorts. The correspondence between these elements is shown in the table below. If the HostPorts element is included it implies that the corresponding Controllers element will also be included.
 
-	CONST
-		left = 16;	(* left mouse button pressed *)
-		middle = 17;	(* middle mouse button pressed *)
-		right = 18;	(* right mouse button pressed *)
-		shift = 24;	(* Shift key pressed *)
-		ctrl = 25;	(* Control key pressed *)
-		alt = 28;	(* Alt key pressed *)
+	HostPorts	HostPorts	Controllers	Controllers	Mouse button
+	element	value	element	value	or key
+	--	--	doubleClick	0	double click
+	left	16	--	--	left mouse button
+	middle	17	pick	4	middle mouse button
+	right	18	popup	3	right mouse button
+	shift	24	extend	1	Shift key
+	ctrl	25	modify	2	Ctrl key
+	alt	28	pick	4	Alt key
 
 Window and device context handles
 

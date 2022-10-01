@@ -209,11 +209,11 @@ MODULE DevPacker;
 		l := files; ret := TRUE; err := 0; tot := 0;
 		WHILE l # NIL DO
 			loc := Files.dir.This(l.path);
-			IF loc # NIL THEN
+			IF loc.res = 0 THEN
 				fi := Files.dir.FileList(loc);
 				WHILE (fi # NIL) & (Diff(l.name, fi.name, FALSE) # 0) DO fi := fi.next END
 			END;
-			IF (loc = NIL) OR (fi = NIL) THEN
+			IF (loc.res # 0) OR (fi = NIL) THEN
 				IF l.path # "" THEN StdLog.String(l.path + "/") END;
 				StdLog.String(l.name);
 				StdLog.String(" ...not found"); ret := FALSE; INC(err);

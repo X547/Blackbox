@@ -1,0 +1,149 @@
+DEFINITION Coroutines;
+
+	CONST
+		uninitialized = 0; suspended = 1; running = 2; returned = 3; trapped = 4;
+
+	TYPE
+		Coroutine = POINTER TO ABSTRACT RECORD 
+			state-: INTEGER;
+			parent-, source-: Coroutine;
+			(this: Coroutine) Run-, NEW, ABSTRACT
+		END;
+
+		Iterator = POINTER TO ABSTRACT RECORD (Coroutine)
+			(this: Iterator) Next, NEW;
+			(this: Iterator) Yield, NEW
+		END;
+
+		Task = POINTER TO ABSTRACT RECORD (Coroutine)
+			(this: Task) Start, NEW
+			(this: Task) Sleep (msecs: LONGINT), NEW
+		END;
+
+	VAR
+		current-, main-: Coroutine;
+		stackMin-, stackMax-: INTEGER;
+
+	PROCEDURE SetStackSize (min, max: INTEGER);
+	PROCEDURE Init (this: Coroutine);
+	PROCEDURE Transfer (target: Coroutine);
+	PROCEDURE Cleanup;
+
+END Coroutines.
+
+This module provides coroutines for BlackBox. Like a thread, a coroutine runs on its own stack but unlike a thread a coroutine is non-preemptive. Instead, a coroutine transfers control explicitly to another coroutine. No deadlocks or race conditions can occur and no scheduler is required. All coroutines run within the single BlackBox main thread. Coroutines can use any of the BlackBox services and are subject to automatic garbage collection. The low-level services Kernel.TrapCleaner and Kernel.TrapChecker are also supported.
+Coroutines are particularily useful for two programming patterns, (1) iterators over complex data structures and (2) long-running background tasks. Both patterns are supported by appropriate subclasses.
+
+CONST uninitialized
+CONST suspended
+CONST running
+CONST returned
+CONST trapped
+The possible coroutine states.
+
+TYPE Coroutine
+ABSTRACT
+This type or one of its subtypes must be extended for a particular coroutine and the Run method must be implemented. Any state variables required for communicating with other coroutines can be be put into the extended record.
+
+state: INTEGER
+The state of a coroutine.
+
+parent: Coroutine
+The coroutine that started this coroutine or NIL if none.
+
+source: Coroutine
+The coroutine that executed the last Transfer to this coroutine or NIL if none.
+
+PROCEDURE (this: Coroutine) Run-
+NEW, ABSTRACT
+The procedure executed by this coroutine. Control can be transferred to another coroutine by means of calling Transfer. In case of using a special subclass (Iterator or Task) it is recommended that the transfer is done with one of the transfer wrapper methods provided by the respective subclass.
+If Run returns, this.state is set to returned and control is transferred to this.parent.
+If Run traps, control is transferred to main and this.state is set to trapped.
+
+VAR current-: Coroutine
+The currently running coroutine. Initially set to main.
+
+VAR main-: Coroutine
+The main coroutine. Initially this is the running coroutine. The state of the main coroutine can only be running or suspended.
+
+VAR stackMin-: INTEGER;
+The currently set minimum stack size. Initially set to 0, which means a system defined default minimum stack size.
+
+VAR stackMax-: INTEGER;
+The currently set maximum stack size. Initially set to 0, which means a system defined default maximum stack size.
+
+PROCEDURE SetStackSize (min, max: INTEGER)
+Sets the stack size used for coroutine procedure call stacks to be at least min and at most max. The specification of a minimum and a maximum value allows for an implementation with dynamically growing stacks. Passing 0 means system defined defaults.
+Under BlackBox for Windows the defaults are defined in the application's exe file as min = 64KB and max = 2MB. The values passed for min and max are rounded up internally to a suitable minimum and to a multiple of the memory page size.
+
+PROCEDURE Init (this: Coroutine)
+Initializes this coroutine and creates a procedure call stack for it. The stack grows as needed until reaching the limit defined in the application's exe file (2MB by default in BlackBox). Stack-overflow is checked. The coroutine is not started by Init but its state is set to suspended. In case of a failure, i.e. when creating too many coroutines, Init traps. Experiments showed that at least 100 coroutines with the default stack size can be created without a failure. With smaller stack sizes it is usually possible to create several thousands of coroutines.
+
+Pre
+this # NIL	20
+this.state = uninitialized	21
+
+Post
+this.state = suspended	80
+
+PROCEDURE Transfer (target: Coroutine)
+Transfers control from the current coroutine to the specified target coroutine. The state of the current coroutine is set to suspended while the target coroutine is set to running. Upon the first transfer to target the field target.parent is set to current. The field target.source is set to current.
+Note that using Transfer can lead to complex control flow and subtle programming errors. In case of using a special subclass (Iterator or Task) it is recommended that any transfer is done with one of the transfer wrapper methods provided by the subclass.
+
+Pre
+target # NIL
+target.state = suspended	20
+
+PROCEDURE Cleanup
+Removes any globally anchored references to coroutines that may prevent those coroutines from being garbage collected. 
+
+Post
+main.from = NIL
+
+
+TYPE Iterator
+ABSTRACT
+Base class for coroutines used as iterators (sometimes also called generators). Iterators are supposed to yield to the parent coroutine, the client, until they return. Data passed between an iterator and its client is usually contained in the iterator's subclass.
+
+PROCEDURE (this: Iterator) Next
+NEW
+Transfers control to this iterator for starting or advancing it. If this is not yet initialized it is initialized first. Next is called by the client of an iterator. Data provided by an iterator for its client is usually contained in the iterator's subclass. Termination of an iterator can be signalled by passing an appropriate termination flag or by checking the iterator's state.
+
+Post
+current.source = this	80
+this.state # trapped	81
+
+PROCEDURE (this: Iterator) Yield
+NEW
+Transfers control to the iterator's client, i.e. to this.parent. Yield is called by the iterator. Data passed to the client is usually stored in the iterator's subclass.
+
+Post
+this.source = this.parent	80
+
+
+TYPE Task
+ABSTRACT
+Base class for coroutines used as background tasks. Tasks are supposed to be started from the main coroutine only.
+
+PROCEDURE (this: Task) Start
+NEW
+Starts execution of this background task by transferring control to this coroutine. If this coroutine is not yet initialized it is initialized first.
+
+Pre
+this.parent = NIL	20
+current = main	21
+
+PROCEDURE (this: Task) Sleep (msecs: LONGINT)
+NEW
+Transfers control to main after registering a Services.Action that transfers control back to this with a delay of at least msecs milliseconds. If msecs is zero then the task runs as fast as possible but still transfers periodically to main, thus it does not block the user interface.
+	Note that under Windows there is a minimum delay implied by the so-called Windows idle period. This minimum delay can be reduced by operating BlackBox in server mode (see Preferences).
+
+Pre
+this.state = running	20
+msecs >= 0	21
+
+Post
+msecs > 0
+	this.source = main	80
+msecs = 0
+	this.source = main OR this.source is unchanged

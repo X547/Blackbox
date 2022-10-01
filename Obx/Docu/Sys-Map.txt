@@ -28,6 +28,7 @@ Other Commands
 ObxFern  docu	ObxFern  sources	fractal fern as in Wirth/Reiser book
 ObxConv  docu	ObxConv  sources	file converter
 ObxActions  docu	ObxActions  sources	actions as background tasks
+ObxCoroutines  docu	ObxCoroutines  sources	simple coroutine examples
 ObxFact  docu	ObxFact  sources	factorials calculated with arbitrary precision integers
 ObxPi  docu	ObxPi  sources	pi calculated with arbitrary precision integers
 ObxRatCalc  docu	ObxRatCalc  sources	rational number calculator

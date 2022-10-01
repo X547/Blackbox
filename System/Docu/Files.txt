@@ -178,14 +178,13 @@ res = 81	not enough system resources (disk space, file handles, etc.)
 
 PROCEDURE (l: Locator) This (IN path: ARRAY OF CHAR): Locator
 NEW, ABSTRACT
-This evaluates a relative path, starting from the location specified by l.
+This evaluates a relative or absolute path given in the host platform's syntax. A relative path is evaluated starting from the location specified by l. This does not check if the specified path exists.
 
 Post
 result # NIL
-	l.res = 0	no error
-result = NIL
-	l.res = 1	invalid name
-	l.res = 5	io error
+	result.res = 0	no error
+	result.res = 1	invalid name
+	result.res = 5	io error
 
 
 TYPE FileInfo
@@ -474,15 +473,14 @@ File directories are extended internally.
 
 PROCEDURE (d: Directory) This (IN path: ARRAY OF CHAR): Locator
 NEW, ABSTRACT
-Returns a locator, given a path name in the host platform's syntax.
-This may perform some validity checks, e.g., whether the syntax of the name is correct. Passing the empty string yields a default location (typically the BlackBox directory itself).
+Returns a locator, given an absolute or relative path name in the host platform's syntax.
+This may perform some validity checks, e.g., whether the syntax of the path name is correct. A relative path (including an empty path) is evaluated starting from the directory's default location. With the standard BlackBox configuration the directory denoted by Files.dir uses the BlackBox startup directory as the default. This does not check if the specified path exists.
 
 Post
 result # NIL
-result.res = 0
-	legal locator
-result.res # 0
-	illegal locator
+	result.res = 0	no error
+	result.res = 1	invalid name
+	result.res = 5	io error
 
 PROCEDURE (d: Directory) Temp (): File
 NEW, ABSTRACT

@@ -2,7 +2,7 @@ MODULE HostPorts;
 (**
 	project	= "BlackBox"
 	organization	= "www.oberon.ch"
-	contributors	= "Oberon microsystems, Marco Ciot, Alexander Iljin"
+	contributors	= "Oberon microsystems, Marco Ciot, Alexander Iljin"
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
@@ -20,7 +20,7 @@ MODULE HostPorts;
 		moveCursor* = 23; copyCursor* = 24; linkCursor* = 25; pickCursor* = 26;
 		focusPat* = 5;
 		
-		extend = 1; modify = 2; (* same as Controllers.extend and Controllers.modify  !!! *)
+		extend = 1; modify = 2; popup = 3; pick = 4; (* same as Controllers.extend, .modify, .popup, and .pick ! *)
 
 		(** buttons **)
 		left* = 16; middle* = 17; right* = 18;
@@ -486,8 +486,9 @@ MODULE HostPorts;
 	BEGIN
 		wnd := rd.port.wnd; mw := WinApi.GetCapture();
 		res := WinApi.UpdateWindow(wnd);
-		IF WinApi.PeekMessageW(msg, mw, WinApi.WM_MOUSEMOVE,
-															WinApi.WM_MBUTTONDBLCLK, 1) # 0 THEN
+		res := WinApi.PeekMessageW(msg, 0, 0, 0, 1); (* avoid window 'ghosting' by removing all messages *)
+		IF (res # 0) & (msg.hwnd = mw) & (msg.message >= WinApi.WM_MOUSEMOVE)
+		& (msg.message <= WinApi.WM_MBUTTONDBLCLK) THEN (* process mouse messages directed to mw *)
 			mx := (msg.lParam + 32768) MOD 65536 - 32768; my := msg.lParam DIV 65536;
 			IF (mw # 0) & (wnd # mw) THEN
 				pt.x := mx; pt.y := my; res := WinApi.ClientToScreen(mw, pt);
@@ -517,6 +518,8 @@ MODULE HostPorts;
 			mb := mb + {ctrl, modify} ELSE  mb := mb - {ctrl, modify}
 		END;
 		IF WinApi.GetAsyncKeyState(WinApi.VK_MENU) < 0 THEN INCL(mb, alt) ELSE EXCL(mb, alt) END;
+		IF right IN mb THEN INCL(mb, popup) ELSE EXCL(mb, popup) END;
+		IF {middle, alt} * mb # {} THEN INCL(mb, pick) ELSE EXCL(mb, pick) END;
 		x := mx; y := my; modifiers := mb; isDown := mb * {left, middle, right} # {};
 		IF Dialog.serverMode THEN Services.actionHook.Step END;
 		WinApi.Sleep(1);

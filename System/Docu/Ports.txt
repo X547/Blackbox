@@ -351,7 +351,7 @@ cursor IN {arrowCursor..refCursor}	20
 
 PROCEDURE (rd: Rider) Input (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: BOOLEAN)
 NEW, ABSTRACT
-Polls the current mouse location and tells whether the mouse button is currently pressed. All coordinates are in pixels. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, and possibly additional platform-specific modifiers.
+Polls the current mouse location and tells whether the mouse button is currently pressed. All coordinates are in pixels. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, Controllers.popup, Controllers.pick, and possibly additional platform-specific modifiers. For the mapping of platform specific keys see platform specific modifiers.
 
 PROCEDURE (rd: Rider) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font) 
 NEW, ABSTRACT;
@@ -556,7 +556,7 @@ cursor IN {arrowCursor..refCursor}	20
 PROCEDURE (f: Frame) Input (OUT x, y: INTEGER; OUT modifiers: SET; OUT isDown: BOOLEAN)
 NEW
 Polls the current mouse location and tells whether the mouse button is currently pressed.
-Input is used in polling loops during mouse tracking. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, and possibly additional platform-specific modifiers.
+Input is used in polling loops during mouse tracking. In modifiers, the currently pressed modifier keys are returned, like Controllers.doubleClick, Controllers.extend, Controllers.modify, Controllers.popup, Controllers.pick, and possibly additional platform-specific modifiers. For the mapping of platform specific keys see platform specific modifiers.
 
 PROCEDURE (f: Frame) DrawSpace (x, y, w: INTEGER; col: Color; font: Fonts.Font)
 NEW;

@@ -6,13 +6,13 @@ MODULE DevCPM;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
 **)
 
-	IMPORT SYSTEM, Kernel, Files, Stores, Models, TextModels, StdLog, DevMarkers;
+	IMPORT SYSTEM, Kernel, Files, Stores, Models, TextModels, StdLog, DevMarkers, Dialog;
 
 	CONST
 		ProcSize* = 4;	(* PROCEDURE type *)
@@ -416,6 +416,15 @@ MODULE DevCPM;
 	BEGIN
 		StdLog.String(s)
 	END LogWStr;
+	
+	PROCEDURE LogWPar* (IN key: ARRAY OF CHAR; IN p0, p1: ARRAY OF SHORTCHAR);
+		VAR s0, s1, s: Dialog.String; res: INTEGER;
+	BEGIN
+		Kernel.Utf8ToString(p0, s0, res);
+		Kernel.Utf8ToString(p1, s1, res);
+		Dialog.MapParamString(key, s0, s1, "", s);
+		StdLog.String(s)
+	END LogWPar;
 	
 	PROCEDURE LogWNum* (i, len: INTEGER);
 	BEGIN

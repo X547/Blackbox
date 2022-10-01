@@ -44,16 +44,16 @@ MODULE StdDialog;
 		END;
 		Kernel.SplitName(mod, sub, name); Kernel.MakeFileName(name, type);
 		loc := Files.dir.This(sub); file := NIL;
-		IF loc # NIL THEN
+		IF loc.res = 0 THEN
 			loc := loc.This(cat);
 			IF sub = "" THEN
-				IF loc # NIL THEN
+				IF loc.res = 0 THEN
 					file := Files.dir.Old(loc, name, Files.shared);
 					IF file = NIL THEN loc := NIL END
 				END;
-				IF loc = NIL THEN
+				IF (loc = NIL) OR (loc.res # 0) THEN
 					loc := Files.dir.This("System");
-					IF loc # NIL THEN loc := loc.This(cat) END
+					IF loc.res = 0 THEN loc := loc.This(cat) END
 				END
 			END
 		END

@@ -866,7 +866,8 @@ MODULE HostFiles;
 				f.InitType(type);
 				ASSERT(ref # invalid, 107);
 				f.ref := ref; f.name := fname$; f.state := s; f.t := Kernel.Time();
-				f.len := WinApi.GetFileSize(ref, j)
+				f.len := WinApi.GetFileSize(ref, j);
+				IF (f.len < 0) OR (j # 0) THEN f.len := -1 (* file length exceeds MAX(INTEGER) *) END
 			END
 		END;
 		loc.res := Error(res);
@@ -952,6 +953,7 @@ MODULE HostFiles;
 						NEW(info);
 						info.name := fd.cFileName$;
 						info.length := fd.nFileSizeLow;
+						IF (info.length < 0) OR (fd.nFileSizeHigh # 0) THEN info.length := -1 END;
 						res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st);
 						info.modified.year := st.wYear;
 						info.modified.month := st.wMonth;
@@ -1001,6 +1003,7 @@ MODULE HostFiles;
 								NEW(info);
 								info.name := fd.cFileName$;
 								info.length := fd.nFileSizeLow;
+								IF (info.length < 0) OR (fd.nFileSizeHigh # 0) THEN info.length := -1 END;
 								res := WinApi.FileTimeToSystemTime(fd.ftLastWriteTime, st);
 								info.modified.year := st.wYear;
 								info.modified.month := st.wMonth;

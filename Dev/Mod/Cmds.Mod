@@ -39,7 +39,7 @@ MODULE DevCmds;
 				s.SetPos(beg); s.Scan; error := FALSE;
 				WHILE (s.start < end) & (s.type = TextMappers.string) & ~error DO
 					StdDialog.GetSubLoc(s.string, "Mod", loc, name);
-					IF loc # NIL THEN
+					IF loc.res = 0 THEN
 						v := Views.OldView(loc, name);
 						IF v # NIL THEN
 							Views.Open(v, loc, name, NIL)

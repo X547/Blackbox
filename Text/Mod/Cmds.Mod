@@ -17,7 +17,7 @@ MODULE TextCmds;
 
 	IMPORT
 		Strings, Ports, Stores, Models, Views, Controllers, Properties, Dialog, Containers,
-		TextModels, TextMappers, TextRulers, TextSetters, TextViews, TextControllers;
+		TextModels, TextMappers, TextRulers, TextSetters, TextViews, TextControllers, StdApi;
 
 	CONST
 		(* ShiftOp.left *)
@@ -76,6 +76,8 @@ MODULE TextCmds;
 			find: FindSpec
 		END;
 
+		TabDialogHook = POINTER TO RECORD (TextRulers.TabDialogHook) END;
+
 
 	VAR
 		find*: RECORD
@@ -89,6 +91,15 @@ MODULE TextCmds;
 			pageBreaks*: RECORD
 				notInside*, joinPara*: BOOLEAN
 			END
+		END;
+
+		tabulator*: RECORD
+			ruler: TextRulers.Ruler;
+			tabIndex: INTEGER;
+			style*: INTEGER;
+			radixChar*: ARRAY 2 OF CHAR;
+			pos*: ARRAY 7 OF CHAR;
+			verticalBar*: BOOLEAN;
 		END;
 
 
@@ -657,10 +668,26 @@ MODULE TextCmds;
 		Controllers.Forward(msg)
 	END InsertDigitSpace;
 
-
+	PROCEDURE ResetFindDialog*;
+	BEGIN
+		find.find := "";
+		find.ignoreCase := FALSE;
+		find.wordBeginsWith := FALSE;
+		find.wordEndsWith := FALSE;
+		find.reverseOrientation := FALSE;
+		Dialog.Update(find)
+	END ResetFindDialog;
+	
 	PROCEDURE GetFindPattern (c: TextControllers.Controller);
 		VAR r: TextModels.Reader; beg, end: INTEGER; i: INTEGER; ch: CHAR;
 			new: ARRAY maxPat OF CHAR;
+			
+		PROCEDURE Equals(x, y: ARRAY OF CHAR; ignoreCase: BOOLEAN): BOOLEAN;
+		BEGIN
+			IF ignoreCase THEN Strings.ToUpper(x, x); Strings.ToUpper(y, y) END;
+			RETURN x = y
+		END Equals;
+		
 	BEGIN
 		IF (c # NIL) & c.HasSelection() THEN
 			c.GetSelection(beg, end);
@@ -669,10 +696,9 @@ MODULE TextCmds;
 				new[i] := ch; INC(i); r.ReadChar(ch)
 			END;
 			new[i] := 0X;
-			IF (new # "") & (new # find.find) THEN
+			IF (new # "") & ~Equals(new, find.find, find.ignoreCase) THEN
+				ResetFindDialog;
 				find.find := new$;
-				find.ignoreCase := FALSE;
-				find.wordBeginsWith := FALSE; find.wordEndsWith := FALSE;
 				Dialog.Update(find)
 			END
 		END
@@ -807,6 +833,168 @@ MODULE TextCmds;
 	END SetRuler;
 
 
+	(** tabulator dialog **)
+
+	PROCEDURE InitTabDialog;
+		VAR ra: TextRulers.Attributes; type: SET; unit: INTEGER;
+	BEGIN
+		IF (tabulator.ruler # NIL) & (tabulator.tabIndex >=0) THEN
+			ra := tabulator.ruler.style.attr;
+			type := ra.tabs.tab[tabulator.tabIndex].type;
+			IF TextRulers.rightTab IN type THEN
+				IF TextRulers.centerTab IN type THEN tabulator.style := 3
+				ELSE tabulator.style := 2
+				END
+			ELSIF TextRulers.centerTab IN type THEN tabulator.style := 1
+			ELSE tabulator.style := 0
+			END;
+			tabulator.radixChar[0] := TextRulers.GetRadixChar(ra, tabulator.tabIndex); tabulator.radixChar[1] := 0X;
+			IF Dialog.metricSystem THEN unit := Ports.mm * 10 ELSE unit := Ports.inch END;
+			Strings.RealToStringForm(ra.tabs.tab[tabulator.tabIndex].stop / unit, 6, 4, -2, " ", tabulator.pos);
+			IF TextRulers.defaultRadixChar = "," THEN 
+				tabulator.pos[LEN(tabulator.pos$) - 3] := TextRulers.defaultRadixChar
+			END;
+			tabulator.verticalBar := TextRulers.barTab IN type;
+		END;
+		Dialog.Update(tabulator)
+	END InitTabDialog;
+	
+	PROCEDURE CloseTab*;
+	BEGIN
+		tabulator.ruler := NIL (* avoid pending references to the text *)
+	END CloseTab;
+	
+	PROCEDURE SetTab*;
+		VAR p: TextRulers.Prop; ra, a: TextRulers.Attributes;
+			pos: ARRAY 7 OF CHAR; val: REAL; unit, res, i, j, stop: INTEGER; ch: CHAR; hasDot: BOOLEAN;
+	BEGIN
+		IF (tabulator.ruler # NIL) & (tabulator.tabIndex < tabulator.ruler.style.attr.tabs.len) THEN
+			ra := tabulator.ruler.style.attr;
+			p := ra.Prop()(TextRulers.Prop);
+			p.valid := {TextRulers.tabs};
+			(* set alignment type *)
+			EXCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.rightTab);
+			EXCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.centerTab);
+			CASE tabulator.style OF
+			| 0: (* left *)
+			| 1: (* center *)
+				INCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.centerTab)
+			| 2: (* right *)
+				INCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.rightTab)
+			| 3: (* decimal *)
+				INCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.rightTab);
+				INCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.centerTab);
+				IF tabulator.radixChar[0] = 0X THEN tabulator.radixChar[0] := TextRulers.defaultRadixChar; 
+					Dialog.Update(tabulator)
+				END;
+				TextRulers.SetRadixCharProp(p, tabulator.tabIndex, tabulator.radixChar[0])
+			END;
+			(* set tab stop position *)
+			j := 0; hasDot := FALSE;
+			FOR i := 0 TO LEN(tabulator.pos$) - 1 DO
+				ch := tabulator.pos[i];
+				IF Strings.IsNumeric(ch) THEN pos[j] := ch; INC(j)
+				ELSIF ((ch = ",") OR (ch = ".")) & ~hasDot THEN pos[j] := "."; INC(j); hasDot := TRUE
+				END
+			END;
+			pos[j] := 0X;
+			Strings.StringToReal(pos, val, res);
+			ASSERT(res = 0);
+			IF Dialog.metricSystem THEN unit := Ports.mm * 10 ELSE unit := Ports.inch END;
+			val := MIN(val * unit + 0.5, Ports.mm * (1000 * 10));
+			stop := SHORT(ENTIER(val));
+			IF ((tabulator.tabIndex = 0) OR (p.tabs.tab[tabulator.tabIndex - 1].stop < stop))
+			& ((tabulator.tabIndex + 1 >= p.tabs.len) OR (stop < p.tabs.tab[tabulator.tabIndex + 1].stop)) THEN
+				p.tabs.tab[tabulator.tabIndex].stop := stop;
+			ELSE Dialog.GetOK("#Text:TabErr1", "", "", "", {Dialog.ok}, res)
+			END;
+			(* set barTab option *)
+			IF tabulator.verticalBar THEN INCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.barTab)
+			ELSE EXCL(p.tabs.tab[tabulator.tabIndex].type, TextRulers.barTab)
+			END;
+			a := TextRulers.ModifiedAttr(ra, p);
+			tabulator.ruler.style.SetAttr(a)
+		END
+	END SetTab;
+
+	PROCEDURE TabGuard* (VAR par: Dialog.Par);
+	BEGIN
+		par.disabled := (tabulator.ruler = NIL) 
+			OR (tabulator.tabIndex < 0) OR (tabulator.tabIndex >=  tabulator.ruler.style.attr.tabs.len)
+	END TabGuard;
+
+	PROCEDURE NextTabGuard* (VAR par: Dialog.Par);
+	BEGIN
+		TabGuard(par);
+		par.disabled := par.disabled OR (tabulator.tabIndex + 1 >=  tabulator.ruler.style.attr.tabs.len)
+	END NextTabGuard;
+
+	PROCEDURE NextTab*;
+	BEGIN
+		IF (tabulator.ruler # NIL) & (tabulator.tabIndex + 1 < tabulator.ruler.style.attr.tabs.len) THEN
+			INC(tabulator.tabIndex);
+			InitTabDialog
+		END
+	END NextTab;
+	
+	PROCEDURE PrevTabGuard* (VAR par: Dialog.Par);
+	BEGIN
+		TabGuard(par);
+		par.disabled := par.disabled OR (tabulator.tabIndex = 0)
+	END PrevTabGuard;
+	
+	PROCEDURE PrevTab*;
+	BEGIN
+		IF (tabulator.ruler # NIL) & (tabulator.tabIndex - 1 >= 0) & (tabulator.ruler.style.attr.tabs.len > 0)  THEN
+			DEC(tabulator.tabIndex);
+			InitTabDialog
+		END
+	END PrevTab;
+
+	PROCEDURE DecTabGuard* (VAR par: Dialog.Par);
+	BEGIN
+		TabGuard(par);
+		par.disabled := par.disabled OR (tabulator.style # 3)
+	END DecTabGuard;
+
+	PROCEDURE TabUnitGuard* (VAR par: Dialog.Par);
+	BEGIN
+		TabGuard(par);
+		IF Dialog.metricSystem THEN par.label := "cm" ELSE par.label := "inch" END
+	END TabUnitGuard;
+
+	PROCEDURE TabNumGuard* (VAR par: Dialog.Par);
+		VAR numStr: ARRAY 3 OF CHAR;
+	BEGIN
+		TabGuard(par);
+		IF par.disabled THEN numStr := "" ELSE Strings.IntToString(tabulator.tabIndex + 1, numStr) END;
+		Dialog.MapParamString("#Text:TabNum", numStr, "", "", par.label)
+	END TabNumGuard;
+
+	PROCEDURE (this: TabDialogHook) Open(ruler: TextRulers.Ruler; tabIndex: INTEGER);
+		VAR v: Views.View;
+	BEGIN
+		tabulator.ruler := ruler; tabulator.tabIndex := tabIndex;
+		InitTabDialog;
+		StdApi.OpenToolDialog('Text/Rsrc/Tab', '#Text:TabTitle', v)
+	END Open;
+
+	PROCEDURE (this: TabDialogHook) Init(ruler: TextRulers.Ruler; tabIndex: INTEGER);
+	BEGIN
+		IF tabulator.ruler # NIL THEN (* dialog open *)
+			tabulator.ruler := ruler; tabulator.tabIndex := tabIndex;
+			InitTabDialog
+		END
+	END Init;
+
+	PROCEDURE (this: TabDialogHook) Refresh(style: TextRulers.Style);
+	BEGIN
+		IF (tabulator.ruler # NIL) & (tabulator.ruler.style = style) THEN (* dialog open and displaying changed ruler *)
+			InitTabDialog
+		END
+	END Refresh;
+
+
 	(** standard text-related guards **)
 
 	PROCEDURE FocusGuard* (VAR par: Dialog.Par);
@@ -847,4 +1035,13 @@ MODULE TextCmds;
 		IF (c = NIL) OR (c.Singleton() = NIL) THEN par.disabled := TRUE END
 	END SingletonGuard;
 
+	PROCEDURE NewTabDialogHook(): TabDialogHook;
+		VAR h: TabDialogHook;
+	BEGIN NEW(h); RETURN h
+	END NewTabDialogHook;
+	
+BEGIN
+	TextRulers.tabDialogHook := NewTabDialogHook()
+CLOSE
+	TextRulers.tabDialogHook := NIL
 END TextCmds.

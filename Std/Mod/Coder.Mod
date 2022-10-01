@@ -6,7 +6,12 @@ MODULE StdCoder;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	changes	= ""
+	changes	= "
+	- 20160321, center #110, use mapped strings for labels in all forms
+	- 20161010, center #133, bug fix in Encoding/Decoding Unicode filenames and paths
+	- 20161216, center #144, inconsistent docu and usage of Files.Locator error codes
+	- 20170225, center #148, StdCoder to support file names with spaces
+	"
 	issues	= ""
 
 **)
@@ -94,14 +99,15 @@ MODULE StdCoder;
 	PROCEDURE WriteHeader(dest: TextModels.Writer; VAR n: INTEGER;
 		name: ARRAY OF CHAR; type: BYTE
 	);
-		VAR byte, bit, i: INTEGER; ch: CHAR; tag: ARRAY 16 OF CHAR;
+		VAR byte, bit, i, res: INTEGER; ch: CHAR; tag: ARRAY 16 OF CHAR; utf8: Kernel.Utf8Name;
 	BEGIN
 		tag := Tag; i := 0; ch := tag[0];
 		WHILE ch # 0X DO dest.WriteChar(ch); INC(n); INC(i); ch := tag[i] END;
 		dest.WriteChar(" "); INC(n);
 		bit := 0; byte := 0; i := 0;
+		Kernel.StringToUtf8(name, utf8, res); ASSERT(res = 0);
 		REPEAT
-			ch := name[i]; INC(byte, ASH(ORD(ch), bit)); INC(bit, 8);
+			ch := utf8[i]; INC(byte, ASH(ORD(ch), bit)); INC(bit, 8);
 			WHILE bit >= 6 DO Write(dest, byte MOD 64, n); byte := byte DIV 64; DEC(bit, 6) END;
 			INC(i)
 		UNTIL ch = 0X;
@@ -157,12 +163,19 @@ MODULE StdCoder;
 		IF res # 0 THEN x := 0 END
 	END Read;
 
+	PROCEDURE Utf8ToString(IN in: ARRAY OF SHORTCHAR; OUT out: ARRAY OF CHAR);
+		VAR res: INTEGER;
+	BEGIN
+		Kernel.Utf8ToString(in, out, res);
+		ASSERT(res IN {0, 2}) (* for backward compatibility: res = 2 allows non-encoded strings as well *)
+	END Utf8ToString;
+	
 	PROCEDURE ReadHeader(src: TextModels.Reader; VAR res: INTEGER;
 		VAR name: ARRAY OF CHAR; VAR type: BYTE
 	);
-		VAR x, bit, i, j: INTEGER; ch: CHAR; tag: ARRAY 16 OF CHAR;
+		VAR x, bit, i, j: INTEGER; ch: CHAR; tag: ARRAY 16 OF CHAR; utf8: Kernel.Utf8Name;
 	BEGIN
-		tag := Tag; i := 0;
+		tag := Tag; i := 0; name := "";
 		WHILE ~src.eot & (tag[i] # 0X) DO
 			src.ReadChar(ch);
 			IF ch = tag[i] THEN INC(i) ELSIF ch = tag[0] THEN i := 1 ELSE i := 0 END
@@ -172,11 +185,12 @@ MODULE StdCoder;
 			REPEAT
 				WHILE (res = 0) & (bit < 8) DO Read(src, j, res); INC(x, ASH(j, bit)); INC(bit, 6) END;
 				IF res = 0 THEN
-					ch := CHR(x MOD 256); x := x DIV 256; DEC(bit, 8); name[i] := ch; INC(i)
+					ch := CHR(x MOD 256); x := x DIV 256; DEC(bit, 8); utf8[i] := SHORT(ch); INC(i)
 				END
 			UNTIL (res # 0) OR (ch = 0X);
 			Read(src, j, res);
 			IF res = 0 THEN
+				Utf8ToString(utf8, name);
 				IF (j = ThisVersion) OR (j = OldVersion) THEN
 					Read(src, j, res); type := SHORT(SHORT(j))
 				ELSE res := 3
@@ -297,33 +311,37 @@ MODULE StdCoder;
 	PROCEDURE GetFile(VAR path: ARRAY OF CHAR; VAR loc: Files.Locator; VAR name: Files.Name);
 		VAR i, j: INTEGER; ch: CHAR;
 	BEGIN
-		i := 0; ch := path[0]; loc := Files.dir.This("");
-		WHILE (ch # 0X) & (loc # NIL) DO
+		i := 0; ch := path[0]; loc := Files.dir.This(""); name := "";
+		WHILE (ch # 0X) & (loc.res = 0) DO
 			j := 0;
 			WHILE (ch # 0X) & (ch # Separator) DO name[j] := ch; INC(j); INC(i); ch := path[i] END;
 			name[j] := 0X;
 			IF ch = Separator THEN loc := loc.This(name); INC(i); ch := path[i] END;
-			IF loc.res # 0 THEN loc := NIL END
 		END;
+		IF loc.res # 0 THEN loc := NIL END;
 		path[i] := 0X
 	END GetFile;
 
 	PROCEDURE ReadPath(rd: TextModels.Reader; VAR path: ARRAY OF CHAR; VAR len: INTEGER);
-		VAR i, l: INTEGER; ch: CHAR;
+		VAR i, l: INTEGER; ch: CHAR; quote: CHAR;
 	BEGIN
 		i := 0; l := LEN(path) - 1;
 		REPEAT rd.ReadChar(ch) UNTIL rd.eot OR (ch > " ");
-		WHILE ~rd.eot & (ch > " ") & (i < l) DO path[i] := ch; INC(i); rd.ReadChar(ch) END;
+		IF (ch = "'") OR (ch = '"') THEN quote := ch; rd.ReadChar(ch) ELSE quote := 0X END;
+		WHILE ~rd.eot & (i < l) & ((quote = 0X) & (ch > " ") OR (quote # 0X) & (ch # quote) & (ch >= " ")) DO
+			path[i] := ch; INC(i); rd.ReadChar(ch)
+		END;
 		path[i] := 0X; len := i
 	END ReadPath;
-	
+
 	PROCEDURE WriteString(w: Files.Writer; IN str: ARRAY OF CHAR; len: INTEGER);
-		VAR i: INTEGER;
+		VAR i, res: INTEGER; utf8: Kernel.Utf8Name;
 	BEGIN
+		Kernel.StringToUtf8(str, utf8, res); ASSERT(res = 0); len:= LEN(utf8$) + 1;
 		i := 0;
 		WHILE i < len DO
-			IF ORD(str[i]) > MAX(BYTE) THEN w.WriteByte(SHORT(SHORT(ORD(str[i]) - 256)))
-			ELSE w.WriteByte(SHORT(SHORT(ORD(str[i]))))
+			IF ORD(utf8[i]) > MAX(BYTE) THEN w.WriteByte(SHORT(SHORT(ORD(utf8[i]) - 256)))
+			ELSE w.WriteByte(SHORT(ORD(utf8[i])))
 			END;
 			INC(i)
 		END
@@ -425,7 +443,7 @@ MODULE StdCoder;
 
 	PROCEDURE DecodeFileList (rd: TextModels.Reader; VAR files: FileList; VAR len, res: INTEGER);
 		VAR i, n: INTEGER; b: BYTE; p: FileList;
-			ftype: Files.Type; f: Files.File; frd: Files.Reader; path: Dialog.String;
+			ftype: Files.Type; f: Files.File; frd: Files.Reader; utf8: Kernel.Utf8Name;
 	BEGIN
 		ReadFileType(rd, res, ftype);
 		IF res = 0 THEN
@@ -435,15 +453,15 @@ MODULE StdCoder;
 				frd := f.NewReader(NIL); frd.ReadByte(b);
 				WHILE ~frd.eof & (res = 0) DO
 					INC(n); i := 0;
-					WHILE ~frd.eof & (b # 0) DO path[i] := CHR(b MOD 256); INC(i); frd.ReadByte(b) END;
-					IF (i > 4) & (path[i - 4] = ".") & (CAP(path[i - 3]) = "O")
-						& (CAP(path[i - 2]) = "D") & (CAP(path[i - 1]) = "C")
-					THEN path[i - 4] := 0X
-					ELSE path[i] := 0X
+					WHILE ~frd.eof & (b # 0) DO utf8[i] := SHORT(CHR(b MOD 256)); INC(i); frd.ReadByte(b) END;
+					IF (i > 4) & (utf8[i - 4] = ".") & (CAP(utf8[i - 3]) = "O")
+						& (CAP(utf8[i - 2]) = "D") & (CAP(utf8[i - 1]) = "C")
+					THEN utf8[i - 4] := 0X
+					ELSE utf8[i] := 0X
 					END;
 					IF ~frd.eof THEN
 						IF p = NIL THEN NEW(p); files := p ELSE NEW(p.next); p := p.next END;
-						p.name := path;
+						Utf8ToString(utf8, p.name);
 						frd.ReadByte(b)
 					ELSE res := 1
 					END
@@ -604,7 +622,7 @@ MODULE StdCoder;
 
 	PROCEDURE ListFiles(rd: TextModels.Reader; VAR wr: TextMappers.Formatter);
 		VAR i, n, res: INTEGER; b: BYTE;
-			ftype: Files.Type; f: Files.File; frd: Files.Reader; path: Dialog.String;
+			ftype: Files.Type; f: Files.File; frd: Files.Reader; path: Dialog.String; utf8: Kernel.Utf8Name;
 	BEGIN
 		ReadFileType(rd, res, ftype);
 		IF res = 0 THEN
@@ -614,13 +632,15 @@ MODULE StdCoder;
 				frd := f.NewReader(NIL); frd.ReadByte(b);
 				WHILE ~frd.eof & (res = 0) DO
 					INC(n); i := 0;
-					WHILE ~frd.eof & (b # 0) DO path[i] := CHR(b MOD 256); INC(i); frd.ReadByte(b) END;
-					IF (i > 4) & (path[i - 4] = ".") & (CAP(path[i - 3]) = "O")
-						& (CAP(path[i - 2]) = "D") & (CAP(path[i - 1]) = "C")
-					THEN path[i - 4] := 0X
-					ELSE path[i] := 0X
+					WHILE ~frd.eof & (b # 0) DO utf8[i] := SHORT(CHR(b MOD 256)); INC(i); frd.ReadByte(b) END;
+					IF (i > 4) & (utf8[i - 4] = ".") & (CAP(utf8[i - 3]) = "O")
+						& (CAP(utf8[i - 2]) = "D") & (CAP(utf8[i - 1]) = "C")
+					THEN utf8[i - 4] := 0X
+					ELSE utf8[i] := 0X
 					END;
-					IF ~frd.eof THEN wr.WriteString(path); wr.WriteLn; frd.ReadByte(b) ELSE res := 1 END
+					IF ~frd.eof THEN Utf8ToString(utf8, path); wr.WriteString(path); wr.WriteLn; frd.ReadByte(b) 
+					ELSE res := 1
+					END
 				END
 			ELSE ShowError(res, "")
 			END

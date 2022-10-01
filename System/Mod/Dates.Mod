@@ -121,6 +121,12 @@ MODULE Dates;
 		hook.GetTime(d, t)
 	END GetTime;
 
+	PROCEDURE GetDateTime* (OUT d: Date; OUT t: Time);
+	BEGIN
+		ASSERT(hook # NIL, 100);
+		hook.GetTime(d, t)
+	END GetDateTime;
+
 	PROCEDURE GetUTCDate* (OUT d: Date);
 		VAR t: Time;
 	BEGIN
@@ -134,6 +140,12 @@ MODULE Dates;
 		ASSERT(hook # NIL, 100);
 		hook.GetUTCTime(d, t)
 	END GetUTCTime;
+
+	PROCEDURE GetUTCDateTime* (OUT d: Date; OUT t: Time);
+	BEGIN
+		ASSERT(hook # NIL, 100);
+		hook.GetUTCTime(d, t)
+	END GetUTCDateTime;
 
 	PROCEDURE GetUTCBias* (OUT bias: INTEGER);
 	BEGIN

@@ -37,10 +37,6 @@ MODULE Containers;
 
 		minVersion = 0; maxModelVersion = 0; maxViewVersion = 0; maxCtrlVersion = 0;
 
-		(* buttons *)
-		left = 16; middle = 17; right = 18; alt = 28;	(* same as in HostPorts! *)
-
-
 	TYPE
 		Model* = POINTER TO ABSTRACT RECORD (Models.Model) END;
 
@@ -900,7 +896,7 @@ MODULE Containers;
 
 	PROCEDURE Track (c: Controller; f: Views.Frame; VAR msg: Controllers.TrackMsg; VAR focus: Views.View);
 		VAR res, l, t, r, b: INTEGER; cursor: INTEGER; sel: Views.View; obj: Views.Frame;
-			inSel, pass, extend, add, double, popup: BOOLEAN;
+			inSel, pass, extend, add, double, popup, pick: BOOLEAN;
 	BEGIN
 		cursor := Mechanisms.outside; sel := c.Singleton();
 		IF focus # NIL THEN
@@ -932,12 +928,13 @@ MODULE Containers;
 			extend := Controllers.extend IN msg.modifiers;
 			add := Controllers.modify IN msg.modifiers;
 			double := Controllers.doubleClick IN msg.modifiers;
-			popup := right IN msg.modifiers;
+			popup := Controllers.popup IN msg.modifiers;
+			pick := Controllers.pick IN msg.modifiers;
 			obj := Views.FrameAt(f, msg.x, msg.y);
 			IF ~inSel & (~extend OR (noSelection IN c.opts)) THEN 
 				IF obj # NIL THEN
 					IF ~(noFocus IN c.opts) & NeedFocusAt(obj.view, f, obj, msg.x, msg.y)
-							& (~(alt IN msg.modifiers) OR (noSelection IN c.opts)) THEN
+							& (~pick OR (noSelection IN c.opts)) THEN
 						(* set hot focus *)
 						focus := obj.view;
 						IF ClaimFocusAt(focus, f, obj, msg.x, msg.y, c.opts * modeOpts = mask) THEN
@@ -955,15 +952,15 @@ MODULE Containers;
 				END
 			END;
 			IF focus = NIL THEN
-				IF inSel & double & (popup OR (alt IN msg.modifiers)) THEN (* properties *)
+				IF inSel & double & (popup OR pick) THEN (* properties *)
 					Dialog.Call("StdCmds.ShowProp", "", res)
 				ELSIF inSel & double & (obj # NIL) THEN (* primary verb *)
 					Dialog.Call("HostMenus.PrimaryVerb", "", res)
-				ELSIF ~inSel & (alt IN msg.modifiers) & extend THEN
+				ELSIF ~inSel & pick & extend THEN
 					MarkViews(f)
 				ELSE
 					IF inSel & ~extend THEN (* drag *)
-						IF (alt IN msg.modifiers) OR (middle IN msg.modifiers) THEN
+						IF pick THEN
 							IF ~(noCaret IN c.opts) THEN
 								TrackToPick(c, f, msg.x, msg.y, msg.modifiers, pass)
 							END
@@ -1140,7 +1137,7 @@ MODULE Containers;
 				IF g # NIL THEN sel.set := FALSE; Views.ForwardCtrlMsg(g, sel) END
 			END
 		ELSIF (c.opts * modeOpts = mask) & (msg.op = Controllers.pasteChar) THEN
-			IF alt IN msg.modifiers THEN
+			IF Controllers.pick IN msg.modifiers THEN
 				CollectControlPref (c, NIL, msg.char, TRUE, v, getFocus, accepts)
 			ELSE
 				CollectControlPref (c, focus, msg.char, TRUE, v, getFocus, accepts)

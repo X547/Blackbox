@@ -20,6 +20,9 @@ MODULE StdInterpreter;
 		StrValue = POINTER TO RECORD (Meta.Value)
 			str: Dialog.String;
 		END;
+		BoolValue = POINTER TO RECORD (Meta.Value)
+			bool: BOOLEAN;
+		END;
 		CallHook = POINTER TO RECORD (Dialog.CallHook) END;
 
 		
@@ -168,7 +171,7 @@ MODULE StdInterpreter;
 		END String;
 
 		PROCEDURE ParamList ();
-			VAR iv: IntValue; sv: StrValue;
+			VAR iv: IntValue; sv: StrValue; bv: BoolValue;
 		BEGIN
 			numPar := 0;
 			IF type = lparen THEN Scan;
@@ -182,6 +185,11 @@ MODULE StdInterpreter;
 						NEW(iv);
 						iv.int := x; Scan;
 						par[numPar] := iv;
+						INC(numPar)
+					ELSIF (type = ident) & ((id = "TRUE") OR (id = "FALSE")) THEN
+						NEW(bv);
+						bv.bool := (id = "TRUE"); Scan;
+						par[numPar] := bv;
 						INC(numPar)
 					ELSE Error(syntaxError, "#System:SyntaxError", "", "")
 					END;
@@ -203,7 +211,7 @@ MODULE StdInterpreter;
 				Scan;
 				IF type = ident THEN
 					right := id; Scan; ParamList();
-					CallProc(left, right)
+					IF res = 0 THEN CallProc(left, right) END
 				ELSE Error(identExpected, "#System:IdentExpected", "", "")
 				END
 			ELSE Error(unknownIdent, "#System:UnknownIdent", id, "")

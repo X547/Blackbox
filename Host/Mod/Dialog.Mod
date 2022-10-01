@@ -97,7 +97,8 @@ MODULE HostDialog;
 
 		dialogHook: DialogHook;
 
-		callNameTaken: BOOLEAN;
+		callNameTaken, isWine: BOOLEAN; (* params of OpenExternal and RunExternal *)
+		openExtErr, runExtErr: ARRAY 64 OF CHAR;
 		hideExtRunWindow*: BOOLEAN;
 
 
@@ -108,14 +109,6 @@ MODULE HostDialog;
 		WHILE (idx < len) & (ch # 0X) DO s[idx] := ch; INC(idx); INC(i); ch := t[i] END;
 		s[idx] := 0X
 	END Append;
-
-	PROCEDURE SAppend (VAR s: ARRAY OF CHAR; VAR idx: INTEGER; IN t: ARRAY OF CHAR);
-		VAR len, i: INTEGER; ch: CHAR;
-	BEGIN
-		i := 0; ch := t[0]; len := LEN(s) - 1;
-		WHILE (idx < len) & (ch # 0X) DO s[idx] := ch; INC(idx); INC(i); ch := t[i] END;
-		s[idx] := 0X
-	END SAppend;
 
 	PROCEDURE MapConv (cmd: ARRAY OF CHAR; VAR name: ARRAY OF CHAR);
 		VAR i: INTEGER; sub, str: Dialog.String;
@@ -132,8 +125,8 @@ MODULE HostDialog;
 		Dialog.MapString(str, name)
 	END MapConv;
 
-	PROCEDURE WaitDialogClose;
 	(* simulates modal dialog *)
+	PROCEDURE WaitDialogClose;
 		VAR res: INTEGER; w: HostWindows.Window; msg: WinApi.MSG;
 	BEGIN
 		w := HostWindows.dir.First();
@@ -165,16 +158,8 @@ MODULE HostDialog;
 		VAR res: INTEGER; st: ARRAY 512 OF CHAR;
 	BEGIN
 		ASSERT(str # "", 20);
-(*
-		IF Dialog.showsStatus THEN
-			ShowParamStatus(str, p0, p1, p2)
-		ELSE
-*)
-			Dialog.MapParamString(str, p0, p1, p2, st);
-			res := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, {4, 5})
-(*
-		END
-*)
+		Dialog.MapParamString(str, p0, p1, p2, st);
+		res := WinApi.MessageBoxW(HostWindows.ActualWnd(), st, Dialog.appName, {4, 5})
 	END ShowParamMsg;
 
 	PROCEDURE (h: ShowHook) ShowParamMsg (IN str, p0, p1, p2: ARRAY OF CHAR);
@@ -255,32 +240,28 @@ MODULE HostDialog;
 
 	(** file dialogs **)
 
+	(* asks user for a file name (for file internalization) *)
 	PROCEDURE (hook: DialogHook) GetIntSpec (
 		IN defType: Files.Type; VAR loc: Files.Locator; OUT name: Files.Name
 	);
-	(* asks user for a file name (for file internalization) *)
 		VAR res, i, j: INTEGER; lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
 		ftype := defType$; i := 0;
 		IF ftype = "" THEN ftype := "odc" END;
 		IF ftype # "*" THEN
-			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i);
-			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i)
+			Append(filter, i, "*."); Append(filter, i, ftype); INC(i);
+			Append(filter, i, "*."); Append(filter, i, ftype); INC(i)
 		ELSE ftype := ""
 		END;
-		SAppend(filter, i, "*.*"); INC(i);
-		SAppend(filter, i, "*.*"); INC(i);
+		Append(filter, i, "*.*"); INC(i);
+		Append(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
 		(* open dialog *)
 		fn.nFilterIndex := 1;
 		fname := "";
 		IF loc # NIL THEN	(* set old dir *)
 			actualPath := loc(HostFiles.Locator).path$; i := 0
-(*
-			WHILE actualPath[i] # 0X DO INC(i) END;
-			actualPath[i] := "\"; actualPath[i+1] := 0X
-*)
 		END;
 		fn.Flags := {2, 3, 11, 12, 19};	(* hideReadOnly, noChangeDir, pathMustExist, fileMustExist, new look *)
 		fn.hwndOwner := HostWindows.ActualWnd();
@@ -298,8 +279,8 @@ MODULE HostDialog;
 		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetIntSpec;
 
+	(** asks user for a file name (for file internalization) **)
 	PROCEDURE GetIntSpec* (VAR loc: Files.Locator; VAR name: Files.Name; VAR conv: Converters.Converter);
-	(* asks user for a file name (for file internalization) *)
 		VAR res, i, j, n: INTEGER; t: Dialog.String; c: Converters.Converter; lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
@@ -310,25 +291,25 @@ MODULE HostDialog;
 		END;
 		typeList[0] := Converters.list;	(* document converter *)
 		Dialog.MapString("#Host:Document", t);
-		i := 0; SAppend(filter, i, t); SAppend(filter, i, " (*.odc)"); INC(i);
-		SAppend(filter, i, "*.odc"); INC(i); n := 1;
+		i := 0; Append(filter, i, t); Append(filter, i, " (*.odc)"); INC(i);
+		Append(filter, i, "*.odc"); INC(i); n := 1;
 		fn.nFilterIndex := 1;
 		c := Converters.list;
 		WHILE c # NIL DO
 			IF (c.imp # "") & (c.fileType # "odc") THEN
 				typeList[n] := c;
-				MapConv(c.imp, t); SAppend(filter, i, t);
-				SAppend(filter, i, " (*."); SAppend(filter, i, c.fileType);
-				SAppend(filter, i, ")"); INC(i);
-				SAppend(filter, i, "*."); SAppend(filter, i, c.fileType); INC(i);
+				MapConv(c.imp, t); Append(filter, i, t);
+				Append(filter, i, " (*."); Append(filter, i, c.fileType);
+				Append(filter, i, ")"); INC(i);
+				Append(filter, i, "*."); Append(filter, i, c.fileType); INC(i);
 				IF defConv = c THEN fn.nFilterIndex := n + 1 END;
 				INC(n)
 			END;
 			c := c.next
 		END;
 		Dialog.MapString("#Host:AllFiles", t);
-		SAppend(filter, i, t); SAppend(filter, i, " (*.*)"); INC(i);
-		SAppend(filter, i, "*.*"); INC(i);
+		Append(filter, i, t); Append(filter, i, " (*.*)"); INC(i);
+		Append(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
 		IF defConv = all THEN fn.nFilterIndex := n + 1 END;
 		(* open dialog *)
@@ -384,8 +365,8 @@ MODULE HostDialog;
 		GetIntSpec(loc, name, conv)
 	END GetIntSpec;
 
-	PROCEDURE [2] HookProc (wnd: WinApi.HANDLE; msg, wParam, lParam: INTEGER): INTEGER;
 	(* 06.11.02. not needed anymore.  *)
+	PROCEDURE [2] HookProc (wnd: WinApi.HANDLE; msg, wParam, lParam: INTEGER): INTEGER;
 		VAR i, j: INTEGER; s: ARRAY 256 OF CHAR; t: ARRAY 8 OF CHAR; edit: WinApi.HANDLE;
 	BEGIN
 		IF (msg = WinApi.WM_COMMAND) & (lParam # 0) & (wParam = 10470H) THEN
@@ -409,32 +390,28 @@ MODULE HostDialog;
 		RETURN 0
 	END HookProc;
 
+	(* ask user for a file name (for file externalization) *)
 	PROCEDURE (hook: DialogHook) GetExtSpec (
 		IN default: Files.Name; IN defType: Files.Type; VAR loc: Files.Locator; OUT name: Files.Name
 	);
-	(* ask user for a file name (for file externalization) *)
 		VAR res, i, j: INTEGER; lfn: ARRAY 260 OF CHAR;
 	BEGIN
 		(* set filter *)
 		ftype := defType$; i := 0;
 		IF ftype = "" THEN ftype := "odc" END;
 		IF ftype # "*" THEN
-			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i);
-			SAppend(filter, i, "*."); SAppend(filter, i, ftype); INC(i)
+			Append(filter, i, "*."); Append(filter, i, ftype); INC(i);
+			Append(filter, i, "*."); Append(filter, i, ftype); INC(i)
 		ELSE ftype := ""
 		END;
-		SAppend(filter, i, "*.*"); INC(i);
-		SAppend(filter, i, "*.*"); INC(i);
+		Append(filter, i, "*.*"); INC(i);
+		Append(filter, i, "*.*"); INC(i);
 		filter[i] := 0X;
 		(* open dialog *)
 		fn.nFilterIndex := 1;
 		fname := default$;
 		IF loc # NIL THEN	(* set old dir *)
 			actualPath := loc(HostFiles.Locator).path$; i := 0
-(*
-			WHILE actualPath[i] # 0X DO INC(i) END;
-			actualPath[i] := "\"; actualPath[i+1] := 0X
-*)
 		END;
 		fn.Flags := {1, 2, 3, 11, 19};	(* overwritePrompt, hideReadOnly, noChangeDir, pathMustExist, new look *)
 		fn.hwndOwner := HostWindows.ActualWnd();
@@ -457,10 +434,10 @@ MODULE HostDialog;
 		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetExtSpec;
 
+	(** ask user for a file name (for file externalization) **)
 	PROCEDURE GetExtSpec* (
 		s: Stores.Store; VAR loc: Files.Locator; VAR name: Files.Name; VAR conv: Converters.Converter
 	);
-	(* ask user for a file name (for file externalization) *)
 		VAR res, i, j, n: INTEGER; t: ARRAY 64 OF CHAR; c: Converters.Converter;
 			lfn: ARRAY 260 OF CHAR;
 	BEGIN
@@ -469,15 +446,15 @@ MODULE HostDialog;
 		typeList[0] := Converters.list;	(* document converter *)
 		c := Converters.list; fn.nFilterIndex := 1;
 		Dialog.MapString("#Host:Document", t);
-		i := 0; SAppend(filter, i, t); SAppend(filter, i, " (*.odc)"); INC(i);
-		SAppend(filter, i, "*.odc"); INC(i); n := 1;
+		i := 0; Append(filter, i, t); Append(filter, i, " (*.odc)"); INC(i);
+		Append(filter, i, "*.odc"); INC(i); n := 1;
 		WHILE c # NIL DO
 			IF (c.exp # "") & ((c.storeType = "") OR Services.Is(s, c.storeType)) & (c.fileType # "odc") THEN
 				typeList[n] := c;
-				MapConv(c.exp, t); SAppend(filter, i, t);
-				SAppend(filter, i, " (*."); SAppend(filter, i, c.fileType);
-				SAppend(filter, i, ")"); INC(i);
-				SAppend(filter, i, "*."); SAppend(filter, i, c.fileType); INC(i);
+				MapConv(c.exp, t); Append(filter, i, t);
+				Append(filter, i, " (*."); Append(filter, i, c.fileType);
+				Append(filter, i, ")"); INC(i);
+				Append(filter, i, "*."); Append(filter, i, c.fileType); INC(i);
 				IF c = conv THEN fn.nFilterIndex := n + 1 END;
 				INC(n)
 			END;
@@ -720,8 +697,8 @@ MODULE HostDialog;
 		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END GetColor;
 
+	(** open color dialog and set selection to choosen color **)
 	PROCEDURE ColorDialog*;
-	(* open color dialog and set selection to choosen color *)
 		VAR set: BOOLEAN; p: Properties.StdProp; col: Ports.Color;
 	BEGIN
 		Properties.CollectStdProp(p);
@@ -767,8 +744,8 @@ MODULE HostDialog;
 		res := WinApi.SetCursor(HostPorts.cursors[HostPorts.busyCursor])
 	END FontDialog0;
 
-	PROCEDURE FontDialog*;
 	(** open font dialog and set selection to choosen attributes **)
+	PROCEDURE FontDialog*;
 		VAR set: BOOLEAN; p, p0: Properties.StdProp;
 	BEGIN
 		Properties.CollectStdProp(p0);
@@ -785,8 +762,8 @@ MODULE HostDialog;
 		END
 	END FontDialog;
 
-	PROCEDURE TypefaceDialog*;
 	(** open font dialog and set selection to choosen typeface **)
+	PROCEDURE TypefaceDialog*;
 		VAR set: BOOLEAN; p, p0: Properties.StdProp; s: INTEGER; c: Ports.Color; w: INTEGER; st: SET;
 	BEGIN
 		Properties.CollectStdProp(p0);
@@ -981,38 +958,73 @@ MODULE HostDialog;
 		END
 	END IsWine;
 
-	PROCEDURE Start* (name: ARRAY OF CHAR);
-		VAR res: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
+	(* thread safe; error numbers as returned from WinApi.GetLastError() *)
+	PROCEDURE FormatErrorMsg* (error: INTEGER; IN arg1, arg2, arg3: ARRAY OF CHAR; 
+													OUT errMsg: ARRAY OF CHAR);
+		CONST format =
+			WinApi.FORMAT_MESSAGE_FROM_SYSTEM + WinApi.FORMAT_MESSAGE_ARGUMENT_ARRAY;
+		VAR args: ARRAY 4 OF WinApi.PtrWSTR; res: INTEGER;
+	BEGIN
+		args[0] := arg1; args[1] := arg2; args[2] := arg3; args[3] :=  NIL;
+		res := WinApi.FormatMessageW(format, 0, error, 0, errMsg, LEN(errMsg), args[0])
+	END FormatErrorMsg;
+
+	(* thread safe; error numbers as returned from WinApi.GetLastError *)
+	PROCEDURE ShowErrorDialog* (error: INTEGER; IN arg1, arg2, arg3, msgPrefix: ARRAY OF CHAR);
+		VAR errMsg: CallName; res: INTEGER;
+	BEGIN
+		FormatErrorMsg(error, arg1, arg2, arg3, errMsg);
+		errMsg := msgPrefix + errMsg;
+		res := WinApi.MessageBoxW(Kernel.mainWnd, errMsg, Dialog.appName, WinApi.MB_ICONERROR)
+	END ShowErrorDialog;
+
+	PROCEDURE Start* (name: ARRAY OF CHAR); (* deprecated; better use Dialog.RunExternal *)
+		VAR info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
 	BEGIN
 		(* res := WinApi.WinExec(name, WinApi.SW_NORMAL) *)
 		WinApi.GetStartupInfoW(info);
 		info.wShowWindow := WinApi.SW_NORMAL;
-		res := WinApi.CreateProcessW(NIL, name, NIL, NIL, WinApi.FALSE, {}, 0, NIL, info, process)
+		IF WinApi.CreateProcessW(NIL, name, NIL, NIL, WinApi.FALSE, {}, 0, NIL, info, process) = 0 THEN
+			ShowErrorDialog(WinApi.GetLastError(), name, "%2", "%3", runExtErr + name + 0DX + 0DX)
+		END
 	END Start;
 
 	PROCEDURE OpenExternal (lpParameter: INTEGER): INTEGER;	(* runs in a thread *)
-	VAR
-		fileNamePtr: CallNamePtr; fileName: CallName;
-		hinst: WinApi.HINSTANCE;
+		VAR
+			fileNamePtr: CallNamePtr; fileName, fileName2: CallName;
+			sxinfo: WinApi.SHELLEXECUTEINFOW; error: INTEGER;
 	BEGIN
 		fileNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter);
 		fileName := fileNamePtr$;
 		callNameTaken := TRUE;
-		hinst := WinApi.ShellExecuteW(0, "open", fileName, NIL, NIL, WinApi.SW_SHOW);
+		sxinfo.cbSize := SIZE(WinApi.SHELLEXECUTEINFOW);
+		sxinfo.fMask := {10}; (* SEE_MASK_DEFAULT + SEE_MASK_FLAG_NO_UI *)
+		sxinfo.hwnd := 0;
+		sxinfo.lpVerb := "open";
+		sxinfo.lpFile := fileName;
+		sxinfo.lpParameters := NIL;
+		sxinfo.lpDirectory := NIL;
+		sxinfo.nShow := WinApi.SW_SHOW;
+		IF WinApi.ShellExecuteExW(sxinfo) = 1 THEN RETURN 0 END;
+		error := WinApi.GetLastError();
+		IF isWine & (error = 0) & (sxinfo.hInstApp <= 32) THEN	(* work around a bug in wine: error can be 0 *)
+			error := WinApi.ERROR_NO_ASSOCIATION
+		END;
+		IF isWine & (error = WinApi.ERROR_NO_ASSOCIATION) THEN (* retry with Linux desktop associations *)
+			fileName2 := "winebrowser " + fileName;
+			sxinfo.lpFile := fileName2;
+			IF WinApi.ShellExecuteExW(sxinfo) = 1 THEN RETURN 0 END
+			(* use original (error, fileName) for error reporting*)
+		END;
+		ShowErrorDialog(error, fileName, "%2", "%3", openExtErr + fileName + 0DX + 0DX);
 		RETURN 0
 	END OpenExternal;
 
 	PROCEDURE (h: ExtCallHook) OpenExternal* (IN fileName: ARRAY OF CHAR);
 		VAR t: WinApi.HANDLE; res: WinApi.BOOL;
-			win_fileName: CallName;
 	BEGIN
-		IF Dialog.IsWine() THEN
-			win_fileName := "winebrowser " + fileName$
-		ELSE
-			win_fileName := fileName$
-		END;
-		callNameTaken := FALSE;
-		t := WinApi.CreateThread(NIL, 4096 * 4, OpenExternal, SYSTEM.ADR(win_fileName), {}, NIL);
+		callNameTaken := FALSE; isWine := Dialog.IsWine();
+		t := WinApi.CreateThread(NIL, 1024 * 64, OpenExternal, SYSTEM.ADR(fileName), {}, NIL);
 		IF t # 0 THEN
 			WHILE ~callNameTaken DO
 				WinApi.Sleep(1)
@@ -1020,11 +1032,12 @@ MODULE HostDialog;
 			res := WinApi.CloseHandle(t)
 		END
 	END OpenExternal;
-
+	
 	PROCEDURE RunExternal (lpParameter: INTEGER): INTEGER;	(* runs in a thread *)
-	VAR
-		exeNamePtr: CallNamePtr; exeName: CallName; opts: SET;
-		res: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
+		VAR
+			exeNamePtr: CallNamePtr; exeName: CallName; opts: SET;
+			pos: INTEGER; info: WinApi.STARTUPINFOW; process: WinApi.PROCESS_INFORMATION;
+			cmd: ARRAY 12 OF CHAR;
 	BEGIN
 		exeNamePtr := SYSTEM.VAL(CallNamePtr, lpParameter);
 		exeName := exeNamePtr$;
@@ -1037,15 +1050,26 @@ MODULE HostDialog;
 			opts := {}
 		END;
 		callNameTaken := TRUE;
-		res := WinApi.CreateProcessW(NIL, exeName, NIL, NIL, WinApi.FALSE, opts, 0, NIL, info, process);
+		IF isWine THEN (* work around a bug in wine 'cmd': requires a console to be already open *)
+			WHILE exeName[0] = " " DO Strings.Extract(exeName, 1, LEN(exeName$) - 1, exeName) END; (* trim left *)
+			Strings.Find(exeName, " ", 0, pos);
+			IF pos > 0 THEN Strings.Extract(exeName, 0, MIN(pos, 8), cmd)
+			ELSE Strings.Extract(exeName, 0, 8, cmd)
+			END;
+			Strings.ToUpper(cmd, cmd);
+			IF (cmd = "CMD") OR (cmd = "CMD.EXE") THEN exeName := "wineconsole " + exeName END
+		END;
+		IF WinApi.CreateProcessW(NIL, exeName, NIL, NIL, WinApi.FALSE, opts, 0, NIL, info, process) = 0 THEN
+			ShowErrorDialog(WinApi.GetLastError(), exeName, "%2", "%3", runExtErr + exeName + 0DX + 0DX)
+		END;
 		RETURN 0
 	END RunExternal;
 
 	PROCEDURE (h: ExtCallHook) RunExternal* (IN exeName: ARRAY OF CHAR);
 		VAR t: WinApi.HANDLE; res: WinApi.BOOL;
 	BEGIN
-		callNameTaken := FALSE;
-		t := WinApi.CreateThread(NIL, 4096 * 4, RunExternal, SYSTEM.ADR(exeName), {}, NIL);
+		callNameTaken := FALSE; isWine := Dialog.IsWine();
+		t := WinApi.CreateThread(NIL, 1024 * 64, RunExternal, SYSTEM.ADR(exeName), {}, NIL);
 		IF t # 0 THEN
 			WHILE ~callNameTaken DO
 				WinApi.Sleep(1)
@@ -1125,47 +1149,26 @@ MODULE HostDialog;
 			END
 		ELSE Dialog.platform := Dialog.windows98
 		END;
-		NEW(wineHook);
-		Dialog.SetWineHook(wineHook);
 
 		HostRegistry.ReadBool("noStatus", b, res); Dialog.showsStatus := (res # 0) OR ~b;
 		HostRegistry.ReadBool("memStatus", b, res); HostWindows.memInStatus := (res = 0) & b;
-
 		HostRegistry.ReadBool("thickCaret", b, res); IF res = 0 THEN Dialog.thickCaret := b END;
 		HostRegistry.ReadInt("caretPeriod", n, res); IF res = 0 THEN Dialog.caretPeriod := n END;
 		HostRegistry.ReadBool("beep", b, res); IF res = 0 THEN Dialog.beep := b END;
 		HostRegistry.ReadBool("serverMode", b, res); IF res = 0 THEN Dialog.serverMode := b END;
 
+		NEW(wineHook); Dialog.SetWineHook(wineHook);
 		NEW(showHook); Dialog.SetShowHook(showHook);
-(*
-		Hooks.showParamMsg := ShowParamMsg;
-		Hooks.showParamStatus := ShowParamStatus;
-*)
-
 		NEW(dialogHook); Dialog.SetGetHook(dialogHook);
-(*
-		Hooks.getOK := GetOK;
-		Hooks.getIntSpec := GetIntSpec0;
-		Hooks.getExtSpec := GetExtSpec0;
-		Hooks.getColor := ColorDialog0;
-*)
-
-(*
-		Sequencers.GetIntSpec := GetIntSpec;
-		Sequencers.GetExtSpec := GetExtSpec;
-*)
 		NEW(getSpecHook); Views.SetGetSpecHook(getSpecHook);
+		NEW(datesHook); Dates.SetHook(datesHook);
+		NEW(languageHook); Dialog.SetLanguageHook(languageHook); 
+		NEW(extCallHook); Dialog.SetExtCallHook(extCallHook);
 
 		HostFiles.MapParamString := Dialog.MapParamString;
-
-		NEW(datesHook); Dates.SetHook(datesHook);
-(*
-		Hooks.getTime := GetTime;
-		Hooks.dateToString := DateToString;
-		Hooks.timeToString := TimeToString
-*)
-		NEW(languageHook); Dialog.SetLanguageHook(languageHook); Dialog.ResetLanguage;
-		NEW(extCallHook); Dialog.SetExtCallHook(extCallHook);
+		Dialog.ResetLanguage;
+		Dialog.MapString("#Host:openExtErr", openExtErr);
+		Dialog.MapString("#Host:runExtErr", runExtErr);
 		hideExtRunWindow := FALSE
 	END Init;
 

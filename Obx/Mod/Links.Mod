@@ -87,7 +87,7 @@ MODULE ObxLinks;
 		VAR loc: Files.Locator; f: Files.File; c: Converters.Converter; n: Files.Name; s: Stores.Store;
 	BEGIN
 		PathToLoc(path, loc); n := name$;
-		IF loc # NIL THEN
+		IF loc.res = 0 THEN
 			f := Files.dir.Old(loc, n, Files.shared);
 			IF f # NIL THEN
 				(* search in converter list for a converter that can import a file of this type *)

@@ -6,13 +6,13 @@ MODULE DevCPT;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
 **)
 
-	IMPORT Strings, DevCPM;
+	IMPORT DevCPM;
 
 	CONST
 		MaxIdLen = 256;
@@ -625,7 +625,12 @@ MODULE DevCPT;
 			IF f = Pointer THEN
 				strobj := typ.strobj; bstrobj := btyp.strobj;
 				IF (strobj = NIL) OR (strobj.name = null) OR (bstrobj = NIL) OR (bstrobj.name = null) THEN
-					FPrintStr(btyp); DevCPM.FPrint(pbfp, btyp.pbfp); pvfp := pbfp
+					FPrintStr(btyp);
+					IF (btyp.comp = Array) & ((bstrobj = NIL) OR (bstrobj.name = null)) THEN
+						DevCPM.FPrint(pbfp, btyp.pbfp + 12345(*disturb fingerprint collision pattern*))
+					ELSE DevCPM.FPrint(pbfp, btyp.pbfp)
+					END;
+					pvfp := pbfp
 				(* else use idfp as pbfp and as pvfp, do not call FPrintStr(btyp) here, else cycle not broken *)
 				END
 			ELSIF f = ProcTyp THEN (* use idfp as pbfp and as pvfp *)
@@ -701,26 +706,24 @@ MODULE DevCPT;
 	END FPrintObj;
 
 	PROCEDURE FPrintErr* (obj: Object; errno: SHORTINT);	(* !!! *)
-		VAR res: INTEGER; n: ARRAY MaxIdLen OF CHAR;
 	BEGIN
 		IF errno = 249 THEN
 			DevCPM.LogWLn; DevCPM.LogWStr("  ");
-			Strings.Utf8ToString(GlbMod[-obj.mnolev].name^, n, res); DevCPM.LogWStr(n);
-			Strings.Utf8ToString(obj.name^, n, res); DevCPM.LogW("."); DevCPM.LogWStr(n);
-			DevCPM.LogWStr(" is not consistently imported");
+			DevCPM.LogWPar("#Dev:InconsistentImport", GlbMod[-obj.mnolev].name, obj.name);
 			err(249)
 		ELSIF obj = NIL THEN	(* changed module sys flags *)
 			IF ~symNew & sfpresent THEN
-				DevCPM.LogWLn; DevCPM.LogWStr("  changed library flag")
+				DevCPM.LogWLn; DevCPM.LogWStr("  "); DevCPM.LogWPar("#Dev:ChangedLibFlag", "", "")
 			END
 		ELSIF obj.mnolev = 0 THEN	(* don't report changes in imported modules *)
 			IF sfpresent THEN
 				IF symChanges < 20 THEN
-					DevCPM.LogWLn; DevCPM.LogWStr("  "); Strings.Utf8ToString(obj.name^, n, res); DevCPM.LogWStr(n);
-					IF errno = 250 THEN DevCPM.LogWStr(" is no longer in symbol file")
-					ELSIF errno = 251 THEN DevCPM.LogWStr(" is redefined internally ")
-					ELSIF errno = 252 THEN DevCPM.LogWStr(" is redefined")
-					ELSIF errno = 253 THEN DevCPM.LogWStr(" is new in symbol file")
+					DevCPM.LogWLn; DevCPM.LogWStr("  ");
+					CASE errno OF
+					| 250: DevCPM.LogWPar("#Dev:IsNoLongerInSymFile", obj.name, "")
+					| 251: DevCPM.LogWPar("#Dev:IsRedefinedInternally", obj.name, "")
+					| 252: DevCPM.LogWPar("#Dev:IsRedefined", obj.name, "")
+					| 253: DevCPM.LogWPar("#Dev:IsNewInSymFile", obj.name, "")
 					END
 				ELSIF symChanges = 20 THEN
 					DevCPM.LogWLn; DevCPM.LogWStr("  ...")
@@ -728,7 +731,7 @@ MODULE DevCPT;
 				INC(symChanges)
 			ELSIF (errno = 253) & ~symExtended THEN
 				DevCPM.LogWLn; 
-				DevCPM.LogWStr("  new symbol file")
+				DevCPM.LogWStr("  "); DevCPM.LogWPar("#Dev:NewSymFile", "", "")
 			END
 		END;
 		IF errno = 253 THEN symExtended := TRUE ELSE symNew := TRUE END

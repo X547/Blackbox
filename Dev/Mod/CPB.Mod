@@ -6,7 +6,7 @@ MODULE DevCPB;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
@@ -567,8 +567,9 @@ MODULE DevCPB;
 
 	PROCEDURE NotVar(x: DevCPT.Node): BOOLEAN;
 	BEGIN
-		RETURN (x.class >= Nconst) & ((x.class # Nmop) OR (x.subcl # val) OR (x.left.class >= Nconst))
+		RETURN (x.class >= Nconst) & ((x.class # Nmop) OR (x.subcl # val) OR NotVar(x.left))
 			OR (x.typ.form IN {String8, String16})
+			OR (x.class = Nguard) & NotVar(x.left)
 	END NotVar;
 
 
@@ -1104,9 +1105,9 @@ MODULE DevCPB;
 						IF (f = String16) & (z.class = Nmop) & (z.subcl = conv) & (y.class = Nmop) & (y.subcl = conv) THEN
 							z := z.left; y := y.left	(* remove LONG on both sides *)
 						ELSIF (z.class = Nconst) & (z.conval.intval2 = 1) & (y.class = Nderef) THEN (* y$ = "" -> y[0] = 0X *)
-							y := y.left; Index(y, NewIntConst(0)); z.typ := y.typ; z.conval.intval := 0
+							y := y.left; Index(y, NewIntConst(0)); z.typ := y.typ; z.conval.intval := 0; z.obj := NIL
 						ELSIF (y.class = Nconst) & (y.conval.intval2 = 1) & (z.class = Nderef) THEN (* z$ = "" -> z[0] = 0X *)
-							z := z.left; Index(z, NewIntConst(0)); y.typ := z.typ; y.conval.intval := 0
+							z := z.left; Index(z, NewIntConst(0)); y.typ := z.typ; y.conval.intval := 0; y.obj := NIL
 						END;
 						typ := DevCPT.booltyp
 					ELSIF (f IN {Undef, Char8..Real64, Char16, Int64})

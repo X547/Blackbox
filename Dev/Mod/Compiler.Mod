@@ -6,7 +6,7 @@ MODULE DevCompiler;
 	version	= "System/Rsrc/About"
 	copyright	= "System/Rsrc/About"
 	license	= "Docu/BB-License"
-	references	= "ftp://ftp.inf.ethz.ch/pub/software/Oberon/OberonV4/Docu/OP2.Paper.ps"
+	references	= "http://e-collection.library.ethz.ch/eserv/eth:39386/eth-39386-02.pdf"
 	changes	= ""
 	issues	= ""
 
@@ -265,7 +265,7 @@ MODULE DevCompiler;
 				i := 0; WHILE i < LEN(name) DO name[i] := 0X; INC(i) END;
 				StdDialog.GetSubLoc(s.string, "Mod", loc, name);
 				t := NIL;
-				IF loc # NIL THEN
+				IF loc.res = 0 THEN
 					v := Views.OldView(loc, name);
 					IF v # NIL THEN
 						WITH v: TextViews.View DO t := v.ThisModel()

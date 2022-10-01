@@ -13,8 +13,8 @@ MODULE DevDependencies;
 
 	IMPORT
 		Kernel, Files, Dialog, TextMappers, TextControllers, StdDialog, StdFolds, Strings, Views, Ports, 
-		Fonts, Properties, Controllers, Stores, HostMenus, HostPorts, StdCmds, Math, 
-		TextModels, TextViews, Dates, DevCommanders;
+		Fonts, Properties, Controllers, Stores, HostMenus, StdCmds, Math, 
+		TextModels, TextViews, Dates, DevReferences, DevCommanders;
 	
 	CONST 
 		bold = 0; italic = 1;	(* used with SetStyle *)
@@ -173,7 +173,7 @@ MODULE DevDependencies;
 			imps := NIL; nofImps := 0
 		END
 	END GetImplicitDependencies;
-	
+
 	PROCEDURE GetModuleList (OUT modList: NameList);
 		VAR c: TextControllers.Controller; s: TextMappers.Scanner; beg, end: INTEGER; l: NameList;
 	BEGIN
@@ -185,7 +185,9 @@ MODULE DevDependencies;
 			WHILE (s.start < end) & (s.type # TextMappers.invalid) DO
 				IF (s.type = TextMappers.string) THEN
 					NEW(l); IF modList # NIL THEN Stores.Join(modList, l) END;
-					l.next := modList; l.name := s.string$; modList := l; s.Scan
+					l.next := modList;
+					DevReferences.ResolveImportAlias(s.string, c.text);
+					l.name := s.string$; modList := l; s.Scan
 				ELSE
 					s.Scan
 				END
@@ -786,7 +788,7 @@ MODULE DevDependencies;
 			mo: MoveOp; e: ExpandOp;
 	BEGIN
 		WITH msg: Controllers.TrackMsg DO
-			IF HostPorts.right IN msg.modifiers THEN
+			IF Controllers.popup IN msg.modifiers THEN
 				HostMenus.PopupMenu
 			ELSIF (Controllers.doubleClick IN msg.modifiers) THEN
 				IF v.OnSelectedObject(msg.x, msg.y) THEN

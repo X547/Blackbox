@@ -18,12 +18,11 @@ MODULE DevSearch;
 	CONST
 		N = 32; T = 10;
 		maxPat = LEN(TextCmds.find.find);
-		noMatchFoundKey = "#Std:NoMatchFound";
-		locationKey = "#Std:Location";
-		countKey = "#Std:Count";
-		searchingKey = "#Std:Searching";
-		openFindCmdKey = "#Dev:OpenFindCmd";
-		openFindCmdNotFoundKey = "#Dev:OpenFindCmdNotFound";
+		noMatchFoundKey = "#Dev:NoMatchFound";
+		locationKey = "#Dev:Location";
+		countKey = "#Dev:Count";
+		searchingKey = "#Dev:Searching";
+		searchForKey = "#Dev:SearchFor";
 
 	TYPE
 		Pattern = ARRAY maxPat OF CHAR;
@@ -46,16 +45,19 @@ MODULE DevSearch;
 		END;
 		r := t.NewReader(NIL);
 		r.SetPos(0); r.ReadChar(ch);
+		IF ~caseSens THEN ch := Kernel.Upper(ch) END ;
 		WHILE ~r.eot DO
 			ref[0] := ch; i := 0; j := 0; b := 0; e := 1;
 			WHILE ~r.eot & (i < n) DO
-				IF caseSens & (pat[i]=ch) OR ~caseSens & (pat[i] = Kernel.Upper(ch)) THEN
+				IF ch = pat[i] THEN
 					INC(i); j := (j + 1) MOD maxPat
 				ELSE
 					i := 0; b := (b + 1) MOD maxPat; j := b
 				END;
 				IF j # e THEN ch := ref[j]
-				ELSE r.ReadChar(ch); ref[j] := ch; e := (e + 1) MOD maxPat
+				ELSE r.ReadChar(ch);
+					IF ~caseSens THEN ch := Kernel.Upper(ch) END ;
+					ref[j] := ch; e := (e + 1) MOD maxPat
 				END
 			END;
 			IF i = n THEN INC(num) END
@@ -64,7 +66,7 @@ MODULE DevSearch;
 			NEW(l); l.num := num; l.title := title; l.next := list; list := l
 		END
 	END Find;
-	
+
 	PROCEDURE List (list: Text; pat: Pattern; source, caseSens: BOOLEAN);
 		VAR a0: TextModels.Attributes; this, t: Text; max: INTEGER;
 			cmd: ARRAY maxPat + LEN(t.title) + 50  OF CHAR;
@@ -144,7 +146,8 @@ MODULE DevSearch;
 	PROCEDURE GetTitle(IN pat: ARRAY OF CHAR; OUT title: Views.Title);
 		VAR pos: INTEGER; i, j: INTEGER; ch: CHAR;
 	BEGIN
-		title := 'Search for "'; i := LEN(title$); j := 0; ch := pat[0];
+		Dialog.MapString(searchForKey, title);
+		title := title + ' "'; i := LEN(title$); j := 0; ch := pat[0];
 		WHILE (ch # 0X) & (i < LEN(title) - 2) DO
 			IF ch < " " THEN title[i] := " " ELSE title[i] := ch END ; (* replace tabs and line feeds by spaces *)
 			INC(i); INC(j); ch := pat[j]
@@ -227,23 +230,24 @@ MODULE DevSearch;
 		Search(FALSE, caseSens)
 	END SearchInDocu;
 	
-	PROCEDURE SelectCaseSens* (pat: ARRAY OF CHAR);
+	PROCEDURE SelectFirst (IN pat: ARRAY OF CHAR; ignoreCase: BOOLEAN);
 	BEGIN
+		TextCmds.ResetFindDialog;
 		TextCmds.find.find := pat$;
-		TextCmds.find.ignoreCase := FALSE;
+		TextCmds.find.ignoreCase := ignoreCase;
 		Dialog.Update(TextCmds.find);
 		TextCmds.FindFirst("")
+	END SelectFirst;
+	
+	PROCEDURE SelectCaseSens* (pat: ARRAY OF CHAR);
+	BEGIN
+		SelectFirst(pat, FALSE);
 	END SelectCaseSens;
 
 	PROCEDURE SelectCaseInSens* (pat: ARRAY OF CHAR);
 		VAR res: INTEGER; cmd: Dialog.String;
 	BEGIN
-		TextCmds.find.find := pat$;
-		TextCmds.find.ignoreCase := TRUE;
-		Dialog.Update(TextCmds.find);
-		Dialog.MapString(openFindCmdKey, cmd);
-		Dialog.Call(cmd, openFindCmdNotFoundKey, res);
-		TextCmds.FindFirst("")
+		SelectFirst(pat, TRUE);
 	END SelectCaseInSens;
 
 

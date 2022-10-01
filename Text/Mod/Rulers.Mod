@@ -48,7 +48,7 @@ MODULE TextRulers;
 		(** Attributes.tabType[i] **)
 		maxTabs* = 32;
 		centerTab* = 0; rightTab* = 1;
-			(** both: (reserved); none: leftTab **)
+			(** both: decimal Tab; none: leftTab **)
 		barTab* = 2;
 
 		tabOptions = {centerTab .. barTab};	(* mask for presently valid options *)
@@ -62,7 +62,7 @@ MODULE TextRulers;
 		rulerChangeKey = "#Text:RulerChange";
 
 		minVersion = 0;
-		maxAttrVersion = 2; maxStyleVersion = 0; maxStdStyleVersion = 0;
+		maxAttrVersion = 3; maxStyleVersion = 0; maxStdStyleVersion = 0;
 		maxRulerVersion = 0; maxStdRulerVersion = 0;
 
 
@@ -76,12 +76,15 @@ MODULE TextRulers;
 			len*: INTEGER;
 			tab*: ARRAY maxTabs OF Tab
 		END;
+		
+		TabData = ARRAY maxTabs OF CHAR; (* radix character for decimal tabs *)
 
 		Attributes* = POINTER TO EXTENSIBLE RECORD (Stores.Store)
 			init-: BOOLEAN;	(* immutable once init holds *)
 			first-, left-, right-, lead-, asc-, dsc-, grid-: INTEGER;
 			opts-: SET;
-			tabs-: TabArray
+			tabs-: TabArray;
+			tabsData: TabData (* separated from TabArray for compatibility with 1.7 *)
 		END;
 
 		AlienAttributes* = POINTER TO RECORD (Attributes)
@@ -100,7 +103,8 @@ MODULE TextRulers;
 		Prop* = POINTER TO RECORD (Properties.Property)
 			first*, left*, right*, lead*, asc*, dsc*, grid*: INTEGER;
 			opts*: RECORD val*, mask*: SET END;
-			tabs*: TabArray
+			tabs*: TabArray;
+			tabsData: TabData
 		END;
 
 
@@ -132,6 +136,7 @@ MODULE TextRulers;
 			kind, index: INTEGER;
 			type: SET;	(* valid if kind = tabs *)
 			tabs: TabArray;	(* if valid: tabs[index].type = type *)
+			tabsData: TabData;
 			dirty: BOOLEAN
 		END;
 
@@ -142,10 +147,14 @@ MODULE TextRulers;
 
 		NeutralizeMsg = RECORD (Views.Message) END;
 
+		TabDialogHook* = POINTER TO ABSTRACT RECORD(Kernel.Hook) END;
+
 
 	VAR
 		dir-, stdDir-: Directory;
-
+		defaultRadixChar*: CHAR; (* for decimal tab *)
+		tabDialogHook*: TabDialogHook; (* see TextCmds *)
+		
 		def: Attributes;
 		prop: Prop;	(* recycled *)
 		globRd: TextModels.Reader;	(* cache for temp reader; beware of reentrance *)
@@ -153,17 +162,30 @@ MODULE TextRulers;
 
 		marginGrid, minTabWidth, tabGrid: INTEGER;
 
+	PROCEDURE (hook: TabDialogHook) Open* (ruler: Ruler; tabIndex: INTEGER), NEW, ABSTRACT;
+	PROCEDURE (hook: TabDialogHook) Init* (ruler: Ruler; tabIndex: INTEGER), NEW, ABSTRACT;
+	PROCEDURE (hook: TabDialogHook) Refresh* (style: Style), NEW, ABSTRACT;
 
 	PROCEDURE ^ DoSetAttrOp (s: Style; attr: Attributes);
 
-	PROCEDURE CopyTabs (IN src: TabArray; OUT dst: TabArray);
+	PROCEDURE CopyTabs (IN src: TabArray; IN srcData: TabData; OUT dst: TabArray; OUT dstData: TabData);
 	(* a TabArray is a 256 byte structure - copying of used parts is much faster than ":= all" *)
 		VAR i, n: INTEGER;
 	BEGIN
 		n := src.len; dst.len := n;
-		i := 0; WHILE i < n DO dst.tab[i] := src.tab[i]; INC(i) END
+		i := 0; WHILE i < n DO dst.tab[i] := src.tab[i]; dstData[i] := srcData[i]; INC(i) END
 	END CopyTabs;
-
+	
+	PROCEDURE CopyTab(IN src: TabArray; IN srcData: TabData; srcIdx: INTEGER; 
+									VAR dst: TabArray; VAR dstData: TabData; dstIdx: INTEGER);
+	BEGIN
+		dst.tab[dstIdx] := src.tab[srcIdx]; dstData[dstIdx] := srcData[srcIdx]
+	END CopyTab;
+	
+	PROCEDURE InitTab(x: INTEGER; VAR tabs: TabArray; VAR tabsData: TabData; tabIndex: INTEGER);
+	BEGIN
+		tabs.tab[tabIndex].stop := x; tabs.tab[tabIndex].type := {}; tabsData[tabIndex] := defaultRadixChar
+	END InitTab;
 
 	(** Attributes **)
 
@@ -175,20 +197,32 @@ MODULE TextRulers;
 			a.first := source.first; a.left := source.left; a.right := source.right;
 			a.lead := source.lead; a.asc := source.asc; a.dsc := source.dsc; a.grid := source.grid;
 			a.opts := source.opts;
-			CopyTabs(source.tabs, a.tabs)
+			CopyTabs(source.tabs, source.tabsData, a.tabs, a.tabsData)
 		END
 	END CopyFrom;
 
+	PROCEDURE HasTabsData(a: Attributes): BOOLEAN;
+		VAR i: INTEGER;
+	BEGIN i := 0;
+		WHILE (i < a.tabs.len)
+		& ((a.tabs.tab[i].type * {centerTab, rightTab} # {centerTab, rightTab}) OR (a.tabsData[i] = ".")) DO
+			INC(i)
+		END;
+		RETURN i < a.tabs.len
+	END HasTabsData;
+	
 	PROCEDURE (a: Attributes) Externalize- (VAR wr: Stores.Writer), EXTENSIBLE;
 	(** pre: a.init **)
-		VAR i: INTEGER; typedTabs: BOOLEAN;
+		VAR i: INTEGER; typedTabs, hasTabsData: BOOLEAN;
 	BEGIN
 		ASSERT(a.init, 20);
 		a.Externalize^(wr);
 		i := 0; WHILE (i < a.tabs.len) & (a.tabs.tab[i].type = {}) DO INC(i) END;
 		typedTabs := i < a.tabs.len;
+		hasTabsData := FALSE;
 		IF typedTabs THEN
-			wr.WriteVersion(maxAttrVersion)
+			hasTabsData := HasTabsData(a); (* use version 3 if there are decimal tabs with radix char # "." *)
+			IF hasTabsData THEN wr.WriteVersion(3) ELSE wr.WriteVersion(2) END
 		ELSE
 			wr.WriteVersion(1)	(* versions before 2 had only leftTabs *)
 		END;
@@ -199,13 +233,20 @@ MODULE TextRulers;
 		i := 0; WHILE i < a.tabs.len DO wr.WriteInt(a.tabs.tab[i].stop); INC(i) END;
 		IF typedTabs THEN
 			i := 0; WHILE i < a.tabs.len DO wr.WriteSet(a.tabs.tab[i].type); INC(i) END
+		END ;
+		IF hasTabsData THEN
+			FOR i := 0 TO a.tabs.len - 1 DO
+				IF (a.tabs.tab[i].type * {centerTab, rightTab} = {centerTab, rightTab}) THEN
+					wr.WriteChar(a.tabsData[i])
+				END
+			END
 		END
 	END Externalize;
 
 	PROCEDURE (a: Attributes) Internalize- (VAR rd: Stores.Reader), EXTENSIBLE;
 	(** pre: ~a.init **)
 	(** post: a.init **)
-		VAR thisVersion, i, n, trash: INTEGER; trashSet: SET;
+		VAR thisVersion, i, n, stop, trash: INTEGER; trashSet: SET;
 	BEGIN
 		ASSERT(~a.init, 20); a.init := TRUE;
 		a.Internalize^(rd);
@@ -216,16 +257,19 @@ MODULE TextRulers;
 		rd.ReadInt(a.lead); rd.ReadInt(a.asc); rd.ReadInt(a.dsc); rd.ReadInt(a.grid);
 		rd.ReadSet(a.opts);
 		rd.ReadXInt(n); a.tabs.len := MIN(n, maxTabs);
-		i := 0; WHILE i < a.tabs.len DO rd.ReadInt(a.tabs.tab[i].stop); INC(i) END;
+		i := 0; WHILE i < a.tabs.len DO rd.ReadInt(stop); InitTab(stop, a.tabs, a.tabsData, i); INC(i) END;
 		WHILE i < n DO rd.ReadInt(trash); INC(i) END;
 		IF thisVersion = 0 THEN	(* convert from v0 rightFixed to v1 ~rightFixed default *)
 			INCL(a.opts, rightFixed)
 		END;
 		IF thisVersion >= 2 THEN
 			i := 0; WHILE i < a.tabs.len DO rd.ReadSet(a.tabs.tab[i].type); INC(i) END;
-			WHILE i < n DO rd.ReadSet(trashSet); INC(i) END
-		ELSE
-			i := 0; WHILE i < a.tabs.len DO a.tabs.tab[i].type := {}; INC(i) END
+			WHILE i < n DO rd.ReadSet(trashSet); INC(i) END;
+			FOR i := 0 TO a.tabs.len - 1 DO
+				IF (a.tabs.tab[i].type * {centerTab, rightTab} = {centerTab, rightTab}) THEN
+					IF thisVersion >= 3 THEN rd.ReadChar(a.tabsData[i]) ELSE a.tabsData[i] := "." END
+				END
+			END
 		END
 	END Internalize;
 
@@ -235,8 +279,8 @@ MODULE TextRulers;
 	END Set;
 
 	PROCEDURE ModifyFromProp (a: Attributes; p: Properties.Property);
-		CONST maxW = 10000*mm; maxH = 32767 * point;
-		VAR i: INTEGER; type, mask: SET;
+		CONST maxW = 10000*mm; maxH = 32767 * point; mask = tabOptions;
+		VAR i: INTEGER; type: SET;
 	BEGIN
 		WHILE p # NIL DO
 			WITH p: Prop DO
@@ -254,12 +298,9 @@ MODULE TextRulers;
 					IF (p.tabs.len > 0) & (p.tabs.tab[0].stop >= 0) THEN
 						i := 0; a.tabs.len := MIN(p.tabs.len, maxTabs);
 						REPEAT
-							a.tabs.tab[i].stop := p.tabs.tab[i].stop;
-							type := p.tabs.tab[i].type; mask := tabOptions;
-							IF type * {centerTab, rightTab} = {centerTab, rightTab} THEN
-								mask := mask - {centerTab, rightTab}
-							END;
-							a.tabs.tab[i].type := a.tabs.tab[i].type * (-mask) + type * mask;
+							type := a.tabs.tab[i].type * (-mask) + p.tabs.tab[i].type * mask;
+							CopyTab(p.tabs, p.tabsData, i, a.tabs, a.tabsData, i);
+							a.tabs.tab[i].type := type;
 							INC(i)
 						UNTIL (i = a.tabs.len) OR (p.tabs.tab[i].stop < p.tabs.tab[i - 1].stop);
 						a.tabs.len := i
@@ -286,7 +327,7 @@ MODULE TextRulers;
 		a.first := def.first; a.left := def.left; a.right := def.right;
 		a.lead := def.lead; a.asc := def.asc; a.dsc := def.dsc; a.grid := def.grid;
 		a.opts := def.opts;
-		CopyTabs(def.tabs, a.tabs);
+		CopyTabs(def.tabs, def.tabsData, a.tabs, a.tabsData);
 		ModifyFromProp(a, p)
 	END InitFromProp;
 
@@ -321,7 +362,7 @@ MODULE TextRulers;
 		p.first := a.first; p.left := a.left; p.right := a.right;
 		p.lead := a.lead; p.asc := a.asc; p.dsc := a.dsc; p.grid := a.grid;
 		p.opts.val := a.opts; p.opts.mask := options;
-		CopyTabs(a.tabs, p.tabs);
+		CopyTabs(a.tabs, a.tabsData, p.tabs, p.tabsData);
 		RETURN p
 	END Prop;
 
@@ -693,8 +734,9 @@ MODULE TextRulers;
 		ASSERT(r.style # NIL, 20); ra := r.style.attr; i := ra.tabs.len; ASSERT(i < maxTabs, 21);
 		ASSERT((i = 0) OR (ra.tabs.tab[i - 1].stop < x), 22);
 		prop.valid := {tabs};
-		CopyTabs(ra.tabs, prop.tabs);
-		prop.tabs.tab[i].stop := x; prop.tabs.tab[i].type := {}; INC(prop.tabs.len);
+		CopyTabs(ra.tabs, ra.tabsData, prop.tabs, prop.tabsData);
+		InitTab(x, prop.tabs, prop.tabsData, i);
+		INC(prop.tabs.len);
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	END AddTab;
 
@@ -703,7 +745,7 @@ MODULE TextRulers;
 	BEGIN
 		ASSERT(r.style # NIL, 20); ra := r.style.attr; i := ra.tabs.len; ASSERT(i > 0, 21);
 		prop.valid := {tabs};
-		CopyTabs(ra.tabs, prop.tabs);
+		CopyTabs(ra.tabs, ra.tabsData, prop.tabs, prop.tabsData);
 		prop.tabs.tab[i - 1].type := prop.tabs.tab[i - 1].type + {centerTab} - {rightTab};
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	END MakeCenterTab;
@@ -713,7 +755,7 @@ MODULE TextRulers;
 	BEGIN
 		ASSERT(r.style # NIL, 20); ra := r.style.attr; i := ra.tabs.len; ASSERT(i > 0, 21);
 		prop.valid := {tabs};
-		CopyTabs(ra.tabs, prop.tabs);
+		CopyTabs(ra.tabs, ra.tabsData, prop.tabs, prop.tabsData);
 		prop.tabs.tab[i - 1].type := prop.tabs.tab[i - 1].type - {centerTab} + {rightTab};
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	END MakeRightTab;
@@ -723,10 +765,21 @@ MODULE TextRulers;
 	BEGIN
 		ASSERT(r.style # NIL, 20); ra := r.style.attr; i := ra.tabs.len; ASSERT(i > 0, 21);
 		prop.valid := {tabs};
-		CopyTabs(ra.tabs, prop.tabs);
+		CopyTabs(ra.tabs, ra.tabsData, prop.tabs, prop.tabsData);
 		prop.tabs.tab[i - 1].type := prop.tabs.tab[i - 1].type + {barTab};
 		r.style.SetAttr(ModifiedAttr(ra, prop))
 	END MakeBarTab;
+
+	PROCEDURE MakeDecimalTab* (r: Ruler; radixChar: CHAR);
+		VAR ra: Attributes; i: INTEGER;
+	BEGIN
+		ASSERT(r.style # NIL, 20); ra := r.style.attr; i := ra.tabs.len; ASSERT(i > 0, 21);
+		prop.valid := {tabs};
+		CopyTabs(ra.tabs, ra.tabsData, prop.tabs, prop.tabsData);
+		prop.tabs.tab[i - 1].type := prop.tabs.tab[i - 1].type + {centerTab, rightTab};
+		prop.tabsData[i - 1] := radixChar;
+		r.style.SetAttr(ModifiedAttr(ra, prop))
+	END MakeDecimalTab;
 
 
 	(* SetAttrOp *)
@@ -738,7 +791,8 @@ MODULE TextRulers;
 		attr := s.attr; s.attr := op.attr; op.attr := attr;
 		(*Stores.InitDomain(s.attr, s.Domain());*) (* Stores.Join(s, s.attr); *)
 		ASSERT((s.attr=NIL) OR Stores.Joined(s, s.attr), 100);
-		upd.style := s; upd.oldAttr := attr; Models.Domaincast(s.Domain(), upd)
+		upd.style := s; upd.oldAttr := attr; Models.Domaincast(s.Domain(), upd);
+		IF tabDialogHook # NIL THEN tabDialogHook.Refresh(s) END;
 	END Do;
 
 	PROCEDURE DoSetAttrOp (s: Style; attr: Attributes);
@@ -817,31 +871,26 @@ MODULE TextRulers;
 	END DrawScale;
 
 	PROCEDURE InvertTabMark (f: Views.Frame; l, t, r, b: INTEGER; type: SET; show: BOOLEAN);
-		VAR u, u2, u3, yc, i, ih: INTEGER;
+		VAR u, u3, u6, x, left, top, right, bottom: INTEGER;
 	BEGIN
-		u := f.dot; u2 := 2*u; u3 := 3*u;
+		u := f.dot; u3 := u * 3; u6 := u3 * 2;
 		IF ~ODD((r - l) DIV u) THEN DEC(r, u) END;
-		yc := l + (r - l) DIV u DIV 2 * u;
+		x := l + (r - l) DIV u DIV 2 * u;
+		left := x - u; top := t + u; right := x + u; bottom := t + u6;
+		f.MarkRect(left, top, right, bottom, Ports.fill, Ports.invert, show); (* vertical stem *)
+		IF type * {centerTab, rightTab} = {centerTab, rightTab} THEN
+			f.MarkRect(right + u, bottom - u3, right + u3, bottom - u, Ports.fill, Ports.invert, show);  (* decimal point *)
+		END;
+		top := bottom; bottom := bottom + u * 2;
+		IF centerTab IN type THEN left := left - u3; right := right + u3
+		ELSIF rightTab IN type THEN left := x - u6
+		ELSE (* left tab *) right := x + u6
+		END;
+		f.MarkRect(left, top, right, bottom, Ports.fill, Ports.invert, show);  (* horizontal stem *)
 		IF barTab IN type THEN
-			f.MarkRect(yc, b - u3, yc + u, b - u2, Ports.fill, Ports.invert, show);
-			f.MarkRect(yc, b - u, yc + u, b, Ports.fill, Ports.invert, show)
+			left := x; top := bottom; right := x + u; bottom := bottom + u3;
+			f.MarkRect(left, top, right, bottom, Ports.fill, Ports.invert, show);  (* small vertical line *)
 		END;
-		IF centerTab IN type THEN
-			f.MarkRect(l + u, b - u2, r - u, b - u, Ports.fill, Ports.invert, show)
-		ELSIF rightTab IN type THEN
-			f.MarkRect(l, b - u2, yc + u, b - u, Ports.fill, Ports.invert, show)
-		ELSE
-			f.MarkRect(yc, b - u2, r, b - u, Ports.fill, Ports.invert, show)
-		END;
-		DEC(b, u3); INC(l, u2); DEC(r, u2);
-		ih := (r - l) DIV 2;
-		i := b - t; t := b - u;
-		WHILE (i > 0) & (r > l) DO
-			DEC(i, u);
-			f.MarkRect(l, t, r, b, Ports.fill, Ports.invert, show);
-			IF i <= ih THEN INC(l, u); DEC(r, u) END;
-			DEC(t, u); DEC(b, u)
-		END
 	END InvertTabMark;
 
 	PROCEDURE InvertFirstMark (f: Views.Frame; l, t, r, b: INTEGER; show: BOOLEAN);
@@ -928,7 +977,7 @@ MODULE TextRulers;
 			IF (m.l - point <= x) & (x < m.r + point) & (m.t - point <= y) & (y < m.b + point) THEN
 				m.px0 := m.px; m.py0 := m.py; m.x := x; m.y := y;
 				IF kind = tabs THEN
-					m.index := index; CopyTabs(r.style.attr.tabs, m.tabs)
+					m.index := index; CopyTabs(r.style.attr.tabs, r.style.attr.tabsData, m.tabs, m.tabsData)
 				END
 			ELSE
 				m.kind := invalid
@@ -965,8 +1014,9 @@ MODULE TextRulers;
 
 	PROCEDURE DrawMark (VAR m: Mark; f: Views.Frame);
 	(* pre: kind # invalid *)
-		VAR a: Attributes; l, t, r, b, y, d, e, asc, dsc, fw: INTEGER; i: INTEGER;
+		VAR a: Attributes; l, t, r, b, y, d, asc, dsc, fw: INTEGER; i: INTEGER;
 			w: ARRAY 4 OF INTEGER;
+			points: ARRAY 3 OF Ports.Point;
 	BEGIN
 		a := m.ruler.style.attr;
 		l := m.l + 2 * point; t := m.t + 2 * point; r := m.r - 4 * point; b := m.b - 3 * point;
@@ -976,13 +1026,10 @@ MODULE TextRulers;
 		CASE m.kind OF
 		  rightToggle:
 			IF rightFixed IN a.opts THEN
-				d := 0; y := (t + b) DIV 2 - point; e := (l + r) DIV 2 + point;
-				WHILE t < y DO
-					f.DrawLine(e - d, t, e, t, point, Ports.defaultColor); INC(d, point); INC(t, point)
-				END;
-				WHILE t < b DO
-					f.DrawLine(e - d, t, e, t, point, Ports.defaultColor); DEC(d, point); INC(t, point)
-				END
+				points[0].x := ((l + r) DIV 2 + point * 2) DIV f.dot * f.dot; points[0].y := t DIV f.dot * f.dot;
+				points[1].x := points[0].x; points[1].y := points[0].y + f.dot * 8;
+				points[2].x := points[0].x - f.dot * 4; points[2].y := points[0].y + f.dot * 4;
+				f.DrawPath(points, 3, Ports.fill, Ports.defaultColor, Ports.closedPoly)
 			ELSE
 				DEC(b, point);
 				f.DrawLine(l, t, r, t, point, Ports.defaultColor);
@@ -1075,9 +1122,9 @@ MODULE TextRulers;
 				IF (i = a.tabs.len) OR (a.tabs.tab[i].stop - px >= minTabWidth) THEN
 					IF canCreate THEN	(* set new tab stop, initially at end of list *)
 						m.kind := tabs; m.index := a.tabs.len; m.dirty := TRUE;
-						CopyTabs(a.tabs, m.tabs); m.tabs.len := a.tabs.len + 1;
-						m.tabs.tab[a.tabs.len].stop := px; m.tabs.tab[a.tabs.len].type := {};
-						a.tabs.tab[a.tabs.len].stop := px; a.tabs.tab[a.tabs.len].type := {};
+						CopyTabs(a.tabs, a.tabsData, m.tabs, m.tabsData); m.tabs.len := a.tabs.len + 1;
+						InitTab(px, m.tabs, m.tabsData, a.tabs.len);
+						InitTab(px, a.tabs, a.tabsData, a.tabs.len);
 						SetMark(m, r, px, h, tabs, m.index); InvertMark(m, f, Ports.show);
 						m.px0 := m.px; m.py0 := m.py; m.x := x; m.y := y
 					END
@@ -1124,9 +1171,9 @@ MODULE TextRulers;
 		RETURN i
 	END Mode;
 
-	PROCEDURE GrabMark (VAR m: Mark; r: StdRuler; f: Views.Frame; x, y: INTEGER);
+	PROCEDURE GrabMark (VAR m: Mark; r: StdRuler; f: Views.Frame; x, y: INTEGER; canCreate: BOOLEAN);
 	BEGIN
-		GetMark(m, r, f, x, y, TRUE);
+		GetMark(m, r, f, x, y, canCreate);
 		DeselectMark(r, f);
 		IF m.kind = Mode(r) THEN m.kind := invalid END
 	END GrabMark;
@@ -1173,52 +1220,54 @@ MODULE TextRulers;
 	END TrackMark;
 
 	PROCEDURE ShiftMarks (a: Attributes; p: Prop; mask: SET; x0, dx: INTEGER);
-		VAR new: SET; i, j, t0, t1: INTEGER; tab0, tab1: TabArray;
+		VAR new: SET; i, j, t0, t1: INTEGER; tab0, tab1: TabArray; tab0Data, tab1Data: TabData;
 	BEGIN
 		new := mask - p.valid;
 		IF first IN new THEN p.first := a.first END;
-		IF tabs IN new THEN CopyTabs(a.tabs, p.tabs) END;
+		IF tabs IN new THEN CopyTabs(a.tabs, a.tabsData, p.tabs, p.tabsData) END;
 		p.valid := p.valid + mask;
 		IF first IN mask THEN INC(p.first, dx) END;
 		IF tabs IN mask THEN
 			i := 0;
-			WHILE (i < p.tabs.len) & (p.tabs.tab[i].stop < x0) DO tab0.tab[i] := p.tabs.tab[i]; INC(i) END;
+			WHILE (i < p.tabs.len) & (p.tabs.tab[i].stop < x0) DO
+				CopyTab(p.tabs, p.tabsData, i, tab0, tab0Data, i); INC(i)
+			END;
 			t0 := i;
 			t1 := 0;
 			WHILE i < p.tabs.len DO
-				tab1.tab[t1].stop := p.tabs.tab[i].stop + dx;
-				tab1.tab[t1].type := p.tabs.tab[i].type;
+				CopyTab(p.tabs, p.tabsData, i, tab1, tab1Data, t1); INC(tab1.tab[t1].stop, dx);
 				INC(t1); INC(i)
 			END;
 			i := 0; j := 0; p.tabs.len := 0;
 			WHILE i < t0 DO	(* merge sort *)
 				WHILE (j < t1) & (tab1.tab[j].stop < tab0.tab[i].stop) DO
-					p.tabs.tab[p.tabs.len] := tab1.tab[j]; INC(p.tabs.len); INC(j)
+					CopyTab(tab1, tab1Data, j, p.tabs, p.tabsData, p.tabs.len); INC(p.tabs.len); INC(j)
 				END;
 				IF (j < t1) & (tab1.tab[j].stop = tab0.tab[i].stop) THEN INC(j) END;
-				p.tabs.tab[p.tabs.len] := tab0.tab[i]; INC(p.tabs.len); INC(i)
+				CopyTab(tab0, tab0Data, i, p.tabs, p.tabsData, p.tabs.len); INC(p.tabs.len); INC(i)
 			END;
 			WHILE j < t1 DO
-				p.tabs.tab[p.tabs.len] := tab1.tab[j]; INC(p.tabs.len); INC(j)
+				CopyTab(tab1, tab1Data, j, p.tabs, p.tabsData, p.tabs.len); INC(p.tabs.len); INC(j)
 			END
 		END
 	END ShiftMarks;
 
 	PROCEDURE ShiftDependingMarks (VAR m: Mark; p: Prop);
-		VAR a: Attributes; dx: INTEGER;
+		VAR a: Attributes; dx, i: INTEGER;
 	BEGIN
 		a := m.ruler.style.attr; dx := m.px - m.px0;
 		CASE m.kind OF
 		  first: ShiftMarks(a, p, {tabs}, 0, dx)
 		| left: ShiftMarks(a, p, {first, tabs}, 0, dx)
-		| tabs: ShiftMarks(a, p, {tabs}, m.px0, dx)
+		| tabs: ShiftMarks(a, p, {tabs}, m.px0, dx);
+			i := 0; WHILE (i < p.tabs.len) & (m.px # p.tabs.tab[i].stop) DO INC(i) END; m.index := i
 		ELSE
 		END
 	END ShiftDependingMarks;
 
 	PROCEDURE AdjustMarks (VAR m: Mark; f: Views.Frame; modifiers: SET);
 		VAR r: StdRuler; a: Attributes; p: Prop;
-			g: INTEGER; i, j: INTEGER; shift: BOOLEAN; type: SET;
+			g: INTEGER; i, j: INTEGER; modify: BOOLEAN; type: SET;
 	BEGIN
 		r := m.ruler;
 		IF  (m.kind # invalid) & (m.kind IN validIcons)
@@ -1229,7 +1278,7 @@ MODULE TextRulers;
 		THEN
 			a := r.style.attr; NEW(p);
 			p.valid := {};
-			shift := (Controllers.modify IN modifiers) & (m.tabs.len = r.style.attr.tabs.len);
+			modify := (Controllers.modify IN modifiers) & (m.tabs.len = r.style.attr.tabs.len);
 			CASE m.kind OF
 			  first:
 				p.valid := {first}; p.first := m.px
@@ -1243,9 +1292,9 @@ MODULE TextRulers;
 				END
 			| tabs:
 				IF ~m.dirty THEN
-					p.valid := {tabs}; CopyTabs(m.tabs, p.tabs);
+					p.valid := {tabs}; CopyTabs(m.tabs, m.tabsData, p.tabs, p.tabsData);
 					i := m.index; type := m.tabs.tab[i].type;
-					IF shift THEN
+					IF modify THEN
 						type := type * {barTab};
 						IF type = {} THEN type := {barTab}
 						ELSE type := {}
@@ -1255,27 +1304,28 @@ MODULE TextRulers;
 						type := type * {centerTab, rightTab};
 						IF type = {} THEN type := {centerTab}
 						ELSIF type = {centerTab} THEN type := {rightTab}
+						ELSIF type = {rightTab} THEN type := {centerTab, rightTab}
 						ELSE type := {}
 						END;
 						p.tabs.tab[i].type := p.tabs.tab[i].type - {centerTab, rightTab} + type
 					END
-				ELSIF ~shift THEN
+				ELSIF ~modify THEN
 					p.valid := {tabs}; p.tabs.len := m.tabs.len - 1;
 					i := 0;
-					WHILE i < m.index DO p.tabs.tab[i] := m.tabs.tab[i]; INC(i) END;
+					WHILE i < m.index DO CopyTab(m.tabs, m.tabsData, i, p.tabs, p.tabsData, i); INC(i) END;
 					INC(i);
-					WHILE i < m.tabs.len DO p.tabs.tab[i - 1] := m.tabs.tab[i]; INC(i) END;
+					WHILE i < m.tabs.len DO CopyTab(m.tabs, m.tabsData, i, p.tabs, p.tabsData, i - 1); INC(i) END;
 					i := 0;
 					WHILE (i < p.tabs.len) & (p.tabs.tab[i].stop < m.px) DO INC(i) END;
 					IF (m.px >= MIN(a.first, a.left)) & (m.px <= f.r) & (m.py >= 0)
 					 & ((i = 0) OR (m.px - p.tabs.tab[i - 1].stop >= minTabWidth))
 					 & ((i = p.tabs.len) OR (p.tabs.tab[i].stop - m.px >= minTabWidth)) THEN
 						j := p.tabs.len;
-						WHILE j > i DO p.tabs.tab[j] := p.tabs.tab[j - 1]; DEC(j) END;
-						p.tabs.tab[i].stop := m.px; p.tabs.tab[i].type := m.tabs.tab[m.index].type;
+						WHILE j > i DO CopyTab(p.tabs, p.tabsData, j - 1, p.tabs, p.tabsData, j); DEC(j) END;
+						CopyTab(m.tabs, m.tabsData, m.index, p.tabs, p.tabsData, i); p.tabs.tab[i].stop := m.px;
 						INC(p.tabs.len)
 					END;
-					i := 0;
+					m.index := i; i := 0;
 					WHILE (i < p.tabs.len)
 					 & (p.tabs.tab[i].stop = a.tabs.tab[i].stop)
 					 & (p.tabs.tab[i].type = a.tabs.tab[i].type) DO
@@ -1315,34 +1365,54 @@ MODULE TextRulers;
 				p.valid := {opts}; p.opts.val := a.opts / {pageBreak}; p.opts.mask := {pageBreak}
 			ELSE HALT(100)
 			END;
-			IF shift THEN ShiftDependingMarks(m, p) END;
+			IF modify THEN ShiftDependingMarks(m, p) END;
 			IF m.kind IN validIcons - modeIcons THEN HiliteMark(m, f, Ports.hide) END;
-
 			r.style.SetAttr(ModifiedAttr(a, p))
 		END
 	END AdjustMarks;
+	
+	PROCEDURE OpenTabDlg(r: Ruler; tabIndex: INTEGER);
+		VAR tc: Kernel.Module;
+	BEGIN
+		IF tabDialogHook = NIL THEN tc := Kernel.ThisMod("TextCmds") END;
+		IF tabDialogHook # NIL THEN tabDialogHook.Open(r, tabIndex) END
+	END OpenTabDlg;
 
+	PROCEDURE InitTabDlg(r: Ruler; tabIndex: INTEGER);
+	BEGIN
+		IF tabDialogHook # NIL THEN tabDialogHook.Init(r, MIN(tabIndex, r.style.attr.tabs.len - 1)) END
+	END InitTabDlg;
 
 	(* primitivies for standard ruler *)
 
 	PROCEDURE Track (r: StdRuler; f: Views.Frame; IN msg: Controllers.TrackMsg);
 		VAR m: Mark; x, y, res: INTEGER; modifiers: SET; isDown: BOOLEAN;
-			cmd: ARRAY 128 OF CHAR;
+			cmd: ARRAY 128 OF CHAR; popup: BOOLEAN;
 	BEGIN
-		GrabMark(m, r, f, msg.x, msg.y);
-		REPEAT
-			f.Input(x, y, modifiers, isDown); TrackMark(m, f, x, y, modifiers)
-		UNTIL ~isDown;
-		AdjustMarks(m, f, modifiers);
-		IF Controllers.doubleClick IN msg.modifiers THEN
-			CASE m.kind OF
-			| invalid:
-				Dialog.MapString("#Text:OpenRulerDialog", cmd); Dialog.Call(cmd, "", res)
-			| gridVal, leadVal:
-				Dialog.MapString("#Text:OpenSizeDialog", cmd); Dialog.Call(cmd, "", res)
-			ELSE
+		popup := Controllers.popup IN msg.modifiers;
+		GrabMark(m, r, f, msg.x, msg.y, ~popup);
+		IF (m.kind = tabs) & popup THEN
+			REPEAT f.Input(x, y, modifiers, isDown) UNTIL ~isDown;
+			OpenTabDlg(r, m.index)
+		ELSE
+			REPEAT
+				f.Input(x, y, modifiers, isDown); TrackMark(m, f, x, y, modifiers)
+			UNTIL ~isDown;
+			AdjustMarks(m, f, modifiers);
+			IF Controllers.doubleClick IN msg.modifiers THEN
+				CASE m.kind OF
+				| invalid:
+					Dialog.MapString("#Text:OpenRulerDialog", cmd); Dialog.Call(cmd, "", res)
+				| gridVal, leadVal:
+					Dialog.MapString("#Text:OpenSizeDialog", cmd); Dialog.Call(cmd, "", res)
+				| tabs: 
+					InitTabDlg(r, m.index)
+				ELSE
+				END
+			ELSIF m.kind = tabs THEN
+				InitTabDlg(r, m.index)
 			END
-		END
+		END;
 	END Track;
 
 	PROCEDURE Edit (r: StdRuler; f: Views.Frame; VAR msg: Controllers.EditMsg);
@@ -1634,6 +1704,7 @@ MODULE TextRulers;
 	PROCEDURE Init;
 		VAR d: StdDirectory; fnt: Fonts.Font; asc, dsc, w: INTEGER;
 	BEGIN
+		defaultRadixChar := ".";
 		IF Dialog.metricSystem THEN
 			marginGrid := 1*mm; minTabWidth := 1*mm; tabGrid := 1*mm
 		ELSE
@@ -1663,6 +1734,21 @@ MODULE TextRulers;
 	BEGIN
 		globRd := NIL
 	END Cleaner;
+
+	PROCEDURE GetRadixChar* (a: Attributes; tabIndex: INTEGER): CHAR;
+	BEGIN
+		RETURN a.tabsData[tabIndex]
+	END GetRadixChar;
+
+	PROCEDURE SetRadixChar* (a: Attributes; tabIndex: INTEGER; radixChar: CHAR);
+	BEGIN
+		a.tabsData[tabIndex] := radixChar
+	END SetRadixChar;
+	
+	PROCEDURE SetRadixCharProp* (p: Prop; tabIndex: INTEGER; radixChar: CHAR);
+	BEGIN
+		p.tabsData[tabIndex] := radixChar
+	END SetRadixCharProp;
 
 BEGIN
 	Init;

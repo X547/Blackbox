@@ -74,10 +74,10 @@ END
 The item called Properties in this menu opens the standard font dialog and lets the user select a font for the view. The typeface and style of the chosen font effects the text displaying the names of the modules.The size of the font effects the text and the width of the lines and the arrows.
 
 PROCEDURE Deposit
-Analyzes the dependencies for each module in the selected list of modules. Then a view, displaying a graph of the dependencies, is created and deposited.
+Analyzes the dependencies for each module in the selected list of modules. Then a view, displaying a graph of the dependencies, is created and deposited. The base module name may be either given in full, or by alias if an alias has been defined in the enclosing module's IMPORT statement.
 
 PROCEDURE CreateTool
-Analyzes the dependencies for each module in the selected list of modules. Then a tool document is created for the given modules. The tool document contains compiling, unloading, linking and packing commands. The compiling and unloading commands are only created for the currently expanded modules. The linking command includes the standard BlackBox icons and the packing command always includes all modules independent of which modules are currently expanded or hidden.
+Analyzes the dependencies for each module in the selected list of modules. Then a tool document is created for the given modules. The tool document contains compiling, unloading, linking and packing commands. The compiling and unloading commands are only created for the currently expanded modules. The linking command includes the standard BlackBox icons and the packing command always includes all modules independent of which modules are currently expanded or hidden. The base module name may be either given in full, or by alias if an alias has been defined in the enclosing module's IMPORT statement.
 
 
 The following commands are only used for manipulating the view (ordered the way they appear in the menu above):

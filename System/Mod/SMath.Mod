@@ -68,6 +68,7 @@ MODULE SMath;
 	PROCEDURE [code] FSQRT 0D9H, 0FAH;	(* st[0] >= 0 *)
 	PROCEDURE [code] FSIN 0D9H, 0FEH;	(* |st[0]| < 2^63 *)
 	PROCEDURE [code] FCOS 0D9H, 0FFH;	(* |st[0]| < 2^63 *)
+	PROCEDURE [code] FSINCOS 0D9H, 0FBH;	(* |st[0]| < 2^63 *)
 	PROCEDURE [code] FTAN 0D9H, 0F2H;	(* |st[0]| < 2^63 *)
 	PROCEDURE [code] FATAN 0D9H, 0F3H;	(* atan2(st[1], st[0]) *)
 	PROCEDURE [code] FYL2X 0D9H, 0F1H;	(* st[1] * log2(st[0]), st[0] > 0 *)
@@ -79,18 +80,6 @@ MODULE SMath;
 	BEGIN
 		FLD(x); FXAM; FSTPst0; WAIT; RETURN FSWs() * {8, 10} = {8}
 	END IsNan;
-
-
-	(* sin, cos, tan argument reduction *)
-	
-	PROCEDURE Reduce;
-	BEGIN
-		FXAM; WAIT;
-		IF ~(8 IN FSWs()) & (ABS(ST0()) > 1.0E18) THEN
-			(* to be completed *)
-			FSTPst0; FLD0
-		END;
-	END Reduce;
 
 
 	(** SHORTREAL precision **)
@@ -108,7 +97,7 @@ MODULE SMath;
 	
 	PROCEDURE Sqrt* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, argument of Sqrt must not be negative *)
+		(* Kernel error #143, argument of Sqrt must not be negative *)
 		FLD(x); FSQRT; WAIT; RETURN TOP()
 	END Sqrt;
 	
@@ -132,7 +121,7 @@ MODULE SMath;
 	
 	PROCEDURE Log* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, argument of Log must not be negative *)
+		(* Kernel error #143, argument of Log must not be negative *)
 		(* log(2) * ld(x) *)
 		FLDLG2; FLD(x); FYL2X; WAIT; RETURN TOP()
 	END Log;
@@ -167,32 +156,45 @@ MODULE SMath;
 
 	PROCEDURE Sin* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, ABS(x) # INF *)
-		FLD(x); Reduce; FSIN; WAIT; RETURN TOP()
+		(*  Kernel error #143, ABS(x) # INF *)
+		FLD(x); FSIN; WAIT;
+		IF 10 IN FSWs() THEN FSTPst0; RETURN 0.  END;
+		RETURN TOP()
 	END Sin;
 
 	PROCEDURE Cos* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, ABS(x) # INF *)
-		FLD(x); Reduce; FCOS; WAIT; RETURN TOP()
+		(* Kernel error #143, ABS(x) # INF *)
+		FLD(x); FCOS; WAIT;
+		IF 10 IN FSWs() THEN FSTPst0; RETURN 1. END;
+		RETURN TOP()
 	END Cos;
 
 	PROCEDURE Tan* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, ABS(x) # INF *)
-		FLD(x); Reduce; FTAN; FSTPst0; WAIT; RETURN TOP()
+		(* Kernel error #143, ABS(x) # INF *)
+		FLD(x); FTAN; FSTPst0; WAIT;
+		IF 10 IN FSWs() THEN RETURN 0. END;
+		RETURN TOP()
 	END Tan;
 	
+	PROCEDURE SinCos* (x: SHORTREAL; OUT s, c: SHORTREAL);
+	BEGIN
+		(* Kernel error #143, ABS(x) # INF *)
+		FLD(x); FSINCOS; WAIT;
+		IF 10 IN FSWs() THEN FSTPst0; s := 0.; c := 1. ELSE c := TOP(); s := TOP() END
+	END SinCos;
+
 	PROCEDURE ArcSin* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, -1.0 <= x <= 1.0 *)
+		(* Kernel error #143, -1.0 <= x <= 1.0 *)
 		(* atan2(x, sqrt(1 - x*x)) *)
 		FLD(x); FLDst0; FMULst0; FLD1; FSUBR; FSQRT; FNOP; FATAN; WAIT; RETURN TOP()
 	END ArcSin;
 	
 	PROCEDURE ArcCos* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, -1.0 <= x <= 1.0 *)
+		(* Kernel error #143, -1.0 <= x <= 1.0 *)
 		(* atan2(sqrt(1 - x*x), x) *)
 		FLD(x); FMULst0; FLD1; FSUBR; FSQRT; FLD(x); FATAN; WAIT; RETURN TOP()
 	END ArcCos;
@@ -205,8 +207,6 @@ MODULE SMath;
 	
 	PROCEDURE ArcTan2* (y, x: SHORTREAL): SHORTREAL;
 	BEGIN
-		ASSERT((y # 0)  OR (x # 0), 20);
-		ASSERT((ABS(y) # INF)  OR  (ABS(x)  # INF), 21);
 		FLD(y); FLD(x); FATAN; WAIT; RETURN TOP()
 	END ArcTan2;
 
@@ -335,7 +335,7 @@ MODULE SMath;
 
 	PROCEDURE Frac* (x: SHORTREAL): SHORTREAL;
 	BEGIN
-		(* 20, x # INF  &  x # -INF *)
+		(* Kernel error #143, x # INF  &  x # -INF *)
 		FLD(x); FLDst0; FRNDINT;
 		IF ST1() >= 0 THEN
 			FCOM; FSWax; SAHF; JBE4; FLD1; FSUB
@@ -344,8 +344,15 @@ MODULE SMath;
 		END;
 		FSUB; WAIT; RETURN TOP()
 	END Frac;
-	
-	
+
+	PROCEDURE Mod1* (x: SHORTREAL): SHORTREAL;
+	BEGIN
+		(* Kernel error #143, x # INF  &  x # -INF *)
+		FLD(x); FLDst0; FRNDINT;
+		FCOM; FSWax; SAHF; JBE4; FLD1; FSUB;
+		FSUB; WAIT; RETURN TOP()
+	END Mod1;
+
 	PROCEDURE Sign* (x: SHORTREAL): SHORTREAL;
 	BEGIN
 		FLD(x); FXAM; WAIT;

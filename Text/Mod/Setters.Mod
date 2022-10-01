@@ -16,8 +16,7 @@ MODULE TextSetters;
 	(* paraShutoff needs to be controlled by an approx flag to certain ops (later ...?) *)
 
 	IMPORT
-		Fonts, Ports, Printers, Stores, Strings, Models, Views, Properties,
-		TextModels, TextRulers;
+		Ports, Stores, Strings, Views, Properties, TextModels, TextRulers;
 
 	CONST
 		(** Pref.opts, options of setter-aware views; 0 overrides 1 **)
@@ -113,7 +112,9 @@ MODULE TextSetters;
 			i: INTEGER
 		END;
 
-		StdReader = POINTER TO RECORD (Reader) END;
+		StdReader = POINTER TO RECORD (Reader)
+			radixChar: CHAR; (* the current decimal tab's radix character or 0X if not processing a decimal tab *)
+		END;
 
 		StdSetter = POINTER TO RECORD (Setter)
 			rd: Reader;	(* subject to reduction? *)
@@ -623,20 +624,25 @@ rd.w := 0;
 	END GetViewPref;
 
 	PROCEDURE GatherString (rd: StdReader);
-		VAR i, len: INTEGER; ch: CHAR;
+		VAR i, len: INTEGER; ch, radixChar: CHAR;
 	BEGIN
 		i := 1; len := LEN(rd.string) - 1; ch := rd.r.char;
-		WHILE (i < len)
-			& (rd.r.view = NIL) & (rd.r.attr = rd.attr)
-			& (	 (" " < ch) & (ch <= "~") & (ch # "-")
-				OR  (ch = digitspace)
-				OR  (ch >= nbspace) & (ch < 100X) & (ch # softhyphen)
-				OR Strings.IsAlpha(ch)
-				)
-		DO	(* rd.r.char > " " => ~rd.eot *)
-			rd.string[i] := ch; INC(i);
-			rd.eot := rd.r.eot;
-			rd.r.Read; ch := rd.r.char; INC(rd.pos)
+		radixChar := rd.radixChar;
+		IF rd.string[0] # radixChar THEN
+			WHILE (i < len)
+				& (rd.r.view = NIL)
+				& ((rd.r.attr = rd.attr) OR ((rd.attr # NIL) & (rd.r.attr # NIL) & rd.attr.Equals(rd.r.attr)))
+				& (	 (" " < ch) & (ch <= "~") & (ch # "-")
+					OR  (ch = digitspace)
+					OR  (ch >= nbspace) & (ch < 100X) & (ch # softhyphen)
+					OR Strings.IsAlpha(ch)
+					)
+				& (ch # radixChar)
+			DO	(* rd.r.char > " " => ~rd.eot *)
+				rd.string[i] := ch; INC(i);
+				rd.eot := rd.r.eot;
+				rd.r.Read; ch := rd.r.char; INC(rd.pos)
+			END
 		END;
 		rd.string[i] := 0X; rd.setterOpts := {wordJoin};
 		IF i = 1 THEN
@@ -658,15 +664,19 @@ rd.w := 0;
 			i := 0; WHILE (i < ra.tabs.len) & (ra.tabs.tab[i].stop < rd.x + minTabWidth) DO INC(i) END;
 			*)
 			i := rd.tabIndex + 1;
+			rd.radixChar := 0X;
 			IF i < ra.tabs.len THEN
 				type := ra.tabs.tab[i].type;
 				rd.w := MAX(minTabWidth, ra.tabs.tab[i].stop - rd.x);
 				IF TextRulers.barTab IN type THEN
-					IF TextRulers.rightTab IN type THEN
+					IF (TextRulers.rightTab IN type) & ~(TextRulers.centerTab IN type) THEN
 						rd.w := MAX(minTabWidth, rd.w - leftLineGap)
 					ELSIF ~(TextRulers.centerTab IN type) THEN
 						INC(rd.w, rightLineGap)
 					END
+				END;
+				IF (TextRulers.rightTab IN type) & (TextRulers.centerTab IN type) THEN
+					rd.radixChar := TextRulers.GetRadixChar(ra, i)
 				END;
 				rd.tabIndex := i; rd.tabType := type
 			ELSE	(* for "reasonable" fonts: round to closest multiple of spaces of this font *)
@@ -1084,8 +1094,10 @@ rd.w := 0;
 	END GetWord;
 
 	PROCEDURE (s: StdSetter) GetLine (start: INTEGER; OUT box: LineBox);
-		VAR rd: Reader; ra: TextRulers.Attributes; brk: LineBox;
+		TYPE RadixData = RECORD found: BOOLEAN; right: INTEGER END;
+		VAR rd: StdReader; ra: TextRulers.Attributes; brk: LineBox;
 			d, off, right, w: INTEGER; i, tabsN: INTEGER; form: SET; adj: BOOLEAN; ch: CHAR;
+			boxRadix, brkRadix: RadixData;
 
 		PROCEDURE TrueW (VAR b: LineBox; w: INTEGER): INTEGER;
 			VAR i: INTEGER; type: SET;
@@ -1097,12 +1109,18 @@ rd.w := 0;
 					DEC(w, b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w DIV 2))
 				ELSIF type = {TextRulers.rightTab} THEN
 					DEC(w, b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w))
+				ELSIF type = {TextRulers.centerTab, TextRulers.rightTab} THEN
+					IF rd.string[0] = rd.radixChar THEN
+						IF boxRadix.found THEN w := 0 END
+					ELSIF ~boxRadix.found THEN
+						DEC(w, b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w))
+					END
 				END
 			END;
 			RETURN w
 		END TrueW;
 
-		PROCEDURE Enclose (VAR b: LineBox; w: INTEGER);
+		PROCEDURE Enclose (VAR b: LineBox; w: INTEGER; VAR radix: RadixData);
 			VAR off, i, d: INTEGER; type: SET;
 		BEGIN
 			b.len := rd.pos - start; INC(b.right, w);
@@ -1111,16 +1129,28 @@ rd.w := 0;
 			IF rd.dsc - off > b.dsc THEN b.dsc := rd.dsc - off END;
 			IF rd.view # NIL THEN b.views := TRUE END;
 			IF (0 <= i ) & (i < TextRulers.maxTabs) THEN
+				type := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab};
 				IF rd.string[0] = tab THEN
-					b.tabW[i] := w
+					b.tabW[i] := w;
+					IF type = {TextRulers.centerTab, TextRulers.rightTab} THEN radix.found := FALSE END
 				ELSE
-					type := rd.tabType * {TextRulers.centerTab, TextRulers.rightTab};
 					IF type = {TextRulers.centerTab} THEN
 						d := b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w DIV 2);
 						DEC(b.tabW[i], d); DEC(b.right, d)
 					ELSIF type = {TextRulers.rightTab} THEN
 						d := b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w);
 						DEC(b.tabW[i], d); DEC(b.right, d)
+					ELSIF type = {TextRulers.centerTab, TextRulers.rightTab} THEN
+						IF rd.string[0] = rd.radixChar THEN
+							IF radix.found THEN w := b.right - radix.right;
+								d := b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w);
+								DEC(b.tabW[i], d); DEC(b.right, d); radix.right := b.right
+							ELSE radix.found := TRUE; radix.right := b.right
+							END
+						ELSIF ~radix.found THEN
+							d := b.tabW[i] - MAX(minTabWidth, b.tabW[i] - w);
+							DEC(b.tabW[i], d); DEC(b.right, d)
+						END
 					END
 				END
 			END
@@ -1156,9 +1186,10 @@ rd.w := 0;
 			box.views := FALSE;
 			box.asc := 0; box.dsc := 0; box.right := box.left;
 			box.len := 0; box.adjOff := 0; box.spaces := 0;
+			boxRadix.found := FALSE;
 			brk.right := 0;
 	
-			s.rd := s.NewReader(s.rd); rd := s.rd;
+			s.rd := s.NewReader(s.rd); rd := s.rd(StdReader);
 			rd.Set(s.r, s.text, box.left, start, box.ruler, box.rpos, s.vw, s.hideMarks);
 			rd.Read;
 			WHILE ~rd.eot & (box.right + (*rd.w*) TrueW(box, rd.w) <= right)
@@ -1171,20 +1202,21 @@ rd.w := 0;
 					brk.views := box.views; brk.skipOff := box.skipOff; brk.adjOff := box.adjOff;
 					brk.spaces := box.spaces; brk.adjW := box.adjW;
 					i := 0; WHILE i < tabsN DO brk.tabW[i] := box.tabW[i]; INC(i) END;
+					brkRadix := boxRadix;
 					(*---*)
-					Enclose(brk, rd.endW);
+					Enclose(brk, rd.endW, brkRadix);
 					brk.eot := rd.r.eot	(* rd.r.eot one ahead of rd.eot *)
 				END;
 				box.adjOff := rd.adjStart - start; box.spaces := rd.spaces;
-				Enclose(box, rd.w);
+				Enclose(box, rd.w, boxRadix);
 				rd.x := box.right; rd.Read
 			END;
-			IF (lineBreak IN rd.setterOpts) (* & ~box.rbox *) THEN Enclose(box, 0) END;
+			IF (lineBreak IN rd.setterOpts) (* & ~box.rbox *) THEN Enclose(box, 0, boxRadix) END;
 			box.eot := rd.eot; adj := FALSE; box.skipOff := box.len;
 			IF box.right + rd.w > right THEN	(* rd.w > 0 => ~rd.eot & ~(lineBreak IN setterOpts) *)
 				IF ~(wordJoin IN rd.setterOpts) & (box.right + rd.endW <= right) THEN
 					IF rd.string[0] = " " THEN DEC(box.spaces) END;
-					Enclose(box, rd.endW);
+					Enclose(box, rd.endW, boxRadix);
 					adj := TRUE
 				ELSIF brk.right > 0 THEN
 					(*box := brk;*)
@@ -1197,7 +1229,7 @@ rd.w := 0;
 					(*---*)
 					box.skipOff := box.len - 1; adj := TRUE
 				ELSIF box.right = box.left THEN
-					Enclose(box, rd.w)	(* force at least one per line *)
+					Enclose(box, rd.w, boxRadix)	(* force at least one per line *)
 				END
 			ELSIF (box.right = box.left) & box.eot THEN
 				box.asc := ra.asc; box.dsc := ra.dsc	(* force empty line to ruler's default height *)

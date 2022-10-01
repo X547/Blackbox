@@ -19,14 +19,6 @@ MODULE DevLinkChk;
 		oneSubsystem* = 0; globalSubsystem* = 1; allSubsystems* = 2;
 		linkCommand = "DevLinkChk.Open('";
 
-	VAR
-		par*: RECORD
-			scope*: INTEGER;	(* IN {oneSubsystem, globalSubsystem, allSubsystems} *)
-			subsystem*: ARRAY 16 OF CHAR;
-			legal: BOOLEAN	(* legal => correct syntax for a subsystem name # "" *)
-		END;
-
-
 	TYPE
 		Iterator = POINTER TO IteratorDesc;
 		IteratorDesc = RECORD
@@ -35,7 +27,13 @@ MODULE DevLinkChk;
 			files: Files.FileInfo
 		END;
 
-	VAR default, link: TextModels.Attributes;
+	VAR
+		par*: RECORD
+			scope*: INTEGER;	(* IN {oneSubsystem, globalSubsystem, allSubsystems} *)
+			subsystem*: ARRAY 16 OF CHAR;
+			legal: BOOLEAN	(* legal => correct syntax for a subsystem name # "" *)
+		END;
+		default, link: TextModels.Attributes;
 
 	PROCEDURE MakeDocName (VAR name: Files.Name);
 	BEGIN
@@ -53,7 +51,7 @@ MODULE DevLinkChk;
 	PROCEDURE ReadLoc (i: Iterator; VAR loc: Files.Locator; VAR name: Files.Name);
 	BEGIN
 		IF i.locs # NIL THEN
-			loc := i.root.This(i.locs.name); ASSERT(loc # NIL, 60);
+			loc := i.root.This(i.locs.name); ASSERT(loc.res = 0, 60);
 			name := i.locs.name$;
 			i.locs := i.locs.next
 		ELSE
@@ -71,37 +69,178 @@ MODULE DevLinkChk;
 		END
 	END ReadFile;
 
-	PROCEDURE Delimiter (ch: CHAR): BOOLEAN;
-	BEGIN
-		RETURN (ch = "'") OR (ch = '"') OR (ch = "/")
-	END Delimiter;
+	(* similar to StdInterpreter.CallHook.Call but without calling the commands*)
+	PROCEDURE Stale (IN proc: ARRAY OF CHAR; text: TextModels.Model): BOOLEAN;
+	
+		TYPE
+			Ident = Dialog.String;
+			
+		CONST
+			 ident = 0; dot = 1; semicolon = 2; eot = 3; lparen = 4; rparen = 5; quote = 6; comma = 7; int = 8;
+			
+		VAR
+			i, type, res: INTEGER; ch: CHAR; id: Ident; x: INTEGER;
+			par0: POINTER TO Dialog.String; numPar: INTEGER;
+			focusLoc: Files.Locator; focusFile: Files.Name;
+		
+		PROCEDURE Error;
+		BEGIN res := 1
+		END Error;
+		
+		PROCEDURE Init (VAR s: ARRAY OF CHAR);
+		BEGIN s := ""
+		END Init;
 
-	PROCEDURE Stale (IN s: ARRAY OF CHAR): BOOLEAN;
-		VAR i, j: INTEGER; ch: CHAR; loc: Files.Locator; name: Files.Name; t: ARRAY 1024 OF CHAR;
-	BEGIN
-		i := 0; ch := s[0]; WHILE (ch # 0X) & (ch # "(") DO INC(i); ch := s[i] END;
-		IF ch = "(" THEN
-			t := s$; t[i] := 0X;
-			(* StdCmds.OpenMask doesn't exist anymore *)
-			IF (t = "StdCmds.OpenMask") OR (t = "StdCmds.OpenBrowser") OR (t = "StdCmds.OpenDoc") OR
-				(t = "StdCmds.OpenAuxDialog") THEN
-				INC(i); ch := s[i]; WHILE (ch # 0X) & (ch # "'") & (ch # '"') DO INC(i); ch := s[i] END;
-				IF ch # 0X THEN
-					loc := Files.dir.This("");
-					REPEAT
-						j := 0;
-						INC(i); ch := s[i]; WHILE ~Delimiter(ch) DO t[j] := ch; INC(j); INC(i); ch := s[i] END;
-						t[j] := 0X;
-						IF ch = "/" THEN loc := loc.This(t) END
-					UNTIL ch # "/";
-					name := t$; MakeDocName(name);
-					RETURN Files.dir.Old(loc, name, Files.shared) = NIL	(* file not found *)
-				ELSE RETURN TRUE	(* wrong syntax *)
+		PROCEDURE GetCh;
+		BEGIN
+			IF i < LEN(proc) THEN ch := proc[i]; INC(i) ELSE ch := 0X END
+		END GetCh;
+
+		PROCEDURE Scan;
+			VAR j: INTEGER; num: ARRAY 32 OF CHAR; r: INTEGER;
+		BEGIN
+			IF res = 0 THEN
+				WHILE (ch # 0X) & (ch <= " ") DO GetCh END;
+				IF ch = 0X THEN
+					type := eot
+				ELSIF ch = "." THEN
+					type := dot; GetCh
+				ELSIF ch = ";" THEN
+					type := semicolon; GetCh
+				ELSIF ch = "(" THEN
+					type := lparen; GetCh
+				ELSIF ch = ")" THEN
+					type := rparen; GetCh
+				ELSIF ch = "'" THEN
+					type := quote; GetCh
+				ELSIF ch = "," THEN
+					type := comma; GetCh
+				ELSIF (ch >= "0") & (ch <= "9") OR (ch = "-") THEN
+					type := int; j := 0;
+					REPEAT num[j] := ch; INC(j); GetCh UNTIL (ch < "0") OR (ch > "9") & (ch < "A") OR (ch > "H");
+					num[j] := 0X; Strings.StringToInt(num, x, r)
+				ELSIF Strings.IsIdentStart(ch) THEN
+					type := ident;
+					id[0] := ch; j := 1; GetCh;
+					WHILE (ch # 0X) & (i < LEN(proc)) & Strings.IsIdent(ch) DO
+						id[j] := ch; INC(j); GetCh
+					END;
+					id[j] := 0X
+				ELSE Error
 				END
-			ELSE RETURN FALSE	(* unknown kind of command *)
 			END
-		ELSE RETURN FALSE	(* unknown kind of command *)
-		END
+		END Scan;
+		
+		PROCEDURE String (VAR s: ARRAY OF CHAR);
+			VAR j: INTEGER;
+		BEGIN
+			IF type = quote THEN
+				j := 0;
+				WHILE (ch # 0X) & (ch # "'") & (j < LEN(s) - 1) DO s[j] := ch; INC(j); GetCh END; s[j] := 0X;
+				IF ch = "'" THEN
+					GetCh; Scan
+				ELSE Error
+				END
+			ELSE Error
+			END
+		END String;
+
+		PROCEDURE ParamList ();
+			VAR sv: Ident;
+		BEGIN
+			numPar := 0; par0 := NIL;
+			IF type = lparen THEN Scan;
+				WHILE (type # rparen) & (res = 0) DO
+					IF type = quote THEN
+						String(sv);
+						IF numPar = 0 THEN NEW(par0); par0^ := sv$ END;
+						INC(numPar)
+					ELSIF type IN {int, ident} THEN (* non string params can be ignored here *)
+						Scan
+					ELSE Error
+					END;
+					IF type = comma THEN Scan
+					ELSIF type # rparen THEN Error
+					END
+				END;
+				Scan
+			END
+		END ParamList;
+
+		PROCEDURE CheckLink (IN m, p: ARRAY OF CHAR);
+			VAR loc: Files.Locator; i, j: INTEGER; ch: CHAR; fn: Files.Name;
+				rd: TextModels.Reader; v: Views.View; ident: Ident; lnk: StdLinks.Target;
+		BEGIN
+			IF m = "StdCmds" THEN
+				IF (p = "OpenBrowser") OR (p = "OpenDoc") OR (p = "OpenAuxDialog") 
+				OR (p = "OpenToolDialog") OR (p = "OpenAux") THEN
+					IF (p = "OpenDoc") & (numPar = 1) OR (p # "OpenDoc") & (numPar = 2) THEN
+						loc := Files.dir.This(""); i := 0;
+						REPEAT
+							j := 0; ch := par0[i];
+							WHILE (ch # "/") & (ch # "\") & (ch # 0X) DO fn[j] := ch; INC(j); INC(i); ch := par0[i] END;
+							fn[j] := 0X;
+							IF ch # 0X THEN loc := loc.This(fn); INC(i) 
+							END
+						UNTIL ch = 0X;
+						MakeDocName(fn);
+						focusLoc := loc;
+						focusFile := fn;
+						IF Files.dir.Old(loc, fn, Files.shared) = NIL THEN Error (* file not found *) END
+					ELSE Error
+					END
+				END
+			ELSIF m = "StdLinks" THEN
+				IF p = "ShowTarget" THEN
+					IF numPar = 1 THEN
+						IF focusLoc # NIL THEN v := Views.OldView(focusLoc, focusFile);
+							IF (v # NIL) & (v IS TextViews.View) THEN rd := v(TextViews.View).ThisModel().NewReader(NIL)
+							ELSE Error; RETURN
+							END
+						ELSE rd := text.NewReader(NIL)
+						END;
+						rd.ReadView(v);
+						WHILE ~rd.eot DO
+							IF v IS StdLinks.Target THEN
+								lnk := v(StdLinks.Target);
+								IF lnk.leftSide THEN lnk.GetIdent(ident);
+									IF ident = par0$ THEN RETURN (* target found *) END
+								END
+							END;
+							rd.ReadView(v)
+						END
+					END;
+					Error
+				END
+			END
+		END CheckLink;
+
+		PROCEDURE Command;
+			VAR left, right: Ident;
+		BEGIN
+			Init(left); Init(right);
+			left := id; Scan;
+			IF type = dot THEN	(* Oberon command *)
+				Scan;
+				IF type = ident THEN
+					right := id; Scan; ParamList();
+					IF res = 0 THEN CheckLink(left, right) END
+				ELSE Error
+				END
+			ELSE Error
+			END
+		END Command;
+
+	BEGIN
+		res := 0; i := 0; type := 0; GetCh; Init(id); x := 0; focusLoc := NIL; focusFile := "";
+		Scan;
+		IF type = ident THEN
+			Command;
+			WHILE (type = semicolon) & (res = 0) DO Scan; Command END;
+			IF type # eot THEN Error END
+		ELSE Error
+		END;
+		RETURN res # 0
 	END Stale;
 
 	PROCEDURE GetCmd (IN path, file: Files.Name; pos: INTEGER; OUT cmd: ARRAY OF CHAR);
@@ -116,7 +255,7 @@ MODULE DevLinkChk;
 
 	PROCEDURE CheckDoc (IN path, file: Files.Name; t: TextModels.Model; VAR f: TextMappers.Formatter;
 										tabs: INTEGER; check: BOOLEAN; VAR hit: BOOLEAN);
-		VAR r: TextModels.Reader; v: Views.View; leftSide, done: BOOLEAN; cmd, cmd0: ARRAY 1024 OF CHAR;
+		VAR r: TextModels.Reader; v: Views.View; cmd, cmd0: ARRAY 1024 OF CHAR;
 			i: INTEGER;
 	BEGIN
 		r := t.NewReader(NIL);
@@ -125,7 +264,7 @@ MODULE DevLinkChk;
 			WITH v: StdLinks.Link DO
 				IF v.leftSide THEN
 					v.GetCmd(cmd);
-					IF (cmd # "") & (~check OR Stale(cmd)) THEN
+					IF (cmd # "") & (~check OR Stale(cmd, t)) THEN
 						hit := TRUE;
 						i := 0; WHILE i # tabs DO f.WriteTab; INC(i) END;
 						GetCmd(path, file, r.Pos() - 1, cmd0);
@@ -251,9 +390,7 @@ MODULE DevLinkChk;
 		v := Views.OldView(loc, bug);
 		IF v # NIL THEN
 			WITH v: TextViews.View DO
-(*
-				v.DisplayMarks(TextViews.show);
-*)
+				(* v.DisplayMarks(TextViews.show); *)
 				Views.Open(v, loc, bug, NIL);
 				c := v.ThisController()(TextControllers.Controller);
 				c.SetCaret(pos);

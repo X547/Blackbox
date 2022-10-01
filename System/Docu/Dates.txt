@@ -20,10 +20,12 @@ DEFINITION Dates;
 	PROCEDURE DayOfWeek (IN d: Date): INTEGER;
 	PROCEDURE DayToDate (n: INTEGER; OUT d: Date);
 	PROCEDURE GetDate (OUT d: Date);
+	PROCEDURE GetDateTime (OUT d: Date; OUT t: Time);
 	PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date);
 	PROCEDURE GetTime (OUT t: Time);
 	PROCEDURE GetUTCBias (OUT bias: INTEGER);
 	PROCEDURE GetUTCDate (OUT d: Date);
+	PROCEDURE GetUTCDateTime (OUT d: Date; OUT t: Time);
 	PROCEDURE GetUTCTime (OUT t: Time);
 	PROCEDURE TimeToString (IN t: Time; OUT str: ARRAY OF CHAR);
 	PROCEDURE ValidDate (IN d: Date): BOOLEAN;
@@ -108,6 +110,9 @@ ValidDate(d) & Day(d) = n
 PROCEUDRE GetDate (OUT d: Date)
 Get the current date.
 
+PROCEUDRE GetDateTime (OUT d: Date; OUT t: Time)
+Get the current date and time by one atomic operation.
+
 PROCEDURE GetEasterDate (year: INTEGER; OUT d: Date)
 Get the Easter date of year.
 
@@ -124,6 +129,9 @@ UTC = Coordinated Universal Time, also known as Greenwich Mean time (GMT).
 
 PROCEDURE GetUTCDate (OUT d: Date);
 Get the UTC date.
+
+PROCEUDRE GetUTCDateTime (OUT d: Date; OUT t: Time)
+Get the UTC date and time by one atomic operation.
 
 PROCEDURE GetUTCTime (OUT t: Time);
 Get the UTC time.

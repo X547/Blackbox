@@ -37,6 +37,7 @@ Layout Editable	Layout Editable
 Left Foot	Left Foot
 Left Head	Left Head
 Link:	Link:
+Links & Targets Docu	Links & Targets Docu
 Move	Move
 Nested	Nested
 Never	Never
@@ -63,6 +64,7 @@ Show Foot	Show Foot
 Size:	&Size:
 Start with new page number 	Start with new page number 
 Tabs	Tabs
+Target:	Target:
 Type:	Type:
 Use Filter:	Use Filter:
 Use Name:	&Use Name:
@@ -99,6 +101,16 @@ StdClocks.StdViewDesc	StdClocks view
 StdLogos.ViewDesc	StdLogos view
 StdStamps.StdViewDesc	StdStamps view
 HeaderChange	Header Change
+
+Link	Link
+Target	Target
+Create Link	Create Link
+Create Target	Create Target
+Reveal Link Command	Reveal Link Command
+Reveal Target Ident	Reveal Target Ident
+LinkChange	Link Change
+Link Call Failed	Link Call Failed
+Target Not Found	target '^0' not found
 links[0]	always
 links[1]	if Shift-Key is pressed
 links[2]	never
@@ -111,8 +123,3 @@ TabViews.View	StdTabViews.InitDialog; StdCmds.OpenToolDialog('Std/Rsrc/TabViews'
 TabSetItem	Set Item
 TabDeleteItem	Delete Item
 Tables.Prop	StdTables.InitDialog; StdCmds.OpenToolDialog('Std/Rsrc/Tables', 'Tables')
-
-Location	Location
-Count	Count
-NoMatchFound	No match found
-Searching	Searching

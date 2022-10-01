@@ -41,7 +41,7 @@ Execute the string (between quotation marks), which must have the form of a Comp
 
 PROCEDURE ShowGlobalVariables
 Guard: TextCmds.SelectionGuard
-Show the global variables of the module whose name is selected.
+Show the global variables of the module whose name is selected. The module name may be either given in full, or by alias if an alias has been defined in the enclosing module's IMPORT statement.
 
 PROCEDURE ShowLoadedModules
 Show the list of all loaded modules. This command can be convenient to determine the modules which should be linked together when building an application.

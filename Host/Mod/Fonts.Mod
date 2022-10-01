@@ -14,7 +14,7 @@ MODULE HostFonts;
 	IMPORT SYSTEM, WinApi, Kernel, Fonts, HostRegistry;
 
 	CONST
-		defSize = 8 * Fonts.point;	(* size of default font *)
+		defSize = 10 * Fonts.point;	(* size of default font *)
 (*
 		grid = 16384;	(* true type design grid *)
 *)

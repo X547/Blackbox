@@ -9,6 +9,7 @@ MODULE HostTextConv;
 	changes	= ""
 	issues	= ""
 
+	For the RTF specification see RTF spec.
 **)
 
 	IMPORT
@@ -24,13 +25,6 @@ MODULE HostTextConv;
 		linkcmd = "Dialog.OpenExternal";
 
 	TYPE
-		Context = POINTER TO RECORD
-			next: Context;
-			dest: INTEGER;
-			uniCnt : INTEGER;
-			attr: TextModels.Attributes;
-			pattr: TextRulers.Attributes
-		END;
 		MemReader = POINTER TO RECORD (Files.Reader)
 			adr, pos: INTEGER
 		END;
@@ -160,20 +154,30 @@ MODULE HostTextConv;
 		TYPE 
 			FontInfo = POINTER TO RECORD id, codePage: INTEGER; f: Fonts.Typeface; next: FontInfo END;
 			ColorInfo = POINTER TO RECORD id: INTEGER; c: Ports.Color; next: ColorInfo END;
-		CONST text = 0; fonttab = 1; colortab = 2; skip = 3; fieldinstr = 4;
-		VAR ch: CHAR; tabStyle: SET;
+			Context = POINTER TO RECORD next: Context;
+				dest, uniCnt: INTEGER; font: FontInfo; attr: TextModels.Attributes; pattr: TextRulers.Attributes
+			END;
+		CONST
+			text = 0; fonttab = 1; colortab = 2; skip = 3; fieldinstr = 4;
+			noFontId = MIN(INTEGER); (* font not defined in \fonttbl *)
+		VAR
+			ch: SHORTCHAR; tabStyle: SET;
 			fact, val, defFont, dest, idx, fnum, cnum, paraPos, i: INTEGER;
 			fonts, font: FontInfo; colors: ColorInfo;
-			hasNum, remPar, skipDest: BOOLEAN;
-			f: Fonts.Font; comm: ARRAY 32 OF CHAR;
+			hasNum, skipDest: BOOLEAN;
+			comm: ARRAY 32 OF CHAR;
 			c, con: Context; p0: Properties.Property; p: TextRulers.Prop;
 			ruler: TextRulers.Ruler;
 			pattr: TextRulers.Attributes;
 			skipCnt, uniCnt : INTEGER;
 			hyperlinkCtx: Context; idx2: INTEGER; fieldStr: ARRAY 1024 OF CHAR; v: Views.View;
-			tableCtx: Context; trgaph: INTEGER;
+			tableCtx: Context; trgaph, ansiCodePage: INTEGER;
 			superOrSubCtx: Context;
-			
+			(* buffer for code-page to Unicode conversion; by buffering we get multi-byte decoding for free *)
+			cpSrc: POINTER TO ARRAY OF SHORTCHAR;
+			cpDst: POINTER TO ARRAY OF CHAR;
+			cpLen, cpPos: INTEGER;
+
 		PROCEDURE Color(i: INTEGER): ColorInfo;
 			VAR c: ColorInfo;
 		BEGIN
@@ -189,51 +193,68 @@ MODULE HostTextConv;
 		BEGIN
 			NEW(ci); ci.id := i; ci.c := c; ci.next := colors; colors := ci
 		END SetColor;
-			
+		
 		PROCEDURE Font(i: INTEGER): FontInfo;
 			VAR f: FontInfo;
 		BEGIN
 			ASSERT(fonts # NIL, 20);
 			f := fonts;
 			WHILE (f # NIL) & (f.id # i) DO f := f.next END;
+			IF (f = NIL) & (i # noFontId) THEN f := Font(noFontId) END;
 			ASSERT(f # NIL, 100);
 			RETURN f
 		END Font;
 		
-		PROCEDURE SetFont(i: INTEGER; tf: Fonts.Typeface);
-			VAR f: FontInfo;
-		BEGIN
-			NEW(f); f.id := i; f.f := tf; f.next := fonts; fonts := f
-		END SetFont;
-		
-		PROCEDURE Next (VAR ch: CHAR);
+		PROCEDURE Next (VAR ch: SHORTCHAR);
 			VAR b: BYTE;
 		BEGIN
-			rd.ReadByte(b); ch := CHR(b MOD 256)
+			rd.ReadByte(b); ch := SHORT(CHR(b))
 		END Next;
 		
-		PROCEDURE Write (ch: CHAR);
-			VAR src: WinApi.PtrSTR; dst: WinApi.PtrWSTR; res: INTEGER;
+		PROCEDURE WriteDest (ch: CHAR);
 		BEGIN
 			IF skipCnt > 0 THEN
 				DEC(skipCnt)
 			ELSIF dest = text THEN
-				IF (font = NIL) OR ( font.codePage = 0)  THEN
-					IF ch < 100X THEN WriteWndChar(wr, ch)
-					ELSE wr.WriteChar(ch)
-					END
-				ELSE
-					src := '01'; src[0] := SHORT(ch); src[1] := 0X;
-					dst := '0123456789';
-					res := WinApi.MultiByteToWideChar(font.codePage, {}, src, 2, dst, 10);
-					IF res = 2 THEN wr.WriteChar(dst[0]) ELSE wr.WriteChar(ch) END
-				END
+				IF ch < 100X THEN WriteWndChar(wr, ch) ELSE wr.WriteChar(ch) END
 			ELSIF dest = fonttab THEN
 				ASSERT(font # NIL, 20);
 				font.f[idx] := ch; INC(idx); font.f[idx] := 0X
 			ELSIF dest = fieldinstr THEN
 				fieldStr[idx2] := ch; INC(idx2); fieldStr[idx2] := 0X
 			END
+		END WriteDest;
+		
+		PROCEDURE WriteCP(ch: SHORTCHAR);
+			VAR s: POINTER TO ARRAY OF SHORTCHAR;
+		BEGIN
+			IF cpPos = cpLen THEN NEW(s, cpLen * 2);
+				SYSTEM.MOVE(SYSTEM.ADR(cpSrc[0]), SYSTEM.ADR(s[0]), cpLen);
+				cpSrc := s; cpLen := LEN(s); NEW(cpDst, cpLen)
+			END;
+			cpSrc[cpPos] := ch; INC(cpPos)
+		END WriteCP;
+		
+		PROCEDURE FlushCP();
+			VAR i, res, cp: INTEGER;
+		BEGIN
+			IF cpPos > 0 THEN
+				IF (font # NIL) & (dest = text) THEN cp := font.codePage ELSE cp := ansiCodePage END;
+				IF cp = 1252 THEN
+					FOR i := 0 TO cpPos - 1 DO WriteDest(cpSrc[i]) END
+				ELSE
+					res := WinApi.MultiByteToWideChar(cp, {}, cpSrc^, cpPos, cpDst^, cpLen);
+					IF res > 0 THEN FOR i := 0 TO res - 1 DO WriteDest(cpDst[i]) END
+					ELSE WriteDest("?"); WriteDest("?")
+					END
+				END;
+				cpPos := 0
+			END
+		END FlushCP;
+		
+		PROCEDURE Write (ch: CHAR);
+		BEGIN
+			FlushCP; WriteDest(ch)
 		END Write;
 		
 		PROCEDURE Paragraph;
@@ -257,11 +278,13 @@ MODULE HostTextConv;
 		END Paragraph;
 		
 	BEGIN
-		defFont := 0; fnum := 1; f := Fonts.dir.Default(); NEW(fonts); fonts.f := f.typeface; skipCnt := 0; uniCnt := 1;
+		NEW(fonts); fonts.id := noFontId; fonts.codePage := 1252; fonts.f := Fonts.dir.Default().typeface;
+		defFont := noFontId; fnum := noFontId; skipCnt := 0; uniCnt := 1;
 		cnum := 1; NEW(colors); SetColor(0, Ports.defaultColor);
-		dest := text; con := NIL; paraPos := 0; remPar := FALSE; skipDest := FALSE;
+		dest := text; con := NIL; paraPos := 0; skipDest := FALSE;
 		defRuler := TextRulers.dir.New(NIL); ruler := defRuler; pattr := defRuler.style.attr; tabStyle := {};
-		hyperlinkCtx := NIL; tableCtx := NIL; superOrSubCtx := NIL;
+		hyperlinkCtx := NIL; tableCtx := NIL; superOrSubCtx := NIL; ansiCodePage := 1252;
+		cpLen := 256; NEW(cpSrc, cpLen); NEW(cpDst, cpLen); cpPos := 0; 			
 		IF WinApi.GetKeyState(WinApi.VK_MENU) < 0 THEN	(*  Alt key, no conversion  *)
 			Next(ch);
 			WHILE ch # 0X DO
@@ -274,20 +297,23 @@ MODULE HostTextConv;
 		Next(ch);
 		WHILE ch # 0X DO
 			IF ch = "{" THEN
-				skipCnt := 0;
-				NEW(c); c.dest := dest; c.attr := wr.attr; c.pattr := pattr; c.uniCnt := uniCnt; c.next := con; con := c;
+				skipCnt := 0; FlushCP;
+				NEW(c); c.dest := dest; c.attr := wr.attr; c.pattr := pattr; c.uniCnt := uniCnt; c.font := font;
+				c.next := con; con := c;
 				Next(ch)
 			ELSIF ch = "}" THEN
-				skipCnt := 0;
+				skipCnt := 0; FlushCP;
 				IF con # NIL THEN
 					IF con = hyperlinkCtx THEN wr.SetPos(wr.Base().Length()); hyperlinkCtx := NIL
 					ELSIF con = superOrSubCtx THEN superOrSubCtx:= NIL
 					END;
-					dest := con.dest; uniCnt := con.uniCnt; wr.SetAttr(con.attr); pattr := con.pattr; con := con.next
+					dest := con.dest; uniCnt := con.uniCnt; font := con.font; wr.SetAttr(con.attr); pattr := con.pattr;
+					con := con.next
 				END;
 				IF con # NIL THEN Next(ch) ELSE ch := 0X END
 			ELSIF ch = "\" THEN
 				Next(ch); i := 0; val := 0;
+				IF ch # "'" THEN FlushCP(); END;
 				IF (ch >= "a") & (ch <= "z") OR (ch >= "A") & (ch <= "Z") THEN
 					WHILE (ch >= "a") & (ch <= "z") OR (ch >= "A") & (ch <= "Z") DO comm[i] := ch; INC(i); Next(ch) END;
 					comm[i] := 0X; fact := 1; hasNum := FALSE;
@@ -317,9 +343,10 @@ MODULE HostTextConv;
 						pattr := TextRulers.ModifiedAttr(pattr, p)
 					(* character attributes *)
 					ELSIF comm = "plain" THEN
+						font := Font(defFont);
 						wr.SetAttr(TextModels.NewWeight(wr.attr, Fonts.normal));
 						wr.SetAttr(TextModels.NewStyle(wr.attr, {}));
-						wr.SetAttr(TextModels.NewTypeface(wr.attr, Font(defFont).f));
+						wr.SetAttr(TextModels.NewTypeface(wr.attr, font.f));
 						wr.SetAttr(TextModels.NewSize(wr.attr, 24 * halfpoint));
 						wr.SetAttr(TextModels.NewColor(wr.attr, Ports.defaultColor));
 						wr.SetAttr(TextModels.NewOffset(wr.attr, 0))
@@ -356,15 +383,30 @@ MODULE HostTextConv;
 					ELSIF comm = "f" THEN
 						IF ~hasNum THEN val := defFont END;
 						IF dest = fonttab THEN 
-							fnum := val; idx := 0; NEW(font); font.id := val; font.next := fonts; fonts := font
+							fnum := val; idx := 0; NEW(font); font.id := val; font.codePage := ansiCodePage;
+							font.next := fonts; fonts := font
 						ELSE 
 							font := Font(val); wr.SetAttr(TextModels.NewTypeface(wr.attr, Font(val).f))
 						END
 					ELSIF comm = 'fcharset' THEN
 						IF hasNum & (dest = fonttab) THEN
 							CASE val OF
-							0, 1, 2, 3: font.codePage := 0	(*  ANSI & Default & Symbol & Invalid -> Unicode  *)
+							| 0: font.codePage := 1252	(* Latin-1 subset of Unicode *)
+							| 1: font.codePage := WinApi.CP_ACP	(* Windows default code page *)
+							| 2: font.codePage := 42	(* Symbol *)
 							| 77: font.codePage := 1252	(*  Mac -> Western European  *)
+							| 78: font.codePage := 10001	(* Mac Shift Jis  *)
+							| 79: font.codePage := 10003	(*  Mac Hangul  *)
+							| 80: font.codePage := 10008	(*  Mac GB2312  *)
+							| 81: font.codePage := 10002	(*  Mac Big5  *)
+							(* | 82:	Mac Johab (old)  *)
+							| 83: font.codePage := 10005	(*  Mac Hebrew  *)
+							| 84: font.codePage := 10004	(*  Mac Arabic  *)
+							| 85: font.codePage := 10006	(*  Mac Greek  *)
+							| 86: font.codePage := 10081	(*  Mac Turkish  *)
+							| 87: font.codePage := 10021	(*  Mac Thai  *)
+							| 88: font.codePage := 10029	(*  Mac East Europe  *)
+							| 89: font.codePage := 10007	(*  Mac Russian  *)
 							| 128: font.codePage := 932	(*  Shift Jis -> Japanese  *)
 							| 129: font.codePage := 949	(*  Hangul -> Korean  *)
 							| 130: font.codePage := 1361	(*  Johab -> Johab  *)
@@ -385,6 +427,8 @@ MODULE HostTextConv;
 							| 254: font.codePage := 437	(*  PC 437 ->  437  United States IBM  *)
 							END
 						END
+					ELSIF comm = 'cpg' THEN
+						IF hasNum & (dest = fonttab) THEN font.codePage := val END
 					ELSIF comm = "fs" THEN
 						IF ~hasNum THEN val := 24 END;
 						IF superOrSubCtx # NIL THEN (* scale down *)
@@ -463,8 +507,10 @@ MODULE HostTextConv;
 						pattr := TextRulers.ModifiedAttr(pattr, p)
 					ELSIF comm = "tqc" THEN
 						tabStyle := {TextRulers.centerTab}
-					ELSIF (comm = "tqr") OR (comm="tqdec") THEN
+					ELSIF comm = "tqr" THEN
 						tabStyle := {TextRulers.rightTab}
+					ELSIF comm = "tqdec" THEN
+						tabStyle := {TextRulers.centerTab, TextRulers.rightTab}
 					ELSIF comm = "tb" THEN
 						p0 := pattr.Prop(); p := p0(TextRulers.Prop);
 						p.valid := {TextRulers.tabs};
@@ -532,7 +578,7 @@ MODULE HostTextConv;
 					ELSIF comm = "loch" THEN
 					ELSIF comm = "ltrch" THEN
 					ELSIF comm = "rtlch" THEN
-					ELSIF comm = "ansicpg" THEN
+					ELSIF comm = "ansicpg" THEN ansiCodePage := val
 					ELSIF comm = "hich" THEN
 					ELSIF comm = "dbch" THEN
 					(* misc *)
@@ -589,7 +635,7 @@ MODULE HostTextConv;
 					IF ch <= "9" THEN val := 16 * val + ORD(ch) - ORD("0")
 					ELSE val := 16 * val + ORD(CAP(ch)) - ORD("A") + 10
 					END;
-					Write(CHR(val)); Next(ch)
+					WriteCP(SHORT(CHR(val))); Next(ch)
 				ELSE
 					IF ch = "~" THEN Write(0A0X)	(* nonbreaking space *)
 					ELSIF ch = "-" THEN Write(0ADX)	(* soft hyphen *)
@@ -600,13 +646,13 @@ MODULE HostTextConv;
 					END;
 					Next(ch)
 				END
-			ELSIF ch = ";" THEN
-				IF dest = fonttab THEN font := Font(fnum); font.f[idx] := 0X; INC(idx)
+			ELSIF ch = ";" THEN FlushCP;
+				IF dest = fonttab THEN font := Font(fnum); ASSERT(font.id # noFontId, 100); font.f[idx] := 0X; INC(idx)
 				ELSIF dest = colortab THEN INC(cnum); SetColor(cnum, 0)
 				ELSIF dest = text THEN Write(";")
 				END;
 				Next(ch)
-			ELSIF ch >= " " THEN
+			ELSIF (ch >= " ") OR (ch = TAB) THEN
 				Write(ch); Next(ch)
 			ELSE 
 				Next(ch)
@@ -663,8 +709,12 @@ MODULE HostTextConv;
 					END;
 					i := 0;
 					WHILE i < rattr.tabs.len DO
-						IF TextRulers.centerTab IN rattr.tabs.tab[i].type THEN w.WriteSString("\tqc") END; 
-						IF TextRulers.rightTab IN rattr.tabs.tab[i].type THEN w.WriteSString("\tqr") END; 
+						IF TextRulers.centerTab IN rattr.tabs.tab[i].type THEN
+							IF TextRulers.rightTab IN rattr.tabs.tab[i].type THEN w.WriteSString("\tqdec") 
+							ELSE w.WriteSString("\tqc")
+							END
+						ELSIF TextRulers.rightTab IN rattr.tabs.tab[i].type THEN w.WriteSString("\tqr")
+						END; 
 						IF TextRulers.barTab IN rattr.tabs.tab[i].type THEN w.WriteSString("\tb") END; 
 						w.WriteSString("\tx"); w.WriteInt(rattr.tabs.tab[i].stop DIV twips);
 						INC(i)
@@ -996,7 +1046,7 @@ MODULE HostTextConv;
 	
 	PROCEDURE ImportUnicode* (f: Files.File; OUT s: Stores.Store);
 		VAR r: Stores.Reader; t: TextModels.Model; v: TextViews.View; w: TextModels.Writer;
-			ch0, ch1: SHORTCHAR; len, res: INTEGER; uc: CHAR; rev: BOOLEAN;
+			ch0, ch1: SHORTCHAR; len: INTEGER; uc: CHAR; rev: BOOLEAN;
 	BEGIN
 		ASSERT(f # NIL, 20);
 		r.ConnectTo(f); r.SetPos(0);

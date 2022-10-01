@@ -12,13 +12,13 @@ MODULE StdLinks;
 **)
 
 	IMPORT Kernel, Services,
-		Stores, Ports, Fonts,  Models, Views, Controllers, Properties, Dialog, Containers,
+		Stores, Ports, Fonts, Models, Views, Controllers, Properties, Dialog, Containers,
 		TextModels, TextMappers, TextViews, TextControllers, TextSetters, TextRulers,
 		Strings, StdCmds;
 
 	CONST
 		kind* = 0; cmd* = 1; close* = 2;	(* constants for Prop.valid *)
-		always* = 0; ifShiftDown* = 1; never* = 2;	(* constants for close attrubute *)
+		always* = 0; ifShiftDown* = 1; never* = 2;	(* constants for close attribute *)
 		minLinkVersion = 0; maxLinkVersion = 2;
 		minTargVersion = 0; maxTargVersion = 1;
 
@@ -67,6 +67,7 @@ MODULE StdLinks;
 			type-: ARRAY 32 OF CHAR;
 			close*: Dialog.List;
 			known, valid: SET;
+			readOnly: BOOLEAN; (* if container is read only *)
 		END;
 		fingerprint: INTEGER;
 
@@ -108,10 +109,9 @@ MODULE StdLinks;
 		VAR op: ChangeAttrOp;
 	BEGIN
 		NEW(op); op.v := v; op.valid := valid;
-		IF close IN valid THEN 
-		op.close := c END;
+		IF close IN valid THEN op.close := c END;
 		IF cmd IN valid THEN NEW(op.cmd, LEN(s)+1); op.cmd^ := s$ END;
-		Views.Do(v,   "#Std:LinkChange", op)
+		Views.Do(v, "#Std:LinkChange", op)
 	END DoChangeAttrOp;
 	
 	PROCEDURE SetProp(v: Views.View; msg: Properties.SetMsg);
@@ -149,8 +149,13 @@ MODULE StdLinks;
 	PROCEDURE InitDialog*;
 		VAR  p: Properties.Property;
 	BEGIN
+		IF (TextControllers.Focus() # NIL) & (Containers.noSelection IN TextControllers.Focus().opts) THEN
+			(* mask mode: dialog cannot be initialized from current selection *)
+			RETURN
+		END;
 		dialog.cmd := ""; dialog.type := ""; dialog.close.index := -1;
 		dialog.known := {}; dialog.valid := {};
+		dialog.readOnly := (TextControllers.Focus() # NIL) & (Containers.noCaret IN TextControllers.Focus().opts);
 		Properties.CollectProp(p);
 		WHILE p # NIL DO
 			WITH p: Prop DO
@@ -173,6 +178,11 @@ MODULE StdLinks;
 		Dialog.Update(dialog)
 	END InitDialog;
 	
+	PROCEDURE SetGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF dialog.readOnly THEN par.disabled := TRUE END
+	END SetGuard;
+	
 	PROCEDURE Set*;
 		VAR p: Prop;
 	BEGIN
@@ -186,6 +196,15 @@ MODULE StdLinks;
 		Properties.EmitProp(NIL, p);
 		fingerprint := 0	(* force actualization of fields *)
 	END Set;
+	
+	PROCEDURE LinkGuard* (VAR par: Dialog.Par);
+	BEGIN
+		IF dialog.known # {} THEN
+			IF close IN dialog.known THEN Dialog.MapString("#Std:Link:", par.label)
+			ELSE Dialog.MapString("#Std:Target:", par.label)
+			END
+		END
+	END LinkGuard;
 	
 	PROCEDURE CmdGuard* (VAR par: Dialog.Par);
 		VAR c: Containers.Controller; v: Views.View; fp: INTEGER;
@@ -209,6 +228,7 @@ MODULE StdLinks;
 		IF ~(close IN dialog.known) THEN par.disabled := TRUE
 		ELSIF ~(close IN dialog.valid) THEN par.undef := TRUE
 		END;
+		IF dialog.readOnly THEN par.readOnly := TRUE END
 	END CloseGuard;
 	
 	PROCEDURE Notifier* (idx, op, from, to: INTEGER);
@@ -299,7 +319,7 @@ MODULE StdLinks;
 		END
 	END GetTargetPair;
 
-	PROCEDURE GetRange (l, r: Link; VAR beg, end: INTEGER);
+	PROCEDURE GetRange (l, r: Views.View; VAR beg, end: INTEGER);
 	BEGIN
 		beg := l.context(TextModels.Context).Pos();
 		end := r.context(TextModels.Context).Pos() + 1
@@ -347,8 +367,8 @@ MODULE StdLinks;
 		VAR left, right: Link;
 	BEGIN GetLinkPair(v, left, right);
 		IF left # NIL THEN
-			IF v.cmd # NIL THEN Reveal(left, right, v.cmd^, "#StdLinks:Reveal Link Command") 
-			ELSE Reveal(left, right, "", "#StdLinks:Reveal Link Command") 
+			IF v.cmd # NIL THEN Reveal(left, right, v.cmd^, "#Std:Reveal Link Command") 
+			ELSE Reveal(left, right, "", "#Std:Reveal Link Command") 
 			END
 		END
 	END RevealCmd;
@@ -357,8 +377,8 @@ MODULE StdLinks;
 		VAR  left, right: Target;
 	BEGIN GetTargetPair(targ, left, right);
 		IF left # NIL THEN
-			IF left.ident # NIL THEN Reveal(left, right, left.ident^, "#StdLinks:Reveal Target Ident")
-			ELSE Reveal(left, right, "", "#StdLinks:Reveal Target Ident")
+			IF left.ident # NIL THEN Reveal(left, right, left.ident^, "#Std:Reveal Target Ident")
+			ELSE Reveal(left, right, "", "#Std:Reveal Target Ident")
 			END
 		END
 	END RevealTarget;
@@ -372,7 +392,7 @@ MODULE StdLinks;
 			IF close & (v.close = ifShiftDown) OR (v.close = always) THEN
 				StdCmds.CloseDialog
 			END;
-			Dialog.Call(v.cmd^, "#StdLinks:Link Call Failed", res) 
+			Dialog.Call(v.cmd^, "#Std:Link Call Failed", res) 
 		END;
 		par := NIL;
 		Kernel.PopTrapCleaner(cleaner)
@@ -390,7 +410,7 @@ MODULE StdLinks;
 		IF in THEN Mark(f, FALSE) END
 	END TrackSingle;
 
-	PROCEDURE TrackRange (v: TextViews.View; f: Views.Frame; l, r: Link; x, y: INTEGER;
+	PROCEDURE TrackRange (v: TextViews.View; f: Views.Frame; l, r: Views.View; x, y: INTEGER;
 												VAR in: BOOLEAN);
 		VAR pos, beg, end: INTEGER; modifiers: SET; in0, isDown: BOOLEAN;
 	BEGIN
@@ -407,7 +427,22 @@ MODULE StdLinks;
 			END
 		END
 	END TrackRange;
-
+	
+	PROCEDURE OpenProperties(l, r: Views.View; c: TextControllers.Controller;
+												IN type, cmd: ARRAY OF CHAR; close: INTEGER; known: SET);
+		VAR beg, end, res: INTEGER; linksProp: ARRAY 256 OF CHAR;
+	BEGIN
+		GetRange(l, r, beg, end); c.SetSelection(beg, end);
+		Dialog.MapString("#Std:Links.Prop", linksProp);
+		Dialog.Call(linksProp, "", res);
+		IF Containers.noSelection IN c.opts THEN (* mask mode: cannot use selection *)
+			Dialog.MapString(type, dialog.type);
+			dialog.cmd := cmd$; dialog.close.index := close; 
+			dialog.known := known; dialog.valid := known; dialog.readOnly := TRUE; fingerprint := 0;
+			Dialog.Update(dialog)
+		END
+	END OpenProperties;
+	
 	PROCEDURE Track (v: Link; f: Views.Frame; c: TextControllers.Controller;
 									x, y: INTEGER; modifiers: SET);
 	(* PRE: (c # NIL) & (f.view.ThisModel() = v.context.ThisModel())  OR  (c = NIL) & (f.view = v) *)
@@ -415,12 +450,17 @@ MODULE StdLinks;
 	BEGIN
 		GetLinkPair(v, l, r);
 		IF l # NIL THEN
+			IF (Controllers.popup IN modifiers) & (c # NIL) THEN c.SetSelection(0, 0) END;
 			IF c # NIL THEN TrackRange(c.view, f, l, r, x, y, in)
 			ELSE TrackSingle(f, in)
 			END;
 			IF in THEN
-				IF (Controllers.modify IN modifiers) & ((c = NIL) OR ~(Containers.noCaret IN c.opts)) THEN
-					RevealCmd(l)
+				IF Controllers.modify IN modifiers THEN
+					IF (Controllers.popup IN modifiers) & (c # NIL) THEN
+						OpenProperties(l, r, c, "#Std:Link", l.cmd, l.close, {kind, cmd, close})
+					ELSIF (c # NIL) & ~(Containers.noCaret IN c.opts) THEN
+						RevealCmd(l) (* for backwards compatibility *)
+					END
 				ELSE
 					CallCmd(l, Controllers.extend IN modifiers)
 				END
@@ -428,11 +468,26 @@ MODULE StdLinks;
 		END
 	END Track;
 
-	PROCEDURE TrackTarget (targ: Target; f: Views.Frame; modifiers: SET);
-		VAR in: BOOLEAN;
+	PROCEDURE TrackTarget (targ: Target; f: Views.Frame; c: TextControllers.Controller;
+											x, y: INTEGER; modifiers: SET);
+		VAR in: BOOLEAN; l, r: Target;
 	BEGIN
-		TrackSingle(f, in);
-		IF in & (Controllers.modify IN modifiers) THEN RevealTarget(targ) END
+		GetTargetPair(targ, l, r);
+		IF l # NIL THEN
+			IF (Controllers.popup IN modifiers) & (c # NIL) THEN c.SetSelection(0, 0) END;
+			IF c # NIL THEN TrackRange(c.view, f, l, r, x, y, in)
+			ELSE TrackSingle(f, in)
+			END;
+			IF in THEN
+				IF (Controllers.modify IN modifiers) & (c # NIL) THEN
+					IF Controllers.popup IN modifiers THEN
+						OpenProperties(l, r, c, "#Std:Target", l.ident, -1, {kind, cmd, close})
+					ELSIF ~(Containers.noCaret IN c.opts) THEN
+						RevealTarget(targ) (* for backwards compatibility *)
+					END
+				END
+			END
+		END
 	END TrackTarget;
 
 	PROCEDURE (v: Link) CopyFromSimpleView- (source: Views.View);
@@ -651,6 +706,8 @@ MODULE StdLinks;
 			msg.fixed := TRUE
 		| msg: TextModels.Pref DO
 			msg.opts := {TextModels.hideable}
+		| msg: TextControllers.FilterPref DO
+			msg.filter := TRUE
 		| msg: TextSetters.Pref DO c := targ.context;
 			IF (c # NIL) & (c IS TextModels.Context) THEN
 				a := c(TextModels.Context).Attr();
@@ -671,35 +728,35 @@ MODULE StdLinks;
 		END
 	END HandlePropMsg;
 
+	PROCEDURE isHot(v: Views.View; f: Views.Frame; leftSide: BOOLEAN; c: TextControllers.Controller;
+									x, y: INTEGER; mod: SET): BOOLEAN;
+		VAR pos, beg, end: INTEGER;
+	BEGIN
+		(* ignore 'pick' (alt, cmd, and middle clicks) in edit mode *)
+		IF ~(Containers.noCaret IN c.opts) & (Controllers.pick IN mod) THEN RETURN FALSE END;
+		pos := ThisPos(c.view, f, x, y);
+		(* ignore clicks in selection *)
+		c.GetSelection(beg, end);
+		IF (end > beg) & (pos >= beg) & (pos <= end) THEN RETURN FALSE END;
+		IF leftSide THEN RETURN pos >= v.context(TextModels.Context).Pos()
+		ELSE RETURN pos <= v.context(TextModels.Context).Pos()
+		END
+	END isHot;
+
 	PROCEDURE (v: Link) HandleCtrlMsg* (f: Views.Frame;
 		VAR msg: Controllers.Message; VAR focus: Views.View);
-
-		PROCEDURE isHot(c: TextControllers.Controller; x, y: INTEGER; mod: SET): BOOLEAN;
-			VAR pos, beg, end: INTEGER;
-		BEGIN
-			(* ignore alt, cmd, and middle clicks in edit mode *)
-			IF ~(Containers.noCaret IN c.opts) & (mod * {17, 27, 28} # {}) THEN RETURN FALSE END;
-			pos := ThisPos(c.view, f, x, y);
-			(* ignore clicks in selection *)
-			c.GetSelection(beg, end);
-			IF (end > beg) & (pos >= beg) & (pos <= end) THEN RETURN FALSE END;
-			IF v.leftSide THEN RETURN pos >= v.context(TextModels.Context).Pos()
-			ELSE RETURN pos < v.context(TextModels.Context).Pos()
-			END
-		END isHot;
-		
 	BEGIN
 		WITH msg: Controllers.PollCursorMsg DO
 			msg.cursor := Ports.refCursor
 		| msg: TextControllers.FilterPollCursorMsg DO
-			IF isHot(msg.controller, msg.x, msg.y, {}) THEN
+			IF isHot(v, f, v.leftSide, msg.controller, msg.x, msg.y, {}) THEN
 				msg.cursor := Ports.refCursor; msg.done := TRUE
 			END
 		| msg: Controllers.TrackMsg DO
 			Track(v, f, NIL, msg.x, msg.y, msg.modifiers)
 		| msg: TextControllers.FilterTrackMsg DO
-			IF isHot(msg.controller, msg.x, msg.y, msg.modifiers) THEN
-				Track(v, f,  msg.controller, msg.x, msg.y, msg.modifiers);
+			IF isHot(v, f, v.leftSide, msg.controller, msg.x, msg.y, msg.modifiers) THEN
+				Track(v, f, msg.controller, msg.x, msg.y, msg.modifiers);
 				msg.done := TRUE
 			END
 		ELSE
@@ -709,7 +766,14 @@ MODULE StdLinks;
 	PROCEDURE (targ: Target) HandleCtrlMsg* (f: Views.Frame; VAR msg: Controllers.Message;
 																		VAR focus: Views.View);
 	BEGIN
-		WITH msg: Controllers.TrackMsg DO TrackTarget(targ, f, msg.modifiers)
+		WITH msg: Controllers.TrackMsg DO
+			TrackTarget(targ, f, NIL, msg.x, msg.y, msg.modifiers)
+		| msg: TextControllers.FilterTrackMsg DO
+			IF (msg.modifiers * {Controllers.extend, Controllers.modify} # {})
+			& isHot(targ, f, targ.leftSide, msg.controller, msg.x, msg.y, msg.modifiers) THEN
+				TrackTarget(targ, f,  msg.controller, msg.x, msg.y, msg.modifiers);
+				msg.done := TRUE
+			END
 		ELSE
 		END
 	END HandleCtrlMsg;
@@ -735,11 +799,11 @@ MODULE StdLinks;
 		VAR rd: TextModels.Reader; i, beg, end: INTEGER;
 			ch0, ch1, ch2: CHAR;
 	BEGIN
-		param[0] := 0X;
+		param[0] := 0X; lbrBeg := -1;
 		IF (c # NIL) & c.HasSelection() THEN
+			rd := c.text.NewReader(NIL);
 			c.GetSelection(beg, end);
 			IF end - beg > 4 THEN
-				rd := c.text.NewReader(NIL);
 				rd.SetPos(beg); rd.ReadChar(ch0);
 				rd.SetPos(end-2); rd.ReadChar(ch1); rd.ReadChar(ch2);
 				IF (ch0 = "<") & (ch1 = "<") & (ch2 = ">") THEN
@@ -752,6 +816,14 @@ MODULE StdLinks;
 					lbrBeg := beg; lbrEnd := rd.Pos();
 					rbrBeg := end -2; rbrEnd := end
 				END
+			END;
+			IF lbrBeg = -1 THEN (* lbrBeg = -1 means selection without syntax*)
+				rd.SetPos(beg); rd.ReadChar(ch0); i := 0;
+				WHILE ~rd.eot & (ch0 # 0X) DO
+					IF i < LEN(param) - 1 THEN param[i] := ch0; INC(i) END;
+					rd.ReadChar(ch0)
+				END;
+				param[i] := 0X;
 			END
 		END
 	END GetParam;
@@ -773,7 +845,7 @@ MODULE StdLinks;
 	END InsertionAttr;
 
 	PROCEDURE CreateLink*;
-		VAR lbrBeg, lbrEnd, rbrBeg, rbrEnd: INTEGER;
+		VAR lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end: INTEGER;
 			left, right: Link; c: TextControllers.Controller;
 			cmd: ARRAY 512 OF CHAR;
 			op: Stores.Operation;
@@ -783,25 +855,42 @@ MODULE StdLinks;
 		GetParam(TextControllers.Focus(), cmd, lbrBeg, lbrEnd, rbrBeg, rbrEnd);
 		IF cmd # "" THEN
 			w := c.text.NewWriter(NIL);
-			Models.BeginScript(c.text, "#StdLinks:Create Link", op);
-			a := InsertionAttr(c, rbrBeg);
-			c.text.Delete(rbrBeg, rbrEnd);
-			right := dir.NewLink("");
-			w.SetPos(rbrBeg);
-			IF a # NIL THEN w.SetAttr(a) END;
-			w.WriteView(right, 0, 0);
-			a := InsertionAttr(c, lbrBeg);
-			c.text.Delete(lbrBeg, lbrEnd);
-			left := dir.NewLink(cmd);
-			w.SetPos(lbrBeg);
-			IF a # NIL THEN w.SetAttr(a) END;
-			w.WriteView(left, 0, 0);
-			Models.EndScript(c.text, op)
+			Models.BeginScript(c.text, "#Std:Create Link", op);
+			IF lbrBeg >= 0 THEN
+				a := InsertionAttr(c, rbrBeg);
+				c.text.Delete(rbrBeg, rbrEnd);
+				right := dir.NewLink("");
+				w.SetPos(rbrBeg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				w.WriteView(right, 0, 0);
+				a := InsertionAttr(c, lbrBeg);
+				c.text.Delete(lbrBeg, lbrEnd);
+				left := dir.NewLink(cmd);
+				w.SetPos(lbrBeg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				w.WriteView(left, 0, 0)
+			ELSE (* selection is unformatted and used as link text *)
+				c.GetSelection(beg, end);
+				a := InsertionAttr(c, beg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				right := dir.NewLink("");
+				w.SetPos(end);
+				w.WriteView(right, 0, 0);
+				left := dir.NewLink("dummy");
+				left.cmd[0] := 0X;
+				w.SetPos(beg);
+				w.WriteView(left, 0, 0);
+				a := TextModels.NewColor(w.attr, Ports.blue);
+				a := TextModels.NewStyle(a, a.font.style + {Fonts.underline});
+				c.text.SetAttr(beg + 1, end + 1, a)
+			END;
+			Models.EndScript(c.text, op);
+			IF lbrBeg < 0 THEN OpenProperties(left, right, c, "#Std:Link", left.cmd, ifShiftDown, {kind..close}) END
 		END
 	END CreateLink;
 
 	PROCEDURE CreateTarget*;
-		VAR lbrBeg, lbrEnd, rbrBeg, rbrEnd: INTEGER;
+		VAR lbrBeg, lbrEnd, rbrBeg, rbrEnd, beg, end: INTEGER;
 			left, right: Target; c: TextControllers.Controller;
 			ident: ARRAY 512 OF CHAR;
 			op: Stores.Operation;
@@ -811,20 +900,34 @@ MODULE StdLinks;
 		GetParam(TextControllers.Focus(), ident, lbrBeg, lbrEnd, rbrBeg, rbrEnd);
 		IF ident # "" THEN
 			w := c.text.NewWriter(NIL);
-			Models.BeginScript(c.text, "#StdLinks:Create Target", op);
-			a := InsertionAttr(c, rbrBeg);
-			c.text.Delete(rbrBeg, rbrEnd);
-			right := dir.NewTarget("");
-			w.SetPos(rbrBeg);
-			IF a # NIL THEN w.SetAttr(a) END;
-			w.WriteView(right, 0, 0);
-			a := InsertionAttr(c, lbrBeg);
-			c.text.Delete(lbrBeg, lbrEnd);
-			left := dir.NewTarget(ident);
-			w.SetPos(lbrBeg);
-			IF a # NIL THEN w.SetAttr(a) END;
-			w.WriteView(left, 0, 0);
-			Models.EndScript(c.text, op)
+			Models.BeginScript(c.text, "#Std:Create Target", op);
+			IF lbrBeg >= 0 THEN
+				a := InsertionAttr(c, rbrBeg);
+				c.text.Delete(rbrBeg, rbrEnd);
+				right := dir.NewTarget("");
+				w.SetPos(rbrBeg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				w.WriteView(right, 0, 0);
+				a := InsertionAttr(c, lbrBeg);
+				c.text.Delete(lbrBeg, lbrEnd);
+				left := dir.NewTarget(ident);
+				w.SetPos(lbrBeg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				w.WriteView(left, 0, 0)
+			ELSE (* selection is unformatted and used as target text *)
+				c.GetSelection(beg, end);
+				a := InsertionAttr(c, beg);
+				IF a # NIL THEN w.SetAttr(a) END;
+				right := dir.NewTarget("");
+				w.SetPos(end);
+				w.WriteView(right, 0, 0);
+				left := dir.NewTarget("dummy");
+				left.ident[0] := 0X;
+				w.SetPos(beg);
+				w.WriteView(left, 0, 0);
+			END;
+			Models.EndScript(c.text, op);
+			IF lbrBeg < 0 THEN OpenProperties(left, right, c, "#Std:Target", left.ident, -1, {kind, cmd}) END
 		END
 	END CreateTarget;
 
@@ -845,10 +948,10 @@ MODULE StdLinks;
 					c.SetSelection(beg, end);
 					c.view.SetOrigin(beg, 0)
 				ELSE
-					Dialog.ShowParamMsg("target '^0' not found", ident, "", "")
+					Dialog.ShowParamMsg("#Std:Target Not Found", ident, "", "")
 				END
 			ELSE
-				Dialog.ShowParamMsg("target '^0' not found", ident, "", "")
+				Dialog.ShowParamMsg("#Std:Target Not Found", ident, "", "")
 			END
 		END
 	END ShowTarget;

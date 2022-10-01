@@ -15,8 +15,15 @@ DEFINITION TextCmds;
 				notInside, joinPara: BOOLEAN
 			END
 		END;
+		tabulator: RECORD 
+			style: INTEGER;
+			radixChar: ARRAY 2 OF CHAR;
+			pos: ARRAY 7 OF CHAR;
+			verticalBar: BOOLEAN
+		END;
 
 	PROCEDURE InitFindDialog;
+	PROCEDURE ResetFindDialog;
 	PROCEDURE SetNormalOrientation;
 	PROCEDURE SetReverseOrientation;
 	PROCEDURE FindFirst (option: ARRAY OF CHAR);
@@ -54,17 +61,28 @@ DEFINITION TextCmds;
 	PROCEDURE MakeDefaultRulerGuard (VAR par: Dialog.Par);
 	PROCEDURE ToggleMarksGuard (VAR par: Dialog.Par);
 
+	PROCEDURE TabGuard (VAR par: Dialog.Par);
+	PROCEDURE TabNumGuard (VAR par: Dialog.Par);
+	PROCEDURE TabUnitGuard (VAR par: Dialog.Par);
+	PROCEDURE DecTabGuard (VAR par: Dialog.Par);
+	PROCEDURE NextTabGuard (VAR par: Dialog.Par);
+	PROCEDURE PrevTabGuard (VAR par: Dialog.Par);
+	PROCEDURE NextTab;
+	PROCEDURE PrevTab;
+	PROCEDURE SetTab;
+	PROCEDURE CloseTab;
+
 END TextCmds.
 
 Command package for text views. A possible menu using commands from this package:
 
 MENU "Text" ("TextViews.View")
 	"&Find / Replace..."	"F"	"TextCmds.InitFindDialog; StdCmds.OpenToolDialog('Text/Rsrc/Cmds', 'Find / Replace')"	""
-	"Find &Again"	"F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~I~B~E~R')"		"TextCmds.FindAgainGuard"
-	"Find &Previous"	"*F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~I~B~ER')"		"TextCmds.FindAgainGuard"
-	"Find &Previous"	"F2"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~I~B~ER')"		"TextCmds.FindAgainGuard"
-	"Find First"	"F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~I~B~E~R')"		"TextCmds.FindAgainGuard"
-	"Find Last"	"*F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~I~B~ER')"		"TextCmds.FindAgainGuard"
+	"Find &Again"	"F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('~R')"		"TextCmds.FindAgainGuard"
+	"Find &Previous"	"*F3"	"TextCmds.InitFindDialog; TextCmds.FindAgain('R')"		"TextCmds.FindAgainGuard"
+	"Find &Previous"	"F2"	"TextCmds.InitFindDialog; TextCmds.FindAgain('R')"		"TextCmds.FindAgainGuard"
+	"Find First"	"F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('~R')"		"TextCmds.FindAgainGuard"
+	"Find Last"	"*F4"	"TextCmds.InitFindDialog; TextCmds.FindFirst('R')"		"TextCmds.FindAgainGuard"
 	SEPARATOR
 	"Shift &Left"		""	"TextCmds.ShiftLeft"	"TextCmds.EditGuard"
 	"Shift &Right"		""	"TextCmds.ShiftRight"	"TextCmds.EditGuard"
@@ -101,7 +119,6 @@ Determine whether searching should be restricted to word beginnings, word ending
 
 reverseOrientation: BOOLEAN
 Determines the search orientation, normal (forward) or reverse (backward).
-This flag is considered by all search operations.
 
 
 VAR ruler: RECORD
@@ -117,8 +134,27 @@ joinPara: BOOLEAN
 If set, this option prevents a page break between the text controlled by this ruler and the text controlled by the next ruler. (If there is no next ruler, this option has no effect.) As with the notInside option, if the text controlled by this option does not fit onto a single page, it will be broken across pages anyway.
 
 
+VAR tabulator: RECORD
+This is the interactor for the dialog popped up when editing a tabulator by right-clicking a tabulator mark in a ruler.
+
+style: INTEGER;
+The alignment style of the tabulator where 0 means left adjusted, 1 means centered, 2 means right adjusted and 3 means a decimal tab.
+
+radixChar: ARRAY 2 OF CHAR;
+The alignment character to be used for a decimal tab.
+
+pos: ARRAY 7 OF CHAR;
+The tab stop position with 2 fractional digits either in cm (if Dialog.metricSystem) or inch.
+
+verticalBar: BOOLEAN
+The vertical bar option of a tab.
+
+
 PROCEDURE InitFindDialog
-This initialization command sets up the find.find interactor field with the current text selection; if there is no current selection, find.find is left unmodified. Whenever InitFindDialog actually modifies find.find, it also resets the search options find.ignoreCase, find.wordBeginsWith, and find.wordEndsWith to FALSE. It is useful to call this command before calling one of the searching commands (FindFirst, FindAgain) or opening the Find & Replace dialog.
+This initialization command sets up the find.find interactor field with the current text selection; if there is no current selection, find.find is left unmodified. Whenever InitFindDialog actually modifies find.find, it also resets the search options find.ignoreCase, find.wordBeginsWith, find.wordEndsWith and find.reverseOrientation to FALSE. It is useful to call this command before calling one of the searching commands (FindFirst, FindAgain) or opening the Find & Replace dialog.
+
+PROCEDURE ResetFindDialog
+This initialization command resets the search string and search options to default values. find.find is cleared and find.ignoreCase, find.wordBeginsWith, find.wordEndsWith and find.reverseOrientation are set to FALSE.
 
 PROCEDURE SetNormalOrientation
 Resets reverseOrientation to FALSE.
@@ -252,3 +288,23 @@ This guard disables the current menu item if the current focus is not a text vie
 
 PROCEDURE ToggleMarksGuard (VAR par: Dialog.Par)
 This guard disables the current menu item if the current focus isn't a text view. Furthermore it sets up the correct string of the item (Show Marks / Hide Marks).
+
+PROCEDURE TabGuard (VAR par: Dialog.Par);
+PROCEDURE TabNumGuard (VAR par: Dialog.Par);
+PROCEDURE TabUnitGuard (VAR par: Dialog.Par);
+PROCEDURE DecTabGuard (VAR par: Dialog.Par);
+PROCEDURE NextTabGuard (VAR par: Dialog.Par);
+PROCEDURE PrevTabGuard (VAR par: Dialog.Par);
+Guard procedures for the tabulator dialog.
+
+PROCEDURE NextTab;
+Switch the dialog to the next tab to the right if any.
+
+PROCEDURE PrevTab;
+Switch the dialog to the next tab to the left if any.
+
+PROCEDURE SetTab;
+Apply the current settings to the edited tab.
+
+PROCEDURE CloseTab;
+Close the tabulator dialog.

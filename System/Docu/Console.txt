@@ -1,0 +1,44 @@
+Console
+
+DEFINITION Console;
+
+	PROCEDURE Open;
+	PROCEDURE ReadLn (OUT line: ARRAY OF CHAR);
+	PROCEDURE WriteChar (ch: CHAR);
+	PROCEDURE WriteStr (IN str: ARRAY OF CHAR);
+	PROCEDURE WriteInt (i: LONGINT);
+	PROCEDURE WriteLn;
+
+END Console.
+
+Module Console provides console based input and output operations. It supports reading from the standard input stream and writing to the standard output stream. If the platform's console does not support Unicode (e.g. under Windows), non-ASCII characters are translated to resp. from the platform's default encoding.
+
+
+PROCEDURE Open
+Open a new console window unless a console is already open. All Read and Write operations implicitly execute Open.
+
+
+PROCEDURE ReadLn (OUT line: ARRAY OF CHAR)
+Wait for input on the standard input stream until the input is terminated (under Windows by pressing RETURN) and return the input in line without the line termination character(s).
+
+
+PROCEDURE WriteChar (ch: CHAR)
+Write the single character ch to the standard output stream.
+
+
+PROCEDURE WriteStr (IN str: ARRAY OF CHAR)
+Write the zero-terminated string str to the standard output stream.
+
+
+PROCEDURE WriteInt (i: LONGINT);
+Write integer i as a decimal number without any padding to the standard output stream.
+
+
+PROCEDURE WriteLn
+Write an end-of-line character or character sequence to the standard output stream.
+
+
+Example:
+
+	
+	

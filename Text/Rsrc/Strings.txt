@@ -88,3 +88,17 @@ TextModels.StdModel	standard Text model
 TextControllers.StdCtrl	standard Text controller
 
 Rulers.Prop	TextCmds.InitRulerDialog; StdCmds.OpenToolDialog('Text/Rsrc/Cmds1', '#Text:RulerSettings')
+
+TabTitle	Tabulator Settings
+TabDocu	Tabulator Settings Docu
+TabNum	Tabulator ^0
+TabAlignment	Alignment
+TabLeft	Left
+TabCenter	Center
+TabRight	Right
+TabDecimal	Decimal
+TabPosition	Position
+TabVerticalBar	Vertical Bar
+TabUnitCm	cm
+TabUnitInch	inch
+TabErr1	To rearrange or delete a tabulator please click and drag the tabulator mark in the ruler.

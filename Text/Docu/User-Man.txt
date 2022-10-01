@@ -15,7 +15,7 @@ Contents
 10	Text rulers
 11	Texts as information environments
 12	Editor and browser modes
-13	Summary of keyboard shortcuts
+13	Summary of mouse and keyboard shortcuts
 14	Windows user interface guidelines
 15	Text preferences
 
@@ -35,17 +35,17 @@ As for other applications, the File menu is used for these purposes. To open a d
 
 2 Basic editing
 
-BlackBox text views either display a selection or an insertion point (the caret). Text stretches are selected by clicking at one end of the stretch and then moving the cursor over the stretch to the other end. Words may be selected by doubleclicking them. Double clicking outside of a text view to the left or right of a line can be used to select whole lines. Also, an existing selection may be extended or reduced by holding down the shift key when clicking. Typed text appears at the caret if there is one, otherwise it replaces the selection. The delete key either clears the selected text, or deletes the character at the caret position.
+BlackBox text views either display a selection or an insertion point (the caret). Text stretches are selected by clicking at one end of the stretch and then moving the cursor over the stretch to the other end. Words may be selected by doubleclicking them. Double clicking outside of a text view to the left or right of a line can be used to select whole lines. Also, an existing selection may be extended or reduced by holding down the Shift key when clicking. Typed text appears at the caret if there is one, otherwise it replaces the selection. The delete key either clears the selected text, or deletes the character at the caret position.
 The attributes of selected text can be modified using the Attributes menu. In addition to these system attributes, texts also support vertical offsets of individual characters. These can be manipulated using the commands Superscript and Subscript in menu Text.
-Sometimes it is useful to view two or more portions of the same text simultaneously in different windows, e.g., to make a large selection by setting the caret in one view to the start of the stretch to be selected and then shiftclicking at the end of that stretch in the other view.
+Sometimes it is useful to view two or more portions of the same text simultaneously in different windows, e.g., to make a large selection by setting the caret in one view to the start of the stretch to be selected and then Shiftclicking at the end of that stretch in the other view.
 Use the Window->New Window command to open an additional window which shows the same document as the front window.
 
 
 3 Navigation keys
 
-Arrow keys can be used to move the caret to the left, right, upwards, or downwards. If the ctrl key is pressed before the left/right arrow key, the caret is moved by word, not by character. If the ctrl key is pressed before the up/down arrow key, the caret is moved by paragraph, not by line.
-If the shift key is used in combination with any navigation key, the current selection (or caret) is extended or shrunk accordingly. ctrl and shift keys may be used together as well.
-The Page Up and Page Down keys move the caret one page up or down. If used with the ctrl key, the caret is moved one page left or right. Finally, the Home and End keys are used to move the caret to the beginning or end of the current line, or to the beginning or end of the document, if combined with the ctrl key.
+Arrow keys can be used to move the caret to the left, right, upwards, or downwards. If the Ctrl key is pressed before the left/right arrow key, the caret is moved by word, not by character. If the Ctrl key is pressed before the up/down arrow key, the caret is moved by paragraph, not by line.
+If the Shift key is used in combination with any navigation key, the current selection (or caret) is extended or shrunk accordingly. Ctrl and Shift keys may be used together as well.
+The Page Up and Page Down keys move the caret one page up or down. If used with the Ctrl key, the caret is moved one page left or right. Finally, the Home and End keys are used to move the caret to the beginning or end of the current line, or to the beginning or end of the document, if combined with the Ctrl key.
 The navigation keys can be used to scroll the document without moving the caret by activating the Scroll Lock option on the keyboard.
 
 
@@ -53,7 +53,7 @@ Arrow keys can be used to move the caret to the left, right, upwards, or downwar
 
 When clicking into an already selected text stretch without moving the cursor out of that selection, the selection is removed and the caret set instead. However, by moving the cursor out of the text selection while still holding down the mouse button, the selected text stretch is dragged to another place. When releasing the mouse button over a suitable position, the selected stretch is dropped.
 If the target is not able to consume a text stretch at that position, the cursor changes to a stop sign and nothing happens. To cancel a drop operation, move the cursor to a location where the stop sign appears, or press the esc key.
-By dragging a piece of text and dropping it to a new place, the text piece is moved to the new place. By holding down the ctrl key when the mouse button is released, the dropped piece becomes a copy of the dragged one: a copy of the selected piece is inserted at the new place. A copy can also be achieved by pressing the right mouse button as a modifier of the drag & drop operation.
+By dragging a piece of text and dropping it to a new place, the text piece is moved to the new place. By holding down the Ctrl key when the mouse button is released, the dropped piece becomes a copy of the dragged one: a copy of the selected piece is inserted at the new place. A copy can also be achieved by pressing the right mouse button as a modifier of the drag & drop operation.
 Drag & drop works across applications, i.e., between BlackBox and any other application which supports OLE drag & drop. If the other application understands RTF (Rich Text Format), then the text attributes are retained during copying.
 Drag & drop of a singleton (see below) result in inserting the whole singleton as a view. No merge occurs. For example, a text view singleton which is dropped into another text is not merged, but inserted as a view.
 
@@ -80,21 +80,21 @@ So far, the discussed features have been mainstream features of programming lang
 
 7 Drag & pick
 
-A novel feature of the BlackBox Component Framework is the capability to drag a selected object to another place in order to pick up attributes. The text system uses this facility to support setting the text attributes of a selected piece of text to those used by any other visible text stretch. To drag & pick, hold down the alt key while you start dragging. Then move the cursor to a similar object with the desired attributes. After releasing the button, the attributes of the selected object(s) are overwritten by the corresponding attributes of the object where the button was released. Like drag & drop, drag & pick also works across windows.
+A novel feature of the BlackBox Component Framework is the capability to drag a selected object to another place in order to pick up attributes. The text system uses this facility to support setting the text attributes of a selected piece of text to those used by any other visible text stretch. To drag & pick, hold down the Alt key while you start dragging (or, alternatively, use the middle mouse button). Then move the cursor to a similar object with the desired attributes. After releasing the button, the attributes of the selected object(s) are overwritten by the corresponding attributes of the object where the button was released. Like drag & drop, drag & pick also works across windows.
 
 
 8 Text views as containers
 
 A text may contain arbitrary BlackBox views, directly floating in the stream of characters. For example, the current time is displayed by a standard clock view: .
-Not only simple and small views like the above clock may float in a text; any view is possible. About thirty lines below you can see a text view embedded in this text; the embedded text view itself contains two other text views.
-To see where there are embedded views in a window, you can click anywhere in white space while holding down the alt key.
+Not only simple and small views like the above clock may float in a text; any view is possible. About twenty lines below you can see a text view embedded in this text; the embedded text view itself contains another text view.
+To see where there are embedded views in a window, you can click anywhere in white space while holding down both the Shift and the Alt key (or, alternatively, use the Shift key and the middle mouse button).
 A container view is a view which may contain arbitrary other views; text views are examples of container views. A container view contains intrinsic contents (in this case, text pieces), and views. Both intrinsic contents and views may be selected, e.g., if you are reading this text on-line, you may select all its contents, including all the text and the various views floating in it (try Edit->Select All). However, at times you may want to select exactly one view, which is then called a singleton. Singletons show in a distinguished way that they are selected: with an outline around the view, and with handles if the view is resizable.
 The view which contains the current selection, or the caret, is called the current focus. Except for the outermost view, the focus and all the views in which it is contained show focus borders. Note that a focus is not a selection, rather it contains the selection (if there is any).
 Focus borders consist of a hatched frame around a view. A focus can be turned into a singleton by pressing the esc key. If the view contains a selection, pressing esc removes the selection, thus a second press of esc is necessary to turn the focus into a singleton. Shift-esc can be used to defocus with a single key press.
 If several views are nested, the user can focus the innermost simply by clicking into it. This mechanism of directly clicking into the contents of an embedded view is called inside-out activation. It is especially handy when dealing with views nested several levels deep:.
-Of course, sometimes it is necessary to edit the text surrounding an embedded view. For example, selecting the embedded view itself, instead of selecting something inside the embedded view, makes it necessary to disable inside-out activation. This can be done by holding down the alt key when clicking. To select the outermost text view embedded in a document, use the command Edit->Select Document. Note that this is different from Edit->Select All, which merely selects the focus' contents. In a container, the focusing of embedded views can be prevented altogether, by using the Dev->Layout Mode command. This can be convenient in a graphical container which is meant for layout editing, e.g., in the forms editor used for dialog box layouts.
-An embedded view can be resized if the container allows it. To resize such a view, it needs to be selected first, as a singleton. Once it is selected, graphical handles appear that can be dragged to interactively resize the view. The view may enforce constraints on legal sizes - this is immediately visible while resizing the view. By holding down the shift key when resizing, two opposite handles can be dragged simultaneously, effectively turning the resize into a move in the area of the containing view. (For some containers, such as text, free moving does not make sense. In this case the move operation will have no visible effect.)
-To scroll a focused embedded view, hold down the ctrl key when the cursor is over a scroll bar.
+Of course, sometimes it is necessary to edit the text surrounding an embedded view. For example, selecting the embedded view itself, instead of selecting something inside the embedded view, makes it necessary to disable inside-out activation. This can be done by holding down the Alt key when clicking  (or, alternatively, by using the middle mouse button). To select the outermost text view embedded in a document, use the command Edit->Select Document. Note that this is different from Edit->Select All, which merely selects the focus' contents. In a container, the focusing of embedded views can be prevented altogether, by using the Dev->Layout Mode command. This can be convenient in a graphical container which is meant for layout editing, e.g., in the forms editor used for dialog box layouts.
+An embedded view can be resized if the container allows it. To resize such a view, it needs to be selected first, as a singleton. Once it is selected, graphical handles appear that can be dragged to interactively resize the view. The view may enforce constraints on legal sizes - this is immediately visible while resizing the view. By holding down the Shift key when resizing, two opposite handles can be dragged simultaneously, effectively turning the resize into a move in the area of the containing view. (For some containers, such as text, free moving does not make sense. In this case the move operation will have no visible effect.)
+To scroll a focused embedded view, hold down the Ctrl key when the cursor is over a scroll bar.
 Note that the clipboard supports two different paste operations, namely Edit->Paste and Edit->Paste Object. While Edit->Paste tries to merge the clipped model (the data structure displayed by the view in the clipboard) into the destination, Edit->Paste Object always pastes the entire view, creating an embedded view. Edit->Paste succeeds in merging clipped and destination model, if both are of the same kind. (For example, a text stretch copied into the clipboard is actually carried by a text view held by the clipboard. When pasting into another text, the text view in the clipboard is ignored and the clipped text is directly inserted into the destination text.) If on the other hand the models of clipboard and focus are incompatible, Edit->Paste operates the same way as Edit->Paste Object.
 Drag & drop always follows the semantics of Edit->Paste, i.e., it tries to merge the dragged object into the drop target. (This is the common case when moving model pieces around within a view.) In order to avoid merging of objects, the clipboard can be used: Edit->Cut and Edit->Paste Object or Edit->Copy and Edit->Paste Object instead of drag & drop.
 In addition to Edit->Paste Object, the command Edit->Paste to Window can be used to open a new document containing a copy of the view currently in the clipboard.
@@ -115,8 +115,9 @@ The most prominent textaware views that affect text setting are TextRulers. Ev
 At the left end there are three icons to adjust the line grid, where clicking the left icon decrements, and clicking the right icon increments, the line grid. Between these two icons the actual line grid setting is shown in points; a value of 0 signals that the line grid has been disabled. This icon can be selected to set the line grid directly using the size entries in the Attributes menu. A double-click on the icon opens a Size dialog box. By default, the line grid is disabled (set to 0).
 Note that enabling a line grid can have unexpected results, especially if you successively increment or decrement it by clicking on the line grid icons. Since lines are always forced to lie on the grid, without overlapping each other, small changes of the line grid or of the font size may force a line to jump one whole line up or down.
 The next four icons allow to set the formatting mode. Possible modes are: flush left, centered, flush right, and fully justified. The current mode's icon is highlighted. The next icon triple allows adjustment of the lead space inserted before every paragraph. A double-click on the middle icon opens a Size dialog box for that purpose. Note that new paragraphs are created by inserting either a ruler or a PARA character. A plain LINE character (inserted using the return key) does not begin a new paragraph! Finally, the last icon can be used to force a page break just before the ruler when printing. Pages are not printed if they are empty, i.e., at least a space character must be on a page for it to be printed.
-The tab stop and margin marking bar supports direct manipulation of its components. Two triangles at the left end are used to control the indentation of the first line of every paragraph (upper triangle) and the left margin (lower triangle). A triangle at the right end controls the right margin. Small uppointing triangles show positions of tabulator stops; a line under a tab stop triangle indicates the adjustment mode of that tab stop. New tab stops can be set by clicking into empty areas of the marking bar; old tab stops or the right margin can be removed by dragging them out of the ruler. Single tab stops can be moved by dragging them; all tabs stops to the right of and including the dragged one can be moved simultaneously by holding down the ctrl key while dragging.
-Successive clicking on a tab icon changes it cyclically from the default right-aligned tab to a centered tab to a left-aligned tab back to a right-aligned tab. Successive ctrl-clicking on a tab icon toggles it from a normal tab to a bar tab and back again. Bar tabs show the tab position by a vertical bar.
+The tab stop and margin marking bar supports direct manipulation of its components. Two triangles at the left end are used to control the indentation of the first line of every paragraph (upper triangle) and the left margin (lower triangle). A triangle at the right end controls the right margin. L, inverted L and inverted T shapes show positions of tabulator stops and the adjustment mode of that tab stop. New tab stops can be set by clicking into empty areas of the marking bar; old tab stops or the right margin can be removed by dragging them out of the ruler. Single tab stops can be moved by dragging them; all tabs stops to the right of and including the dragged one can be moved simultaneously by holding down the Ctrl key while dragging.
+Successive clicking on a tab icon changes it cyclically from the default left-aligned mode to centered, right-aligned, decimal, and back to left-aligned. Successive ctrl-clicking on a tab icon toggles it from a normal tab to a bar tab and back again. Bar tabs show the tab position by a vertical bar.
+Clicking the right mouse button on a tab opens a tabulator dialog that allows for specifying a non-default alignment character of a decimal tab and setting the tab stop position with greater precision.
 Note that when a user enters a TAB character in a paragraph where there are no tab stops defined to the right side of the insertion point, the tab is interpreted as a fixed-size space. In other words: it doesn't hurt to enter TABs when no tab stops are defined; the text system defaults to a reasonable behavior in this case.
 The text system uses an invisible default ruler where no specific ruler has been selected. To change the default ruler of a document, select a ruler which has the desired attributes, and then executed Text->Make Default Ruler. This allows (even for empty text documents) to set up template texts with the right attributes. For example, suitable tab stops could be set up in such a template text.
 Double-clicking anywhere in the passive area, or between icons in the icon bar, opens an auxiliary dialog box that can be used to set ruler options that are not normally dealt with manually. Currently, two such options are controlled by this dialog, both of which affect the way text is broken across pages. The first option, avoid page breaks inside, asks the text setting mechanism to attempt to avoid a page break in the text between this and the next ruler (or the end of the text). If the text is longer than one page, a page break will occur anyway. The second option, keep together with next, asks for avoidance of page breaks between the text following this ruler and the text following the next ruler. (This option has no effect if this ruler is the last one in the text.) Again, a page break will occur if the resulting text block would exceed the length of one page.
@@ -124,14 +125,15 @@ Note that when a user enters a TAB character in a paragraph where there are no t
 
 11 Texts as information environments
 
-The whole on-line documentation of BlackBox can be accessed by starting from the Help dialog box, following hyperlinks such as this one. The Help can be reached over the Help menu.
-If you click on a blue underlined text stretch with the mouse, a command is executed which opens another document, in this case the documentation of the standard link views. Hyperlinks allow the construction of arbitrary webs of information. Such a web can be customized for one's own use, in effect creating one's own information environment. To help structure a single text document, text stretches can be folded together in a hierarchical fashion, like here:
+The whole on-line documentation of BlackBox can be accessed by starting from the Help dialog box, following hyperlinks such as this one. The Help dialog box can be reached over the Help menu.
+If you click on a hyperlink text stretch with the mouse, a command is executed which, for example, opens another document. In the above case the documentation of the standard link views is opened. Hyperlinks allow the construction of arbitrary webs of information. Such a web can be customized for one's own use, in effect creating one's own information environment. In order to inspect or edit the properties of a hyperlink hold down the Ctrl key and click with the right mouse button on the link or select the link(s) and execute the Properties context menu item. While BlackBox links can execute any command in principle, they are typically used for opening another document, for scrolling to a specific position with a document, or for opening an external tool such as a web browser for a given URL. For more details about the properties of links and targets see Links & Targets.
+To help structure a complex text document, text stretches can be folded together in a hierarchical fashion, like here:
 	This is a collapsed fold
 If you click on one of the arrow symbols, the text is expanded into: 
-This is an expanded fold. Folded texts are delimited by fold views, which are represented as arrows.
+	This is an expanded fold. Folded texts are delimited by fold views, which are represented as arrows with a plus (collapsed fold) or minus (expanded fold) inside.
 
 
-12 Editor and browser modes
+12 Editor and browser modes
 
 Texts can be used in two different modes. Normally, a text is used in edit mode, i.e., it can be freely edited. Texts are saved in edit mode, and opened in document windows.
 For hypertext documentation, a text can be opened in browser mode instead, in an auxiliary window. Such a text cannot be modified. However, its contents may be selected. The selection can be used to invoke commands on it, e.g., a find (but not a replace) command. Also, a selection may be copied into another document through drag & drop.
@@ -150,11 +152,35 @@ The command is usually used in link views.
 See also StdLinks and StdCmds.
 
 
-13 Summary of keyboard shortcuts
+13 Summary of mouse and keyboard shortcuts
 
-Besides the keyboard equivalents defined for the various menu commands, the following key or key combination can be used:
+The following functions can be executed by means of mouse-clicks, combinations of mouse buttons, or key/mouse combinations:
+
+Function	Mouse combination	Constraint
+set caret, select text	mouse-left	outside selection
+select word	mouse-left double click	show popup menu
+extend selection	shift + mouse-left
+show popup menu	mouse-right
+drag-and-move	mouse-left	start inside selection
+drag-and-copy	ctrl + mouse-left	start inside selection
+	mouse-left + mouse-right
+drag-and-drop	mouse-right	start inside selection
+drag-and-pick	alt + mouse-left	start inside selection
+	mouse-middle
+show views	shift + alt + mouse-left	outside selection
+	shift + mouse-middle
+select embedded view	alt + mouse-left	inside embedded view
+	mouse-middle
+follow link	mouse-left	inside link
+follow link and close	shift + mouse-left	inside link; depends on Close property
+show link properties	ctrl + mouse-right	inside link
+show target properties	ctrl + mouse-right	inside target
+show internal window data	shift + ctrl + mouse-middle	for developers only
+show internal frame data	shift + alt + mouse-middle	for developers only
+
+Besides the keyboard equivalents defined for the various menu commands, the following keys or key combinations can be used:
+
 Function	Key / Key combination
-
 OK / default button	return or enter
 cancel button	esc
 deselect	esc

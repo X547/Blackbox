@@ -77,10 +77,17 @@ HostPictures.ImportDPict	Picture (Metafile)
 HostBitmaps.ImportDBitmap	Picture (Bitmap)
 HostBitmaps.ImportDPictAsBitmap	Picture (Bitmap)
 
-TextViews.StdView	text
-HostPictures.StdView	a picture
-HostBitmaps.StdView	a bitmap picture
+TextViews.StdView	Text
+HostPictures.StdView	Metafile-Picture
+HostBitmaps.StdView	Bitmap-Picture
+
+TextViews.View	Text
+HostPictures.View	Metafile-Picture
+HostBitmaps.View	Bitmap-Picture
 
 Properties.StdProp	HostDialog.FontDialog
 
 Bitmaps.Evaluate.101	Not enough memory to allocate bitmap
+
+openExtErr	Failed to open external document: 
+runExtErr	Failed to run external command: 

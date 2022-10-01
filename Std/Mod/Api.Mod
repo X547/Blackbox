@@ -89,15 +89,15 @@ MODULE StdApi;
 				canCreate := TRUE;
 				Kernel.SplitName(submod, sub, mod);
 				loc := Files.dir.This(sub);
-				IF loc # NIL THEN
+				IF loc.res = 0 THEN
 					Kernel.MakeFileName(fname, "");
 					loc := loc.This("Rsrc");
-					IF loc # NIL THEN file := Files.dir.Old(loc, fname, Files.shared) END;
+					IF loc.res = 0 THEN file := Files.dir.Old(loc, fname, Files.shared) END;
 					IF (file = NIL) & (sub = "") THEN
-						loc := Files.dir.This("System"); ASSERT(loc # NIL, 100);
-						IF loc # NIL THEN
+						loc := Files.dir.This("System");
+						IF loc.res = 0 THEN
 							loc := loc.This("Rsrc");
-							IF loc # NIL THEN file := Files.dir.Old(loc, fname, Files.shared) END
+							IF loc.res = 0 THEN file := Files.dir.Old(loc, fname, Files.shared) END
 						END
 					END
 				END

@@ -14,7 +14,7 @@ MODULE DevBrowser;
 	IMPORT
 		Kernel, Files, Fonts, Dates, Ports, Stores, Views, Properties, Dialog, Documents,
 		TextModels, TextMappers, TextRulers, TextViews, TextControllers, StdDialog, StdFolds,
-		DevCPM, DevCPT, HostRegistry;
+		DevReferences, DevCPM, DevCPT, DevDecoder386, HostRegistry;
 
 	CONST
 		width = 170 * Ports.mm;	(* view width *)
@@ -37,10 +37,7 @@ MODULE DevBrowser;
 
 		(* attribute flags (attr.adr, struct.attribute, proc.conval.setval) *)
 		newAttr = 16; absAttr = 17; limAttr = 18; empAttr = 19; extAttr = 20;
-
-		(* additional scanner types *)
-		import = 100; module = 101; semicolon = 102; becomes = 103; comEnd = 104;
-
+		
 		modNotFoundKey = "#Dev:ModuleNotFound";
 		noSuchItemExportedKey = "#Dev:NoSuchItemExported";
 		noSuchExtItemExportedKey = "#Dev:NoSuchExtItemExported";
@@ -84,8 +81,12 @@ MODULE DevBrowser;
 		END;
 
 	PROCEDURE IsHook(typ: DevCPT.Struct): BOOLEAN;
+		VAR cnt: INTEGER; (* for breaking cycles in exotic cases such as T = POINTER TO ARRAY ... OF T *)
 	BEGIN
-		WHILE ((typ.form = pointer) OR (typ.form = comp)) & (typ.BaseTyp # NIL) DO typ := typ.BaseTyp END;
+		cnt := 0;
+		WHILE ((typ.form = pointer) OR (typ.form = comp)) & (typ.BaseTyp # NIL) & (cnt < 100) DO
+			typ := typ.BaseTyp; INC(cnt)
+		END;
 		RETURN (DevCPT.GlbMod[typ.mno].name^ = "Kernel") & (typ.strobj.name^ = "Hook^")
 	END IsHook;
 
@@ -110,6 +111,7 @@ MODULE DevBrowser;
 			s.ConnectTo(t); s.SetOpts({7});	(* acceptUnderscores *)
 			s.SetPos(beg); s.Scan;
 			IF (s.type = TextMappers.string) & (s.len < LEN(mod)) THEN
+				DevReferences.ResolveImportAlias(s.string, t);
 				Kernel.StringToUtf8(s.string, mod, res); 
 				s.Scan;
 				IF (s.type = TextMappers.char) & (s.char = ".") & (s.Pos() <= end) THEN
@@ -125,51 +127,6 @@ MODULE DevBrowser;
 		ELSE mod[0] := 0X; ident[0] := 0X
 		END
 	END GetQualIdent;
-
-	PROCEDURE Scan (VAR s: TextMappers.Scanner);
-	BEGIN
-		s.Scan;
-		IF s.type = TextMappers.string THEN
-			IF s.string = "IMPORT" THEN s.type := import
-			ELSIF s.string = "MODULE" THEN s.type := module
-			END
-		ELSIF s.type = TextMappers.char THEN
-			IF s.char = ";" THEN s.type := semicolon
-			ELSIF s.char = ":" THEN
-				IF s.rider.char = "=" THEN s.rider.Read; s.type := becomes END
-			ELSIF s.char = "(" THEN
-				IF s.rider.char = "*" THEN
-					s.rider.Read;
-					REPEAT Scan(s) UNTIL (s.type = TextMappers.eot) OR (s.type = comEnd);
-					Scan(s)
-				END
-			ELSIF s.char = "*" THEN
-				IF s.rider.char = ")" THEN s.rider.Read; s.type := comEnd END
-			END
-		END
-	END Scan;
-
-	PROCEDURE CheckModName (VAR mod: DevCPT.Name; t: TextModels.Model);
-		VAR s: TextMappers.Scanner; res: INTEGER; modStr: TextMappers.String;
-	BEGIN
-		s.ConnectTo(t); s.SetPos(0); Scan(s);
-		IF s.type = module THEN
-			Scan(s);
-			Kernel.Utf8ToString(mod, modStr, res);
-			WHILE (s.type # TextMappers.eot) & (s.type # import) DO Scan(s) END;
-			WHILE (s.type # TextMappers.eot) & (s.type # semicolon)
-					& ((s.type # TextMappers.string) OR (s.string # modStr)) DO Scan(s) END;
-			IF s.type = TextMappers.string THEN
-				Scan(s);
-				IF s.type = becomes THEN
-					Scan(s);
-					IF s.type = TextMappers.string THEN
-						Kernel.StringToUtf8(s.string, mod, res); 
-					END
-				END
-			END
-		END
-	END CheckModName;
 
 	PROCEDURE NewRuler (): TextRulers.Ruler;
 		VAR ra: TextRulers.Attributes; p: TextRulers.Prop;
@@ -261,7 +218,10 @@ MODULE DevBrowser;
 	BEGIN
 		IF s # "" THEN
 			Kernel.Utf8ToString(s, str, res);
-			i := 0; WHILE (s[i] # 0X) & (s[i] # "^") DO global.out.WriteChar(str[i]); INC(i) END
+			i := 0;
+			WHILE (str[i] # 0X) & (str[i] # "^") DO
+				global.out.WriteChar(str[i]); INC(i)
+			END
 		END
 	END ProperString;
 
@@ -1119,7 +1079,6 @@ MODULE DevBrowser;
 			str: ARRAY 256 OF CHAR; res: INTEGER;
 	BEGIN
 		GetQualIdent(mod, ident, t);
-		CheckModName(mod, t);
 		IF mod # "" THEN
 			OpenCompiler(mod, noerr);
 			IF noerr & (DevCPT.GlbMod[1] # NIL) & (DevCPT.GlbMod[1].name^ = mod) THEN
@@ -1146,6 +1105,7 @@ MODULE DevBrowser;
 		OpenCompiler("@file", noerr);
 		IF noerr THEN
 			Browse("", "", v, title);
+			IF v IS Documents.Document THEN v := v(Documents.Document).ThisView() END;
 			s := v
 		END;
 		CloseCompiler;
@@ -1197,9 +1157,9 @@ MODULE DevBrowser;
 		ELSE x := b1 MOD 256 + b0 * 256	(* big endian *)
 		END
 	END RShort;
-
-	PROCEDURE ReadHeader (file: Files.File; VAR view: Views.View; VAR title: Views.Title);
-		VAR n, i, p, fp, hs, ms, ds, cs, vs, m, res: INTEGER; name: Kernel.Utf8Name; first: BOOLEAN;
+	
+	PROCEDURE Decode (file: Files.File; VAR view: Views.View; VAR title: Views.Title);
+		VAR n, i, p, q, fp, hs, ms, ds, cs, vs, m, res: INTEGER; name: Kernel.Utf8Name; first: BOOLEAN;
 			text: TextModels.Model; v: TextViews.View; fold: StdFolds.Fold; d: Dates.Date; t: Dates.Time;
 			str: ARRAY 64 OF CHAR;
 	BEGIN
@@ -1234,19 +1194,19 @@ MODULE DevBrowser;
 			RLink; RLink; RLink; RLink; RLink; RLink; i := 0;
 			WHILE i < n DO
 				global.out.WriteTab; String(imp[i]); global.out.WriteTab;
-				RNum(p);
-				IF p # 0 THEN
+				RNum(q);
+				IF q # 0 THEN
 					fold := StdFolds.dir.New(StdFolds.expanded, "", TextModels.dir.New());
 					global.out.WriteView(fold); Char(" "); first := TRUE;
-					WHILE p # 0 DO
+					WHILE q # 0 DO
 						RName(name); RNum(fp);
-						IF p = 2 THEN RNum(m) END;
-						IF p # 1 THEN RLink END;
+						IF q = 2 THEN RNum(m) END;
+						IF q # 1 THEN RLink END;
 						IF name # "" THEN
 							IF ~first THEN String(", ") END;
 							first := FALSE; String(name)
 						END;
-						RNum(p)
+						RNum(q)
 					END;
 					Char(" ");
 					fold := StdFolds.dir.New(StdFolds.expanded, "", NIL);
@@ -1254,7 +1214,8 @@ MODULE DevBrowser;
 					fold.Flip(); global.out.SetPos(text.Length())
 				END;
 				INC(i); Ln
-			END
+			END;
+			IF p = 10 THEN DevDecoder386.Decode(title, inp, hs, ms, ds, cs, vs, -1, global.out) END
 		ELSE String("wrong file tag: "); Hex(n, 8)
 		END;
 		v := TextViews.dir.New(text);
@@ -1262,7 +1223,7 @@ MODULE DevBrowser;
 		view := Documents.dir.New(v, width, height);
 		global.out.ConnectTo(NIL);
 		inp := NIL
-	END ReadHeader;
+	END Decode;
 
 	PROCEDURE ShowCodeFile*;
 		VAR t: TextModels.Model; f: Files.File; v: Views.View; title: Views.Title; mod, ident: DevCPT.Name;
@@ -1274,7 +1235,7 @@ MODULE DevBrowser;
 			StdDialog.GetSubLoc(str, "Code", loc, name);
 			f := Files.dir.Old(loc, name, Files.shared);
 			IF f # NIL THEN
-				ReadHeader(f, v, title);
+				Decode(f, v, title);
 				IF v # NIL THEN Views.OpenAux(v, title) END
 			ELSE Dialog.ShowParamMsg(modNotFoundKey, str, "", "")
 			END
@@ -1286,7 +1247,8 @@ MODULE DevBrowser;
 		VAR v: Views.View; title: Views.Title;
 	BEGIN
 		ASSERT(f # NIL, 20);
-		ReadHeader(f, v, title);
+		Decode(f, v, title);
+		IF v IS Documents.Document THEN v := v(Documents.Document).ThisView() END;
 		s := v
 	END ImportCodeFile;
 

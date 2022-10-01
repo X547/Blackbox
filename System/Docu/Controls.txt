@@ -190,7 +190,7 @@ password	Don't display the characters that have been typed in.
 
 
 UpDownField
-The UpDownField is a special text field linked to a BYTE, SHORTINT or INTEGER variable. The value of the integer can be incremented and decremented through arrows, or by using the mouse wheel. If the <Ctrl> key is depressed the value is multiplied or divided by 10 rather than being incremented or decremented by 1. If the <Shift> key is depressed the value is set to the maximum or minimum.
+The UpDownField is a special text field linked to a BYTE, SHORTINT or INTEGER variable. The value of the integer can be incremented and decremented through arrows, or by using the mouse wheel. If the <Ctrl> key is depressed the value is multiplied or divided by 10 rather than being incremented or decremented by 1.
 
 
 DateField
