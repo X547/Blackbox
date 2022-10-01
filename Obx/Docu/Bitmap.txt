@@ -1,0 +1,7 @@
+Overview by Example: ObxBitmap
+
+This example shows how Windows specific programming can be used to create a Windows bitmap and display it in a BlackBox view. For more information see platform-specific issues and the Win32 API documentation.
+
+"ObxBitmap.Deposit; StdCmds.Open"
+
+ObxBitmap  sources

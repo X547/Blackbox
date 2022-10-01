@@ -1,0 +1,13 @@
+
+	<Name>
+	<Address0>
+	<Address1>
+	<State>
+
+Dear <Name>,
+
+...
+
+With best regards
+
+Foo Bar

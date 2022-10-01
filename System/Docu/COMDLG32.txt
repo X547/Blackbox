@@ -1,0 +1,3 @@
+COMDLG32
+
+This module is obsolete; use the Win subsystem instead.

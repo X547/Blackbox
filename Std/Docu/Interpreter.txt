@@ -1,0 +1,39 @@
+StdInterpreter
+
+DEFINITION StdInterpreter;
+
+END StdInterpreter.
+
+
+Module StdInterpreter implements a plug-in service for BlackBox: an interpreter for some forms of Component Pascal procedure calls. A sequence of statements of the following forms are legal:
+
+Proc = PROCEDURE
+ProcI = PROCEDURE (x: INTEGER)
+ProcII = PROCEDURE (x, y: INTEGER)
+ProcS = PROCEDURE (s: ARRAY OF CHAR)
+ProcSI = PROCEDURE (s: ARRAY OF CHAR; x: INTEGER)
+ProcSII = PROCEDURE (s: ARRAY OF CHAR; x, y: INTEGER)
+ProcSS = PROCEDURE (s, t: ARRAY OF CHAR)
+ProcSSI = PROCEDURE (s, t: ARRAY OF CHAR; x: INTEGER)
+ProcSSII = PROCEDURE (s, t: ARRAY OF CHAR; x, y: INTEGER)
+
+ProcR = PROCEDURE (IN s: ARRAY OF CHAR);
+ProcRI = PROCEDURE (IN s: ARRAY OF CHAR; x: INTEGER);
+ProcRII = PROCEDURE (IN s: ARRAY OF CHAR; x, y: INTEGER);
+ProcRS = PROCEDURE (IN s: ARRAY OF CHAR; t: ARRAY OF CHAR);
+ProcRSI = PROCEDURE (IN s: ARRAY OF CHAR; t: ARRAY OF CHAR; x: INTEGER);
+ProcRSII = PROCEDURE (IN s: ARRAY OF CHAR; t: ARRAY OF CHAR; x, y: INTEGER);
+ProcSR = PROCEDURE (s: ARRAY OF CHAR; IN t: ARRAY OF CHAR);
+ProcSRI = PROCEDURE (s: ARRAY OF CHAR; IN t: ARRAY OF CHAR; x: INTEGER);
+ProcSRII = PROCEDURE (s: ARRAY OF CHAR; IN t: ARRAY OF CHAR; x, y: INTEGER);
+ProcRR = PROCEDURE (IN s, t: ARRAY OF CHAR);
+ProcRRI = PROCEDURE (IN s, t: ARRAY OF CHAR; x: INTEGER);
+ProcRRII = PROCEDURE (IN s, t: ARRAY OF CHAR; x, y: INTEGER);
+
+For example, a procedure call of type ProcII followed by a procedure call of type Proc could be the following string:
+
+	 "TurtleDraw.GotoPos(35, 587); TurtleDraw.ShowPen".
+
+Such statement sequences are used mainly in menu command configurations and in control properties.
+
+Module StdInterpreter is installed during startup of BlackBox. Its service is made available through the procedure Dialog.Call.

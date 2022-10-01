@@ -1,0 +1,10 @@
+CREATE TABLE Companies
+	(id	INTEGER,
+	name	SHORTSTRING,
+	ceo	SHORTSTRING,
+	employees	INTEGER)
+
+CREATE TABLE Ownership
+	(owner	INTEGER,
+	owned	INTEGER,
+	percent	SHORT)

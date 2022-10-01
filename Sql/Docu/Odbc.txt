@@ -1,0 +1,3 @@
+SqlOdbc
+
+ODBC adapter module for ODBC releases prior to ODBC 3. See developer manual.

@@ -1,0 +1,21 @@
+Map to the BlackBox Core
+
+Miscellaneous
+
+		Config
+	In	Out	XYplane
+
+BlackBox Component Framework
+
+	Containers		Controls
+		Properties
+		Controllers	Printing
+		Views
+	Converters	Models	Ports
+	Stores		Fonts
+
+BlackBox Component Library
+	Integers
+	Files	Dialog
+	Math	Strings	Dates
+	Services		Meta
